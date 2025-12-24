@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools >= 77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chebai-NL2FOL"
+version = "0.0.0"
+description = "Translation of Natural language to First Order Logic for ChEBI."
+authors = [
+]
+maintainers = [
+]
+readme = "README.md"
+license = { }
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "langchain>=1.2.0",
+    "PyYAML"
+]
+
+[project.optional-dependencies]
+groq = ["langchain-groq>=1.1.1"]
+
+
+linters = [
+    "ruff",
+    "isort",
+    "pre-commit",
+]
+
+
+[tool.setuptools]
+include-package-data = true
+license-files = ["LICEN[CS]E*"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nl_2_fol*"]
+
+[tool.setuptools.package-data]
+"nl_2_fol" = [
+]
