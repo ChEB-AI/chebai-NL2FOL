@@ -10,6 +10,8 @@ def get_llm_for_inference(platform, model_name):
             print(
                 "Model `{model_name}` from platform `{platform}` is ready for inference."
             )
+            return
+
         raise Exception(
             "Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
         )
