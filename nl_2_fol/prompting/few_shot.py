@@ -100,8 +100,8 @@ class ChebaiFewShotPrompt:
     # --- Debugging Helpers ---
     def print_whole_prompt_with_given_input(self, input_text):
         messages = self._final_prompt.format_messages(input=input_text)
-        print("-" * 15, "ENTIRE PROMPT", "-" * 15)
+        print("-" * 30, "ENTIRE PROMPT", "-" * 30)
         for m in messages:
             print(f"--- {m.type.upper()} MESSAGE ---")
             print(m.content)
-        print("-" * 30)
+        print("-" * 30, "END OF THE PROMPT", "-" * 30)

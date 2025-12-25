@@ -18,11 +18,13 @@ assert any(os.getenv(key) for key in API_KEYS_NAME_LIST), (
 )
 
 
-tracing = True
+tracing = False  # Set to True in debug mode
 if tracing:
     # Refer Tracibility docs: https://docs.langchain.com/langsmith/observability-quickstart
+    # View on trace of the prompting here:
+    # https://smith.langchain.com/public/5dddca10-2d31-4be8-b4c3-caca98504868/r/019b55af-4679-7e31-96f0-516ffad9499d
     assert (
         "LANGSMITH_TRACING" in os.environ and os.environ["LANGSMITH_TRACING"] == "true"
     )
-    assert "LANGSMITH_WORKSPACE_ID" in os.environ  # Not necessary, but good to have
+    # assert "LANGSMITH_WORKSPACE_ID" in os.environ  # Not necessary, but good to have
     assert "LANGSMITH_API_KEY" in os.environ
