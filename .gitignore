@@ -208,3 +208,5 @@ __marimo__/
 
 .isort.cfg
 *.env
+data/
+.vscode
