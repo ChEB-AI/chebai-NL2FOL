@@ -15,7 +15,10 @@ license = { text = "AGPL-3.0" }
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "langchain>=1.2.0",
-    "PyYAML"
+    "PyYAML",
+    "gavel>=0.2.0",
+    "chemlog", # the pypi version might be outdated, install from https://github.com/sfluegel05/chemlog-peptides if issues arise
+    "rdkit",
 ]
 
 [project.optional-dependencies]
