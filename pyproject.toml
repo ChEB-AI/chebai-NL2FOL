@@ -24,6 +24,13 @@ dependencies = [
 [project.optional-dependencies]
 groq = ["langchain-groq>=1.1.1"]
 
+custom_host=[
+    "torch",
+    "transformers",
+    "sentencepiece",
+    "accelerate",
+    "safetensors",
+]
 
 linters = [
     "ruff",
