@@ -1,0 +1,45 @@
+[
+  {
+    "human": "CHEBI:33575 - carboxylic acid: A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. Carboxylic acids are the most common type of organic acid.",
+    "ai": {
+      "intermediate_output": {
+        "relevant_definition": "A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group.",
+        "superclass": "carbon oxoacid",
+        "explanation": "The class is defined by its superclass and the -C(=O)OH group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
+      },
+      "FOL_formula":[
+        "carboxylicAcid <=> (",
+        "  carbonOxoacid &",
+        "  ?[A1, A2, A3]: (",
+        "    c(A1) & o(A2) & o(A3) &",
+        "    has_1_hs(A3) &",
+        "    bDOUBLE(A1, A2) &",
+        "    bSINGLE(A1, A3)",
+        "  )",
+        ")"
+      ]
+    }
+  },
+  {
+    "human": "CHEBI:22680 - azide: Any nitrogen molecular entity containing the group ‒N3.",
+    "ai": {
+      "intermediate_output": {
+        "relevant_definition": "Any nitrogen molecular entity containing the group ‒N3.",
+        "superclass": "nitrogen molecular entity",
+        "explanation": "The class is defined by its superclass and the -N3 group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
+      },
+      "FOL_formula": [
+        "azide <=> (",
+        "  nitrogenMolecularEntity &",
+        "  ?[A1, A2, A3]: (",
+        "    n(A1) & charge0(A1) &",
+        "    n(A2) & charge1(A2) &",
+        "    n(A3) & charge_m1(A3) &",
+        "    bDOUBLE(A1, A2) &",
+        "    bDOUBLE(A2, A3)",
+        "  )",
+        ")"
+      ]
+    }
+  }
+]
