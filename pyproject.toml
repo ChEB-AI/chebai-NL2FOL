@@ -6,25 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "chebai-NL2FOL"
 version = "0.0.0"
 description = "Translation of Natural language to First Order Logic for ChEBI."
-authors = [
-]
-maintainers = [
-]
+authors = []
+maintainers = []
 readme = "README.md"
 license = { text = "AGPL-3.0" }
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "langchain>=1.2.0",
     "PyYAML",
-    "gavel>=0.2.0",
-    "chemlog", # the pypi version might be outdated, install from https://github.com/sfluegel05/chemlog-peptides if issues arise
+    "gavel @git+https://github.com/gavel-tool/python-gavel.git",
+    "chemlog @ git+https://github.com/sfluegel05/chemlog-peptides.git",
     "rdkit",
 ]
 
 [project.optional-dependencies]
 groq = ["langchain-groq>=1.1.1"]
 
-custom_host=[
+custom_host = [
     "torch",
     "transformers",
     "sentencepiece",
@@ -32,11 +30,7 @@ custom_host=[
     "safetensors",
 ]
 
-linters = [
-    "ruff",
-    "isort",
-    "pre-commit",
-]
+linters = ["ruff", "isort", "pre-commit"]
 
 
 [tool.setuptools]
@@ -48,5 +42,4 @@ where = ["."]
 include = ["nl_2_fol*"]
 
 [tool.setuptools.package-data]
-"nl_2_fol" = [
-]
+"nl_2_fol" = []
