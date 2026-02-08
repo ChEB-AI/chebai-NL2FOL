@@ -7,14 +7,18 @@ from gavel.logic import logic
 from gavel.logic.logic_utils import convert_to_cnf
 from rdkit import Chem
 
-from nl_2_fol.inference.exception_decorator import catch_exception
+from nl_2_fol.inference.custom_exceptions import (
+    model_check_exception,
+    mol_to_fol_exception,
+    tptp_parse_exception,
+)
 
 
-class ParseGavelFOL:
+class GavelFOLReasoner:
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
 
-    @catch_exception
+    @tptp_parse_exception
     def _get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
         """Parses a formula in TPTP format (as obtained from an LLM) into gavel's internal representation."""
         # wrap formula into an *annotated formula* for parsing
@@ -26,6 +30,7 @@ class ParseGavelFOL:
         print(f"Input formula: {formula}\n\t Parsed as: {tptp_parsed}")
         return tptp_parsed
 
+    @model_check_exception
     def _molecule_matches_tptp_fol_definition(
         self,
         molecule: Chem.Mol,
@@ -42,6 +47,7 @@ class ParseGavelFOL:
         outcome, model = model_checker.find_model(definition_to_match)
         return outcome
 
+    @mol_to_fol_exception
     def _mol_to_fol(self, mol: Chem.Mol):
         """Convert an RDKit molecule to a first-order logic representation."""
 
@@ -54,7 +60,7 @@ class ParseGavelFOL:
 
 if __name__ == "__main__":
     # Example usage
-    fol_parser = ParseGavelFOL()
+    fol_parser = GavelFOLReasoner()
 
     carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
     ethanol = Chem.MolFromSmiles("CCO")
