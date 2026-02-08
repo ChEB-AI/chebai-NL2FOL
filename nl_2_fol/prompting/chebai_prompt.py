@@ -8,28 +8,14 @@ from langchain_core.prompts import (
     PromptTemplate,
     SystemMessagePromptTemplate,
 )
-from pydantic import BaseModel, Field
 
 from nl_2_fol.prompting.llm_inference import get_llm_for_inference
+from nl_2_fol.prompting.models import CHEBIFOLOutput
 from nl_2_fol.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
 
 
-# --- Pydantic Models ---
-class IntermediateOutput(BaseModel):
-    relevant_definition: str = Field(
-        ..., description="Relevant part of the CHEBI definition"
-    )
-    superclass: str = Field(..., description="Superclass of the CHEBI class")
-    explanation: str = Field(..., description="How the class is defined")
-
-
-class CHEBIFOLOutput(BaseModel):
-    intermediate_output: IntermediateOutput
-    FOL_formula: str = Field(..., description="First-order logic formula")
-
-
 # --- Main Class ---
-class ChebaiPrompt:
+class ChebiPrompt:
     def __init__(
         self,
         platform: str,
@@ -185,7 +171,7 @@ if __name__ == "__main__":
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     prompt_dir = os.path.join(base_dir, "prompt_templates")
-    chebai_prompt = ChebaiPrompt(
+    chebai_prompt = ChebiPrompt(
         platform="groq",
         model_name="openai/gpt-oss-120b",
         system_prompt_fp=os.path.join(
@@ -202,7 +188,9 @@ if __name__ == "__main__":
     chebai_prompt.print_fs_prompt_with_given_input(chebi_def)
 
     # Test the few-shot prompt
-    output = chebai_prompt.invoke_llm_with_fs_prompt(chebi_def)
+    output: CHEBIFOLOutput | Exception = chebai_prompt.invoke_llm_with_fs_prompt(
+        chebi_def
+    )
     print(output)
 
     previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
