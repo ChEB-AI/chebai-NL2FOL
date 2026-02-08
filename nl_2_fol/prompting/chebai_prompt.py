@@ -10,9 +10,8 @@ from langchain_core.prompts import (
 )
 from pydantic import BaseModel, Field
 
+from nl_2_fol.prompting.llm_inference import get_llm_for_inference
 from nl_2_fol.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
-
-from .llm_inference import get_llm_for_inference
 
 
 # --- Pydantic Models ---
@@ -182,12 +181,18 @@ class ChebaiPrompt:
 if __name__ == "__main__":
     # ------------------- TESTING THE CLASS ------------------#
     # Example usage
+    import os
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    prompt_dir = os.path.join(base_dir, "prompt_templates")
     chebai_prompt = ChebaiPrompt(
         platform="groq",
         model_name="openai/gpt-oss-120b",
-        system_prompt_fp="prompt_templates/system_prompts/with_predicates_list.yaml",
-        few_shot_prompt_fp="prompt_templates/few_shots/with_DL_style.json",
-        failure_prompt_fp="prompt_templates/failure/prompt.yaml",
+        system_prompt_fp=os.path.join(
+            prompt_dir, "system_prompts", "with_predicates_list.yaml"
+        ),
+        few_shot_prompt_fp=os.path.join(prompt_dir, "few_shots", "with_DL_style.json"),
+        failure_prompt_fp=os.path.join(prompt_dir, "failure", "prompt.yaml"),
     )
 
     chebi_def = """CHEBI:16236 - ethanol: A primary alcohol that

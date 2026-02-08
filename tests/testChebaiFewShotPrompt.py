@@ -1,6 +1,6 @@
 import unittest
 
-from nl_2_fol.prompting.few_shot import ChebaiFewShotPrompt, CHEBIFOLOutput
+from nl_2_fol.prompting.chebai_prompt import ChebaiFewShotPrompt, CHEBIFOLOutput
 
 
 class TestChebaiFewShotPrompt(unittest.TestCase):
