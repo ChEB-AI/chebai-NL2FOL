@@ -1,8 +1,9 @@
 import os
 
+from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
-from nl_2_fol.inference.data_model import Dataset
+from nl_2_fol.inference.data_model import ChemicalClass, ChemicalStructure, Dataset
 from nl_2_fol.inference.definition_model import (
     DefinitionLearningResults,
     DefinitionMetrics,
@@ -42,62 +43,56 @@ class LearnDefinitions:
         )
 
         self._gavel_fol_reasoner = GavelFOLReasoner()
+        (
+            self._dataset,
+            self.smiles_to_instance,
+            self.validation_smiles,
+            self.all_smiles,
+        ) = self._load_dataset()
 
-    def learn_fol_definitions(
-        self,
-    ):
-        dataset: Dataset = self._load_dataset()
-        s2i = dataset.smiles_to_instance()
-        all_validation = (
-            set(dataset.validation_examples)
-            if dataset.validation_examples is not None
-            else set()
-        )
-        all_smiles = dataset.all_smiles()
+    def learn_fol_definitions(self):
 
-        def get_positive_and_negative_samples(chemical_class):
-            all_positive = set(chemical_class.all_positive_examples)
-            positive_examples = list(all_positive - all_validation)
-            positive_instances = [s2i[smiles] for smiles in positive_examples]
-            negative_examples = list((all_smiles - all_positive) - all_validation)
-            negative_instances = [s2i[smiles] for smiles in negative_examples]
-            return positive_instances, negative_instances
-
-        for chemical_class in dataset.classes:
+        for chemical_class in self._dataset.classes:
+            attempts = 0
             if chemical_class.definition is None:
                 continue
 
             # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
             # of the hydrogens is substituted by a hydroxy group."""
+            input_text = f"{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
             result: CHEBIFOLOutput = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
-                f"{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
+                input_text
             )
-            try:
-                tptp_def = self._gavel_fol_reasoner._get_tptp_fol_definition(
-                    result.FOL_formula
+            output = self._parse_generated_fol_definition(
+                result.FOL_formula, chemical_class
+            )
+            if isinstance(output, Exception):
+                print(
+                    f"Failed to parse FOL definition for {chemical_class.id}: {output}"
                 )
-                # SMILES OF chemical class is not available in the dataset
-                # TODO: Check whether we really need this to do the following
-                # mol = Chem.MolFromSmiles(chemical_class.smiles)
-                # if mol is None: continue
-                # matches = self._gavel_fol_reasoner._molecule_matches_tptp_fol_definition(
-                #     mol, tptp_def, {}
-                # )
-            except Exception as e:
-                pass
+                previous_fol_def = result.FOL_formula
+                while attempts < self.max_attempts:
+                    print(f"Attempt {attempts + 1} for {chemical_class.id}")
+                    result: CHEBIFOLOutput = (
+                        self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
+                            input_text,
+                            previous_fol_def,
+                            str(output),
+                        )
+                    )
+                    output = self._parse_generated_fol_definition(
+                        result.FOL_formula, chemical_class
+                    )
+                    if not isinstance(output, Exception):
+                        break
+                    print(
+                        f"Failed to parse FOL definition for {chemical_class.id}: {output}"
+                    )
+                    attempts += 1
+                    previous_fol_def = result.FOL_formula
 
-            pos_samples, neg_samples = get_positive_and_negative_samples(chemical_class)
+            tptp_def, metrics = output
 
-            unmatched_pos_samples, matched_neg_samples = (
-                self._check_if_definition_matches_samples(
-                    tptp_def,
-                    pos_samples,
-                    neg_samples,
-                )
-            )
-            metrics = self._get_metrics(
-                unmatched_pos_samples, matched_neg_samples, pos_samples, neg_samples
-            )
             if metrics.F1 < self.f1_threshold:
                 pass
 
@@ -109,33 +104,89 @@ class LearnDefinitions:
                 f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
             )
 
+    def _parse_generated_fol_definition(
+        self, fol_def_str: str, chemical_class: ChemicalClass
+    ) -> tuple[QuantifiedFormula, DefinitionMetrics] | Exception:
+        try:
+            tptp_def = self._gavel_fol_reasoner._get_tptp_fol_definition(fol_def_str)
+            # SMILES OF chemical class is not available in the dataset
+            # TODO: Check whether we really need this to do the following
+            # mol = Chem.MolFromSmiles(chemical_class.smiles)
+            # if mol is None: continue
+            # matches = self._gavel_fol_reasoner._molecule_matches_tptp_fol_definition(
+            #     mol, tptp_def, {}
+            # )
+            # if not matches:
+            #  raise ValueError(f"Generated definition doest not own chemical class itself{chemical_class.id}")
+        except Exception as e:
+            return e
+
+        pos_samples, neg_samples = self._get_positive_and_negative_samples(
+            chemical_class
+        )
+
+        unmatched_pos_samples, matched_neg_samples = (
+            self._check_if_definition_matches_samples(
+                tptp_def,
+                pos_samples,
+                neg_samples,
+            )
+        )
+        metrics = self._get_metrics(
+            unmatched_pos_samples, matched_neg_samples, pos_samples, neg_samples
+        )
+        return tptp_def, metrics
+
+    def _get_positive_and_negative_samples(
+        self, chemical_class: ChemicalClass
+    ) -> tuple[list[ChemicalStructure], list[ChemicalStructure]]:
+        all_positive = set(chemical_class.all_positive_examples)
+        positive_examples = list(all_positive - self.validation_smiles)
+        positive_instances = [
+            self.smiles_to_instance[smiles] for smiles in positive_examples
+        ]
+        negative_examples = list(
+            (self.all_smiles - all_positive) - self.validation_smiles
+        )
+        negative_instances = [
+            self.smiles_to_instance[smiles] for smiles in negative_examples
+        ]
+        return positive_instances, negative_instances
+
     def _check_if_definition_matches_samples(
-        self, tptp_def, pos_samples: list, neg_samples: list
+        self,
+        tptp_def: QuantifiedFormula,
+        pos_samples: list[ChemicalStructure],
+        neg_samples: list[ChemicalStructure],
     ) -> tuple[list[str], list[str]]:
 
         def is_matched(smiles: str) -> bool:
             try:
                 mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    return False
+                matches = (
+                    self._gavel_fol_reasoner._molecule_matches_tptp_fol_definition(
+                        mol,
+                        tptp_def,
+                        {},  # TODO: background definitons
+                    )
+                )
             except Exception:
                 return False
-            if mol is None:
-                return False
-            matches = self._gavel_fol_reasoner._molecule_matches_tptp_fol_definition(
-                mol, tptp_def, {}
-            )
             return bool(matches)
 
         unmatched_pos_samples = []
-        for smiles in pos_samples:
-            matches = is_matched(smiles)
+        for chemical in pos_samples:
+            matches = is_matched(chemical.smiles)
             if not matches:
-                unmatched_pos_samples.append(smiles)
+                unmatched_pos_samples.append(chemical.smiles)
 
         matched_neg_samples = []
-        for smiles in neg_samples:
-            matches = is_matched(smiles)
+        for chemical in neg_samples:
+            matches = is_matched(chemical.smiles)
             if matches:
-                matched_neg_samples.append(smiles)
+                matched_neg_samples.append(chemical.smiles)
 
         return unmatched_pos_samples, matched_neg_samples
 
@@ -164,13 +215,27 @@ class LearnDefinitions:
             TN=num_true_negatives,
         )
 
-    def _load_dataset(self) -> Dataset:
+    def _load_dataset(
+        self,
+    ) -> tuple[
+        Dataset,
+        dict[str, ChemicalStructure],
+        set[str],
+        set[str],
+    ]:
         with open(self.dataset_path, "r", encoding="utf-8") as f:
             dataset = Dataset.model_validate_json(f.read())
             print(
                 f"Classes: {len(dataset.classes)} Instances: {len(dataset.structures)}"
             )
-        return dataset
+        s2i = dataset.smiles_to_instance()
+        all_validation = (
+            set(dataset.validation_examples)
+            if dataset.validation_examples is not None
+            else set()
+        )
+        all_smiles = dataset.all_smiles()
+        return dataset, s2i, all_validation, all_smiles
 
     def _load_definitions(self, path: str | None) -> DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary

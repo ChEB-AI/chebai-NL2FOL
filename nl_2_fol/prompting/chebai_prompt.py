@@ -13,9 +13,13 @@ from nl_2_fol.prompting.llm_inference import get_llm_for_inference
 from nl_2_fol.prompting.models import CHEBIFOLOutput
 from nl_2_fol.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
 
-
 # TODO: Use memory in case of failure prompts
 # TODO: check langgraph for better prompt chaining, iteration func calling, especially for the failure prompts where we want to keep track of previous attempts and errors.
+# TODO:
+#   - IF THERE ARE certain predicates which reasoner does not understand, ask llm to define the predicate.
+#   - if llm defines a predicate which is not in the list, ask it to define it, verify it and then add it to list
+
+
 # --- Main Class ---
 class ChebiPrompt:
     def __init__(
