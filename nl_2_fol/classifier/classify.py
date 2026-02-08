@@ -4,7 +4,7 @@ from rdkit import Chem
 from nl_2_fol.inference.model_check_molecule import molecule_matches_definition
 
 
-class NL2FOLClassifier:
+class NL2FOLChebiClassifier:
     def __init__(self, definitions_path: str):
         self.definitions_path = definitions_path
         self.definitions_to_match: list[dict[str, QuantifiedFormula]] = []
