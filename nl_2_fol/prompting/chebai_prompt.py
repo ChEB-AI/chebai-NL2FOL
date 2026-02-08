@@ -14,6 +14,8 @@ from nl_2_fol.prompting.models import CHEBIFOLOutput
 from nl_2_fol.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
 
 
+# TODO: Use memory in case of failure prompts
+# TODO: check langgraph for better prompt chaining, iteration func calling, especially for the failure prompts where we want to keep track of previous attempts and errors.
 # --- Main Class ---
 class ChebiPrompt:
     def __init__(
@@ -96,12 +98,12 @@ class ChebiPrompt:
             example_prompt=example_prompt,
         )
 
-    def invoke_llm_with_fs_prompt(self, input_text: str) -> CHEBIFOLOutput | Exception:
+    def invoke_llm_with_fs_prompt(self, input_text: str) -> CHEBIFOLOutput:
         try:
             return self._few_shots_chain.invoke({"input": input_text})
         except Exception as e:
             print(f"Error during inference: {e}")
-            return e
+            raise e
 
     def print_fs_prompt_with_given_input(self, input_text):
         messages = self._fs_entire_prompt.format_messages(input=input_text)
@@ -136,7 +138,7 @@ class ChebiPrompt:
 
     def invoke_llm_with_failure_prompt(
         self, input_text: str, previous_fol_definition: str, error_message: str
-    ) -> CHEBIFOLOutput | Exception:
+    ) -> CHEBIFOLOutput:
         try:
             return self._failure_chain.invoke(
                 {
@@ -147,7 +149,7 @@ class ChebiPrompt:
             )
         except Exception as e:
             print(f"Error during failure prompt inference: {e}")
-            return e
+            raise e
 
     def print_failure_prompt_with_given_inputs(
         self, input_text: str, previous_fol_definition: str, error_message: str
@@ -162,6 +164,14 @@ class ChebiPrompt:
             print(f"--- {m.type.upper()} MESSAGE ---")
             print(m.content)
         print("-" * 30, "END OF THE FAILURE PROMPT", "-" * 30)
+
+    def __repr__(self) -> str:
+        return f"""
+        ChebiPrompt(platform={self.platform},\n 
+        model_name={self.model_name},\n 
+        few_shot_prompt={self._fs_entire_prompt}),\n 
+        failure_prompt={self._failure_prompt})\n
+        """
 
 
 if __name__ == "__main__":
@@ -188,9 +198,7 @@ if __name__ == "__main__":
     chebai_prompt.print_fs_prompt_with_given_input(chebi_def)
 
     # Test the few-shot prompt
-    output: CHEBIFOLOutput | Exception = chebai_prompt.invoke_llm_with_fs_prompt(
-        chebi_def
-    )
+    output: CHEBIFOLOutput = chebai_prompt.invoke_llm_with_fs_prompt(chebi_def)
     print(output)
 
     previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
