@@ -93,3 +93,8 @@ if __name__ == "__main__":
     with open(dataset_path, "r", encoding="utf-8") as f:
         dataset = Dataset.model_validate_json(f.read())
         print(f"Classes: {len(dataset.classes)} Instances: {len(dataset.structures)}")
+
+    assert len(dataset.structures) > 0, "Dataset should have at least one structure"
+    assert len(dataset.classes) == len(dataset.structures), (
+        "Number of classes should be equal to number of structures"
+    )
