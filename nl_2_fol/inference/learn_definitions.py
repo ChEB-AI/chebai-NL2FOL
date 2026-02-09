@@ -3,7 +3,7 @@ import os
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
-from nl_2_fol.inference.data_model import ChemicalClass, ChemicalStructure, Dataset
+from nl_2_fol.inference.data_model import ChemicalClass, load_c3po_slim_dataset
 from nl_2_fol.inference.definition_model import (
     DefinitionLearningResults,
     DefinitionMetrics,
@@ -20,13 +20,15 @@ class LearnDefinitions:
 
     def __init__(
         self,
-        dataset_path: str,  # https://huggingface.co/datasets/MonarchInit/C3PO
         chebi_prompt_obj: ChebiPrompt,
+        slim_dataset_path: str = "data/classes_slim.csv",  # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
+        structures_path: str = "data/structures.csv",  # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
         definitions_path: str | None = None,
     ):
-        self.dataset_path = dataset_path
+        self.slim_dataset_path = slim_dataset_path
+        self.structures_path = structures_path
         self.definitions_path = definitions_path
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
@@ -48,7 +50,7 @@ class LearnDefinitions:
             self.smiles_to_instance,
             self.validation_smiles,
             self.all_smiles,
-        ) = self._load_dataset()
+        ) = load_c3po_slim_dataset(self.slim_dataset_path, self.structures_path)
 
     def learn_fol_definitions(self):
 
@@ -107,19 +109,7 @@ class LearnDefinitions:
     def _parse_generated_fol_definition(
         self, fol_def_str: str, chemical_class: ChemicalClass
     ) -> tuple[QuantifiedFormula, DefinitionMetrics] | Exception:
-        try:
-            tptp_def = self._gavel_fol_reasoner._get_tptp_fol_definition(fol_def_str)
-            # SMILES OF chemical class is not available in the dataset
-            # TODO: Check whether we really need this to do the following
-            # mol = Chem.MolFromSmiles(chemical_class.smiles)
-            # if mol is None: continue
-            # matches = self._gavel_fol_reasoner._molecule_matches_tptp_fol_definition(
-            #     mol, tptp_def, {}
-            # )
-            # if not matches:
-            #  raise ValueError(f"Generated definition doest not own chemical class itself{chemical_class.id}")
-        except Exception as e:
-            return e
+        tptp_def = self._gavel_fol_reasoner._get_tptp_fol_definition(fol_def_str)
 
         pos_samples, neg_samples = self._get_positive_and_negative_samples(
             chemical_class
@@ -214,28 +204,6 @@ class LearnDefinitions:
             FN=num_false_negatives,
             TN=num_true_negatives,
         )
-
-    def _load_dataset(
-        self,
-    ) -> tuple[
-        Dataset,
-        dict[str, ChemicalStructure],
-        set[str],
-        set[str],
-    ]:
-        with open(self.dataset_path, "r", encoding="utf-8") as f:
-            dataset = Dataset.model_validate_json(f.read())
-            print(
-                f"Classes: {len(dataset.classes)} Instances: {len(dataset.structures)}"
-            )
-        s2i = dataset.smiles_to_instance()
-        all_validation = (
-            set(dataset.validation_examples)
-            if dataset.validation_examples is not None
-            else set()
-        )
-        all_smiles = dataset.all_smiles()
-        return dataset, s2i, all_validation, all_smiles
 
     def _load_definitions(self, path: str | None) -> DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary

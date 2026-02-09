@@ -7,9 +7,11 @@ which is available at https://huggingface.co/datasets/MonarchInit/C3PO
 
 """
 
+import os
 from copy import copy
 from typing import Optional
 
+import pandas as pd
 from pydantic import BaseModel, Field
 
 SMILES_STRING = str
@@ -88,13 +90,73 @@ class Dataset(BaseModel):
         raise ValueError(f"Class {class_name} not found in dataset")
 
 
-if __name__ == "__main__":
-    dataset_path = "data/dataset.json"
-    with open(dataset_path, "r", encoding="utf-8") as f:
-        dataset = Dataset.model_validate_json(f.read())
-        print(f"Classes: {len(dataset.classes)} Instances: {len(dataset.structures)}")
+def load_c3po_slim_dataset(
+    slim_dataset_path: str = "data/classes_slim.csv",
+    structures_path: str = "data/structures.csv",
+) -> tuple[
+    Dataset,
+    dict[str, ChemicalStructure],
+    set[str],
+    set[str],
+]:
+    if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
+        raise FileNotFoundError(
+            f"Dataset files not found. Please ensure {slim_dataset_path} "
+            f"and {structures_path} exist."
+        )
 
-    assert len(dataset.structures) > 0, "Dataset should have at least one structure"
-    assert len(dataset.classes) == len(dataset.structures), (
-        "Number of classes should be equal to number of structures"
+    slim_df = pd.read_csv(slim_dataset_path)
+    structures_df = pd.read_csv(structures_path)
+
+    validation_smiles = structures_df.loc[
+        structures_df["in_validation_set"], "smiles"
+    ].tolist()
+    assert validation_smiles, (
+        "No validation examples found in the dataset. Please check the dataset files."
     )
+
+    # Convert to string type to avoid type errors with pandas Scalar
+    def _split_if_notna(val: str) -> list[str] | None:
+        return val.split("|") if pd.notna(val) else None
+
+    classes = [
+        ChemicalClass(
+            id=str(row.id),
+            name=str(row.name),
+            definition=str(row.definition),
+            parents=_split_if_notna(str(row.parents)),
+            xrefs=_split_if_notna(str(row.xrefs)),
+        )
+        for row in slim_df.itertuples()
+    ]
+
+    structures = [
+        ChemicalStructure(name=str(row.name), smiles=str(row.smiles))
+        for row in structures_df.itertuples()
+    ]
+
+    dataset = Dataset(
+        ontology_version="slim",
+        classes=classes,
+        structures=structures,
+        validation_examples=validation_smiles,
+    )
+
+    print(
+        f"Loaded : Classes: {len(dataset.classes)}\n"
+        f"Instances: {len(dataset.structures)}\n"
+        f"Validation examples: {len(dataset.validation_examples)}"  # pyright: ignore[reportArgumentType]
+    )
+
+    s2i = dataset.smiles_to_instance()
+    all_validation = (
+        set(dataset.validation_examples)
+        if dataset.validation_examples is not None
+        else set()
+    )
+    all_smiles = dataset.all_smiles()
+    return dataset, s2i, all_validation, all_smiles
+
+
+if __name__ == "__main__":
+    load_c3po_slim_dataset()
