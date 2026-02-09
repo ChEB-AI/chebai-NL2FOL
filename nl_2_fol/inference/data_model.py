@@ -1,5 +1,5 @@
 """
-Note this file(code) is copied from the following source:
+Note this file(code) is copied from the following source and modified to fit our use case:
 https://github.com/chemkg/c3p/blob/main/c3p/datamodel.py
 
 This file is used to load the https://github.com/chemkg/c3p 's  dataset
@@ -54,6 +54,14 @@ class ChemicalClass(BaseModel):
         cc.all_positive_examples = []
         return cc
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        if not isinstance(other, ChemicalStructure):
+            return NotImplemented
+        return self.name == other.name
+
 
 class Dataset(BaseModel):
     """
@@ -63,9 +71,9 @@ class Dataset(BaseModel):
     ontology_version: Optional[str] = None
     min_members: Optional[int] = None
     max_members: Optional[int] = None
-    classes: list[ChemicalClass]
-    structures: list[ChemicalStructure] = []
-    validation_examples: Optional[list[SMILES_STRING]] = None
+    classes: set[ChemicalClass]
+    structures: set[ChemicalStructure] = set()
+    validation_examples: Optional[set[SMILES_STRING]] = None
 
     @property
     def name(self):
@@ -108,9 +116,9 @@ def load_c3po_slim_dataset(
     slim_df = pd.read_csv(slim_dataset_path)
     structures_df = pd.read_csv(structures_path)
 
-    validation_smiles = structures_df.loc[
-        structures_df["in_validation_set"], "smiles"
-    ].tolist()
+    validation_smiles = set(
+        structures_df.loc[structures_df["in_validation_set"], "smiles"]
+    )
     assert validation_smiles, (
         "No validation examples found in the dataset. Please check the dataset files."
     )
@@ -119,7 +127,7 @@ def load_c3po_slim_dataset(
     def _split_if_notna(val: str) -> list[str] | None:
         return val.split("|") if pd.notna(val) else None
 
-    classes = [
+    classes = {
         ChemicalClass(
             id=str(row.id),
             name=str(row.name),
@@ -128,12 +136,12 @@ def load_c3po_slim_dataset(
             xrefs=_split_if_notna(str(row.xrefs)),
         )
         for row in slim_df.itertuples()
-    ]
+    }
 
-    structures = [
+    structures = {
         ChemicalStructure(name=str(row.name), smiles=str(row.smiles))
         for row in structures_df.itertuples()
-    ]
+    }
 
     dataset = Dataset(
         ontology_version="slim",

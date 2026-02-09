@@ -41,3 +41,12 @@ def model_check_exception(func):
             return e
 
     return wrapper
+
+
+class MissingPredicateException(Exception):
+    def __init__(self, missing_predicates: set) -> None:
+        message = (
+            f"Definition contains unknown predicates not in base predicates "
+            f"or background definitions: {missing_predicates}"
+        )
+        super().__init__(message)

@@ -1,5 +1,3 @@
-from typing import Dict, List, Tuple
-
 from chemlog.fol_classification.model_checking import ModelChecker
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
 from gavel.dialects.tptp.parser import TPTPParser
@@ -7,7 +5,9 @@ from gavel.logic import logic
 from gavel.logic.logic_utils import convert_to_cnf
 from rdkit import Chem
 
+from nl_2_fol.inference.base_predicates import GAVEL_PREDICATES
 from nl_2_fol.inference.custom_exceptions import (
+    MissingPredicateException,
     model_check_exception,
     mol_to_fol_exception,
     tptp_parse_exception,
@@ -17,9 +17,13 @@ from nl_2_fol.inference.custom_exceptions import (
 class GavelFOLReasoner:
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
+        self._base_predicates: dict[str, str] = GAVEL_PREDICATES
+        self._background_definitions: (
+            dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]] | None
+        ) = None
 
     @tptp_parse_exception
-    def _get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
+    def get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
         """Parses a formula in TPTP format (as obtained from an LLM) into gavel's internal representation."""
         # wrap formula into an *annotated formula* for parsing
         formula_wrapped = f"fof(temp, axiom, {formula})."
@@ -31,31 +35,63 @@ class GavelFOLReasoner:
         return tptp_parsed
 
     @model_check_exception
-    def _molecule_matches_tptp_fol_definition(
+    def does_mol_match_tptp_definition(
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-        background_definitions: Dict[
-            str, Tuple[List[logic.Variable], logic.QuantifiedFormula]
-        ]
-        | None,
     ) -> bool:
         """Checks if a given molecule matches the logical definition."""
-        universe, extensions = self._mol_to_fol(molecule)
-        model_checker = ModelChecker(universe, extensions, background_definitions)
+        predicates = self._extract_predicates(definition_to_match)
+        missing_predicates = predicates - self._base_predicates.keys()
+        missing_predicates = (
+            missing_predicates - self._background_definitions.keys()
+            if self._background_definitions
+            else missing_predicates
+        )
+        if missing_predicates:
+            # TODO: check if any missing predicates is a chebi class
+            # if the predicate is chebi class in original data
+            # (chemlog.preprocessing.chebi_data), then extract the definiton
+            # and prompt the llm to give def for this predicate
 
-        outcome, model = model_checker.find_model(definition_to_match)
+            # if above and also in c3po slim dataset, then
+            # recusively learn definition for this predicate first and add to background definitions
+            raise MissingPredicateException(missing_predicates)
+
+        universe, extensions = self._mol_to_fol(molecule)
+        model_checker = ModelChecker(universe, extensions, self._background_definitions)
+
+        outcome, _ = model_checker.find_model(definition_to_match)
         return outcome
 
     @mol_to_fol_exception
     def _mol_to_fol(self, mol: Chem.Mol):
         """Convert an RDKit molecule to a first-order logic representation."""
-
         universe, extensions = mol_to_fol_atoms(mol)
-
         # rename / add custom extensions if needed
-
         return universe, extensions
+
+    def _extract_predicates(self, formula: logic.QuantifiedFormula) -> set[str]:
+        """Extract all predicates from a parsed TPTP formula."""
+        predicates = set()
+
+        def traverse(node):
+            if isinstance(node, logic.PredicateExpression):
+                # node.predicate gives the predicate symbol
+                predicates.add(node.predicate)
+            elif isinstance(node, logic.BinaryFormula):
+                traverse(node.left)
+                traverse(node.right)
+            elif isinstance(node, logic.NaryFormula):
+                for formula_node in node.formulae:
+                    traverse(formula_node)
+            elif isinstance(node, logic.UnaryFormula):
+                traverse(node.formula)
+            elif isinstance(node, logic.QuantifiedFormula):
+                traverse(node.formula)
+
+        traverse(formula.formula)
+        return predicates
 
 
 if __name__ == "__main__":
@@ -67,55 +103,50 @@ if __name__ == "__main__":
     thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
 
     # Logical definition to match (I removed the oneCarbonCompound predicate for simplicity)
-    definition_str = (
-        "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
-    )
-    definition_to_match = fol_parser._get_tptp_fol_definition(definition_str)
+    definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
+    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
+
     # Background definitions (none needed here)
     background_definitions = {}
-    matches = fol_parser._molecule_matches_tptp_fol_definition(
-        carbonMonoxide, definition_to_match, background_definitions
+    matches = fol_parser.does_mol_match_tptp_definition(
+        carbonMonoxide, definition_to_match
     )
     print(f"Carbon monoxide matches definition: {matches}")
-    matches = fol_parser._molecule_matches_tptp_fol_definition(
-        ethanol, definition_to_match, background_definitions
-    )
+    matches = fol_parser.does_mol_match_tptp_definition(ethanol, definition_to_match)
     print(
         f"Ethanol matches definition: {matches}"
     )  # returns model found (which contradicts the chemistry)
-    matches = fol_parser._molecule_matches_tptp_fol_definition(
-        thionitrousAcid, definition_to_match, background_definitions
+    matches = fol_parser.does_mol_match_tptp_definition(
+        thionitrousAcid, definition_to_match
     )
     print(f"Thionitrous acid matches definition: {matches}")
 
     # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
     definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
-    definition_to_match = fol_parser._get_tptp_fol_definition(definition_str)
-    background_definitions = {
+    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
+    fol_parser._background_definitions = {
         "oneCarbonCompound": (
             [],
-            fol_parser._get_tptp_fol_definition(
+            fol_parser.get_tptp_fol_definition(
                 "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)"
             ),
         ),
         "twoPlusCarbonCompound": (
             [],
-            fol_parser._get_tptp_fol_definition(
+            fol_parser.get_tptp_fol_definition(
                 "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
             ),
         ),
     }
-    matches = fol_parser._molecule_matches_tptp_fol_definition(
-        carbonMonoxide, definition_to_match, background_definitions
+    matches = fol_parser.does_mol_match_tptp_definition(
+        carbonMonoxide, definition_to_match
     )
     print(f"Carbon monoxide matches definition: {matches}")
-    matches = fol_parser._molecule_matches_tptp_fol_definition(
-        ethanol, definition_to_match, background_definitions
-    )
+    matches = fol_parser.does_mol_match_tptp_definition(ethanol, definition_to_match)
     print(
         f"Ethanol matches definition: {matches}"
     )  # now, no model found because we added the oneCarbonCompound definition
-    matches = fol_parser._molecule_matches_tptp_fol_definition(
-        thionitrousAcid, definition_to_match, background_definitions
+    matches = fol_parser.does_mol_match_tptp_definition(
+        thionitrousAcid, definition_to_match
     )
     print(f"Thionitrous acid matches definition: {matches}")

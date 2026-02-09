@@ -3,7 +3,11 @@ import os
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
-from nl_2_fol.inference.data_model import ChemicalClass, load_c3po_slim_dataset
+from nl_2_fol.inference.data_model import (
+    ChemicalClass,
+    ChemicalStructure,
+    load_c3po_slim_dataset,
+)
 from nl_2_fol.inference.definition_model import (
     DefinitionLearningResults,
     DefinitionMetrics,
@@ -44,7 +48,7 @@ class LearnDefinitions:
             self.chebi_prompt_obj.model_name,
         )
 
-        self._gavel_fol_reasoner = GavelFOLReasoner()
+        self._gavel = GavelFOLReasoner()
         (
             self._dataset,
             self.smiles_to_instance,
@@ -52,64 +56,84 @@ class LearnDefinitions:
             self.all_smiles,
         ) = load_c3po_slim_dataset(self.slim_dataset_path, self.structures_path)
 
+        self._attempts: int = 0
+
     def learn_fol_definitions(self):
 
         for chemical_class in self._dataset.classes:
-            attempts = 0
+            self._attempts = 0
             if chemical_class.definition is None:
                 continue
+            self._learn(chemical_class)
 
-            # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
-            # of the hydrogens is substituted by a hydroxy group."""
-            input_text = f"{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
-            result: CHEBIFOLOutput = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
-                input_text
-            )
-            output = self._parse_generated_fol_definition(
-                result.FOL_formula, chemical_class
-            )
-            if isinstance(output, Exception):
-                print(
-                    f"Failed to parse FOL definition for {chemical_class.id}: {output}"
+    def _learn(self, chemical_class: ChemicalClass) -> None:
+
+        # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
+        # of the hydrogens is substituted by a hydroxy group."""
+        input_text = (
+            f"{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
+        )
+        result: CHEBIFOLOutput = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
+            input_text
+        )
+        output = self._parse_and_validate_generated_definition(result, chemical_class)
+        if not isinstance(output, Exception):
+            return None
+
+        print(f"Failed to parse FOL definition for {chemical_class.id}: {output}")
+        previous_fol_def = result.FOL_formula
+        raised_exception = output
+        while self._attempts < self.max_attempts:
+            print(f"Attempt {self._attempts + 1} for {chemical_class.id}")
+            result: CHEBIFOLOutput = (
+                self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
+                    input_text,
+                    previous_fol_def,
+                    str(raised_exception),
                 )
-                previous_fol_def = result.FOL_formula
-                while attempts < self.max_attempts:
-                    print(f"Attempt {attempts + 1} for {chemical_class.id}")
-                    result: CHEBIFOLOutput = (
-                        self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
-                            input_text,
-                            previous_fol_def,
-                            str(output),
-                        )
-                    )
-                    output = self._parse_generated_fol_definition(
-                        result.FOL_formula, chemical_class
-                    )
-                    if not isinstance(output, Exception):
-                        break
-                    print(
-                        f"Failed to parse FOL definition for {chemical_class.id}: {output}"
-                    )
-                    attempts += 1
-                    previous_fol_def = result.FOL_formula
-
-            tptp_def, metrics = output
-
-            if metrics.F1 < self.f1_threshold:
-                pass
-
-            self.definitions[chemical_class.id] = LearnedDefinition(
-                metrics=metrics, definition=tptp_def
             )
-
-            print(
-                f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
+            output = self._parse_and_validate_generated_definition(
+                result, chemical_class
             )
+            if not isinstance(output, Exception):
+                return None
+            print(f"Failed to parse FOL definition for {chemical_class.id}: {output}")
+            self._attempts += 1
+            previous_fol_def = result.FOL_formula
+            raised_exception = output
+
+    def _parse_and_validate_generated_definition(
+        self, result: CHEBIFOLOutput, chemical_class: ChemicalClass
+    ) -> bool | Exception:
+
+        output = self._parse_generated_fol_definition(
+            result.FOL_formula, chemical_class
+        )
+        if isinstance(output, Exception):
+            return output
+
+        tptp_def, metrics = output
+
+        # Validate against the threshold
+        # TODO:  adjust threshold wrt how many def meet it
+        if metrics.F1 < self.f1_threshold:
+            # TODO:
+            #   raise exception with molecule names for postive samples, if def present, then definition
+            #  and molecule names for negative samples, and definition is present                         attempts += 1
+            return Exception("")
+
+        self.definitions[chemical_class.id] = LearnedDefinition(
+            metrics=metrics, definition=tptp_def
+        )
+        print(
+            f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
+        )
+        return True
 
     def _parse_generated_fol_definition(
         self, fol_def_str: str, chemical_class: ChemicalClass
     ) -> tuple[QuantifiedFormula, DefinitionMetrics] | Exception:
-        tptp_def = self._gavel_fol_reasoner._get_tptp_fol_definition(fol_def_str)
+        tptp_def = self._gavel.get_tptp_fol_definition(fol_def_str)
 
         pos_samples, neg_samples = self._get_positive_and_negative_samples(
             chemical_class
@@ -155,12 +179,9 @@ class LearnDefinitions:
                 mol = Chem.MolFromSmiles(smiles)
                 if mol is None:
                     return False
-                matches = (
-                    self._gavel_fol_reasoner._molecule_matches_tptp_fol_definition(
-                        mol,
-                        tptp_def,
-                        {},  # TODO: background definitons
-                    )
+                matches = self._gavel.does_mol_match_tptp_definition(
+                    mol,
+                    tptp_def,
                 )
             except Exception:
                 return False

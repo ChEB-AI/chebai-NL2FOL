@@ -14,19 +14,22 @@ system_prompt: |
   If you use other predicates, please provide the definition of the predicate.
 
   - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
-    Hydrogen atoms are not represented explicitly, but as a property of their neighbours
-    (e.g. `has_2_hs` for an atom with two hydrogen neighbours).
+    Hydrogen atoms are not represented explicitly, but as a property of their neighbours 
+        `has_{n}_hs` - exactly n hydrogens (e.g., has_0_hs, has_1_hs)
+        `has_at_least_{n}_hs` - at least n hydrogens
+        `has_min_{n}_hs` - minimum hydrogens
 
   - Atom charges:
     - `charge1`, `charge_m2` for specific charges
     - `charge_p`, `charge_n` for positive or negative charge of arbitrary magnitude
+    -  `charge0` for neutral charge
 
-  - Stereochemistry (CIP codes):
+  - Stereochemistry/Chirality (CIP codes):
     - `cip_code_R`, `cip_code_S`
 
   - Bonds:
     - `has_bond_to` (bond type unspecified)
-    - `bSINGLE`, `bDOUBLE`, `bTRIPLE`
+    - `bSINGLE`, `bDOUBLE`, `bTRIPLE`, `bAROMATIC` for specific bond types
 
   - Net molecular charge:
     - `net_charge_positive`
