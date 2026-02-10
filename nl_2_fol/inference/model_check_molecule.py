@@ -23,9 +23,7 @@ class GavelFOLReasoner:
         ) = None
 
     @tptp_parse_exception
-    def get_tptp_fol_definition(
-        self, formula: str
-    ) -> logic.QuantifiedFormula | Exception:
+    def get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
         """Parses a formula in TPTP format (as obtained from an LLM) into gavel's internal representation."""
         # wrap formula into an *annotated formula* for parsing
         formula_wrapped = f"fof(temp, axiom, {formula})."
@@ -41,7 +39,7 @@ class GavelFOLReasoner:
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-    ) -> bool | Exception:
+    ) -> bool:
         """Checks if a given molecule matches the logical definition."""
         predicates = self._extract_predicates(definition_to_match)
         missing_predicates = predicates - self._base_predicates.keys()

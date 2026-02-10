@@ -87,15 +87,18 @@ class LearnDefinitions:
         result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
             input_text
         )
+        raised_exception = None
         self._add_prompt_to_history(prompt_text, result)
+        try:
+            self._parse_and_validate_generated_definition(result, chemical_class)
+            return
+        except Exception as e:
+            raised_exception = e
 
-        output = self._parse_and_validate_generated_definition(result, chemical_class)
-        if not isinstance(output, Exception):
-            return None
-
-        print(f"Failed to parse FOL definition for {chemical_class.id}: {output}")
+        print(
+            f"Failed to parse FOL definition for {chemical_class.id}: {raised_exception}"
+        )
         previous_fol_def = result.FOL_formula
-        raised_exception = output
         while self._attempts < self.max_attempts:
             print(f"Attempt {self._attempts + 1} for {chemical_class.id}")
             result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
@@ -104,11 +107,11 @@ class LearnDefinitions:
                 str(raised_exception),
             )
             self._add_prompt_to_history(prompt_text, result)
-            output = self._parse_and_validate_generated_definition(
-                result, chemical_class
-            )
-            if not isinstance(output, Exception):
-                return None
+            try:
+                self._parse_and_validate_generated_definition(result, chemical_class)
+                return
+            except Exception as e:
+                output = e
             print(f"Failed to parse FOL definition for {chemical_class.id}: {output}")
             self._attempts += 1
             previous_fol_def = result.FOL_formula
@@ -116,20 +119,23 @@ class LearnDefinitions:
 
     def _parse_and_validate_generated_definition(
         self, result: CHEBIFOLOutput, chemical_class: ChemicalClass
-    ) -> bool | Exception:
+    ) -> None:
+        """
+        Parses the generated FOL definition and validates it against the positive
+        and negative samples of the chemical class.
 
-        output = self._gavel.get_tptp_fol_definition(result.FOL_formula)
+        Raises an exception if parsing or validation fails, otherwise returns None.
+        """
+
+        tptp_def = self._gavel.get_tptp_fol_definition(result.FOL_formula)
 
         pos_samples, neg_samples = self._get_positive_and_negative_samples(
             chemical_class
         )
 
-        if isinstance(output, Exception):
-            return output
-
         unmatched_pos_samples, matched_neg_samples = (
             self._check_if_definition_matches_samples(
-                output,
+                tptp_def,
                 pos_samples,
                 neg_samples,
             )
@@ -142,7 +148,7 @@ class LearnDefinitions:
         # TODO:  adjust threshold wrt how many def meet it
         if metrics.F1 < self.f1_threshold:
             # TODO: check if mol definition is present
-            return LowF1ScoreException(
+            raise LowF1ScoreException(
                 list(pos_samples),
                 list(neg_samples),
                 list(matched_neg_samples),
@@ -153,7 +159,7 @@ class LearnDefinitions:
 
         self.definitions[chemical_class.id] = LearnedDefinition(
             metrics=metrics,
-            learned_FOL=output,
+            learned_FOL=tptp_def,
             name=chemical_class.name,
             definition=chemical_class.definition if chemical_class.definition else "",
             prompts_history=self._prompts_history,
@@ -161,7 +167,6 @@ class LearnDefinitions:
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
-        return True
 
     def _get_positive_and_negative_samples(
         self, chemical_class: ChemicalClass
@@ -187,16 +192,13 @@ class LearnDefinitions:
     ) -> tuple[set[SMILES_STRING], set[SMILES_STRING]]:
 
         def is_matched(smiles: SMILES_STRING) -> bool:
-            try:
-                mol = Chem.MolFromSmiles(smiles)
-                if mol is None:
-                    return False
-                matches = self._gavel.does_mol_match_tptp_definition(
-                    mol,
-                    tptp_def,
-                )
-            except Exception:
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
                 return False
+            matches = self._gavel.does_mol_match_tptp_definition(
+                mol,
+                tptp_def,
+            )
             return bool(matches)
 
         unmatched_pos_samples = set()

@@ -12,7 +12,7 @@ def tptp_parse_exception(func):
             print(f"{func.__name__} failed: {e}")
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
-            return e
+            raise e
 
     return wrapper
 
@@ -26,7 +26,7 @@ def mol_to_fol_exception(func):
             print(f"{func.__name__} failed: {e}")
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
-            return e
+            raise e
 
     return wrapper
 
@@ -40,13 +40,14 @@ def model_check_exception(func):
             print(f"{func.__name__} failed: {e}")
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
-            return e
+            raise e
 
     return wrapper
 
 
 class MissingPredicateException(Exception):
     def __init__(self, missing_predicates: set) -> None:
+        self.missing_predicates: set = missing_predicates
         message = (
             f"Definition contains unknown predicates not in base predicates "
             f"or background definitions: {missing_predicates}"
@@ -56,18 +57,15 @@ class MissingPredicateException(Exception):
 
 class LowF1ScoreException(Exception):
     """
-    Initialize a custom exception for FOL definition F1-score validation failure.
+    Exception raised when a generated FOL definition fails F1-score validation.
+
     Args:
         pos_samples: List of positive ChemicalStructure samples used in validation.
         neg_samples: List of negative ChemicalStructure samples used in validation.
-        matched_neg_samples: List of SMILES strings for negative samples that were incorrectly matched (false positives).
-        unmatched_pos_samples: List of SMILES strings for positive samples that were not matched (false negatives).
-        max_examples: Maximum number of misclassified molecule names to include in the error message. Defaults to 5.
-    Returns:
-        None
-    Raises:
-        Constructs an exception message detailing the F1 score threshold failure and lists up to max_examples
-        of false positive and false negative molecule names for debugging purposes.
+        matched_neg_samples: List of SMILES strings for negative samples incorrectly matched (false positives).
+        unmatched_pos_samples: List of SMILES strings for positive samples not matched (false negatives).
+        max_examples: Maximum number of misclassified examples to include in error message.
+        chebi_id_to_data_mapping: Mapping of chemical IDs to their data including definitions.
     """
 
     def __init__(
@@ -76,8 +74,8 @@ class LowF1ScoreException(Exception):
         neg_samples: list[ChemicalStructure],
         matched_neg_samples: list[SMILES_STRING],
         unmatched_pos_samples: list[SMILES_STRING],
-        max_examples: int = 5,
-        chebi_id_to_data_mapping: dict[str, dict] = {},
+        max_examples: int,
+        chebi_id_to_data_mapping: dict[str, dict],
     ) -> None:
 
         def get_chemical_details(
