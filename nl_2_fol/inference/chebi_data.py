@@ -15,7 +15,7 @@ class ChEBIDataWrapper(ChEBIData):
         )
         # chebi: dict with entries from chebi
 
-    def get_name_to_data_mapping(self) -> dict[Hashable, dict]:
+    def get_name_to_data_mapping(self) -> dict[str, dict]:
         df = self._preprocess_data()
         # --- One Duplicate entry in Chebi 244 -----
         # 1. Name: l-lysine zwitterion
@@ -26,7 +26,20 @@ class ChEBIDataWrapper(ChEBIData):
         # Latest chebi version has only 194466, so delete the duplicate entry with 133538
         df = df[df.index != 133538]
 
-        return df.set_index("name").to_dict(orient="index")
+        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
+        df = self._preprocess_data()
+        # --- One Duplicate entry in Chebi 244 -----
+        # 1. Name: l-lysine zwitterion
+        #    Count: 2
+        #    - ID: 133538, SMILES: [O-]C([C@H](CCCCN)[NH3+])=O...
+        #    - ID: 194466, SMILES: [NH3+]CCCC[C@@H](C([O-])=O)N...
+
+        # Latest chebi version has only 194466, so delete the duplicate entry with 133538
+        df = df[df.index != 133538]
+
+        return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def _preprocess_data(self) -> pd.DataFrame:
         data_dict = self.process_chebi()
@@ -43,3 +56,5 @@ if __name__ == "__main__":
     name_to_data_mapping = chebi_data_wrapper.get_name_to_data_mapping()
     print(f"\n\nTotal unique names (mapping keys): {len(name_to_data_mapping)}")
     print(f"Sample entries: {list(name_to_data_mapping)[:5]}")
+    chebi_id_to_data_mapping = chebi_data_wrapper.get_chebi_id_to_data_mapping()
+    print(f"Sample entries: {list(chebi_id_to_data_mapping)[:5]}")

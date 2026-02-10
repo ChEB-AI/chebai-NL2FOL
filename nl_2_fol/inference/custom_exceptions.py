@@ -77,25 +77,88 @@ class LowF1ScoreException(Exception):
         matched_neg_samples: list[SMILES_STRING],
         unmatched_pos_samples: list[SMILES_STRING],
         max_examples: int = 5,
+        chebi_id_to_data_mapping: dict[str, dict] = {},
     ) -> None:
 
-        fp_mol_names = [
-            chemical.name
-            for chemical in neg_samples
-            if chemical.smiles in matched_neg_samples
-        ][:max_examples]
+        def get_chemical_details(
+            chemicals: list[ChemicalStructure],
+            matched_smiles: list[SMILES_STRING],
+        ) -> list[tuple[str, str | None]]:
 
-        fn_mol_names = [
-            chemical.name
-            for chemical in pos_samples
-            if chemical.smiles in unmatched_pos_samples
-        ][:max_examples]
+            chemical_details: list[tuple[str, str | None]] = []
+            for chemical in chemicals:
+                if chemical.smiles in matched_smiles:
+                    chemical_data = chebi_id_to_data_mapping.get(
+                        str(chemical.name).lower().strip(), None
+                    )
+                    chemical_def = None
+                    if chemical_data:
+                        chemical_def = chemical_data.get("definition", "")
+                    chemical_details.append((chemical.name, chemical_def))
+            return chemical_details
 
+        fp_mol_names = get_chemical_details(
+            chemicals=neg_samples,
+            matched_smiles=matched_neg_samples,
+        )[:max_examples]
+
+        fn_mol_names = get_chemical_details(
+            chemicals=pos_samples,
+            matched_smiles=unmatched_pos_samples,
+        )[:max_examples]
+
+        fp_details = "\n".join(
+            f"\t- Chemical Name: {name}"
+            + (f", Chemical Definition: {chem_def}" if chem_def else "")
+            for name, chem_def in fp_mol_names
+        )
+        fn_details = "\n".join(
+            f"\t- Chemical Name: {name}"
+            + (f", Chemical Definition: {chem_def}" if chem_def else "")
+            for name, chem_def in fn_mol_names
+        )
         message = (
             f"The generated FOL definition did not meet the required F1 score threshold:\n"
-            f"Please find below the names of molecules that were misclassified:\n"
-            f"False Positives (FP): {fp_mol_names}\n"
-            f"False Negatives (FN): {fn_mol_names}"
+            f"Please find below the names of molecules and optionally their definitions"
+            f" that were misclassified:\n"
+            f"False Positives (FP): \n{fp_details}\n"
+            f"False Negatives (FN): \n{fn_details}"
         )
 
         super().__init__(message)
+
+
+if __name__ == "__main__":
+    # Example usage of the custom exceptions
+    try:
+        raise MissingPredicateException({"UnknownPredicate1", "UnknownPredicate2"})
+    except MissingPredicateException as e:
+        print(f"Caught an exception: {e}")
+
+    try:
+        pos_samples = [
+            ChemicalStructure(name="MoleculeA", smiles="C1=CC=CC=C1"),
+            ChemicalStructure(name="MoleculeB", smiles="C1=CC=CC=C1O"),
+        ]
+        neg_samples = [
+            ChemicalStructure(name="MoleculeC", smiles="C1=CC=CC=C1N"),
+            ChemicalStructure(name="MoleculeD", smiles="C1=CC=CC=C1F"),
+        ]
+        matched_neg_samples = ["C1=CC=CC=C1N"]  # False positive
+        unmatched_pos_samples = ["C1=CC=CC=C1O", "C1=CC=CC=C1"]  # False negative
+
+        raise LowF1ScoreException(
+            pos_samples,
+            neg_samples,
+            matched_neg_samples,
+            unmatched_pos_samples,
+            max_examples=2,
+            chebi_id_to_data_mapping={
+                "moleculec": {"definition": "Definition of MoleculeC"},
+                "moleculed": {"definition": "Definition of MoleculeD"},
+                "moleculea": {"definition": "Definition of MoleculeA"},
+                "moleculeb": {"definition": ""},
+            },
+        )
+    except LowF1ScoreException as e:
+        print(f"Caught an exception: {e}")

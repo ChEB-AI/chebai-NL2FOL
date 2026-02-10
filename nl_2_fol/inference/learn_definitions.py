@@ -1,9 +1,9 @@
 import os
 
-from chemlog.preprocessing.chebi_data import ChEBIData
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
+from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
 from nl_2_fol.inference.custom_exceptions import LowF1ScoreException
 from nl_2_fol.inference.data_model import (
     SMILES_STRING,
@@ -52,15 +52,21 @@ class LearnDefinitions:
         )
 
         self._gavel = GavelFOLReasoner()
+        # ----- C3PO slim dataset loading -----
         (
             self._dataset,
             self.smiles_to_instance,
             self.validation_smiles,
             self.all_smiles,
         ) = load_c3po_slim_dataset(self.slim_dataset_path, self.structures_path)
+        # ---------------------------------------
 
         self._attempts: int = 0
         self._prompts_history: list[str] = []
+
+        # ------ Entire Chebi data loading -------
+        entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
+        self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
 
     def learn_fol_definitions(self):
 
@@ -142,6 +148,7 @@ class LearnDefinitions:
                 list(matched_neg_samples),
                 list(unmatched_pos_samples),
                 max_examples=10,
+                chebi_id_to_data_mapping=self._chebi_name_to_data_mapping,
             )
 
         self.definitions[chemical_class.id] = LearnedDefinition(
