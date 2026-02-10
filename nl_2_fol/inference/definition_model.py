@@ -1,6 +1,8 @@
 from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, Field, RootModel
 
+from nl_2_fol.inference.data_model import CHEBI_ID
+
 
 class DefinitionMetrics(BaseModel):
     TP: int = Field(..., description="True Positives")
@@ -26,10 +28,10 @@ class LearnedDefinition(BaseModel):
     definition: str = Field(..., description="definition of the structure from CHEBI")
 
 
-class DefinitionLearningResults(RootModel[dict[str, LearnedDefinition]]):
+class DefinitionLearningResults(RootModel[dict[CHEBI_ID, LearnedDefinition]]):
     """Dictionary mapping ChEBI IDs to their learned definitions."""
 
-    root: dict[str, LearnedDefinition]
+    root: dict[CHEBI_ID, LearnedDefinition]
 
     def __getitem__(self, item):
         return self.root[item]

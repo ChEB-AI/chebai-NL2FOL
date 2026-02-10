@@ -11,9 +11,11 @@ import os
 from copy import copy
 
 import pandas as pd
+from chemlog.preprocessing.chebi_data import chebi_to_int
 from pydantic import BaseModel, Field
 
 SMILES_STRING = str
+CHEBI_ID = int
 
 
 # make this hashable?
@@ -35,7 +37,7 @@ class ChemicalStructure(BaseModel):
 class ChemicalClass(BaseModel):
     """Represents a class/grouping of chemical entities."""
 
-    id: str = Field(..., description="id/curie of the CHEBI class")
+    id: CHEBI_ID = Field(..., description="id/curie of the CHEBI class")
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
     definition: str | None = Field(
         None, description="definition of the structure from CHEBI"
@@ -84,7 +86,7 @@ class Dataset(BaseModel):
     def smiles_to_instance(self) -> dict[SMILES_STRING, ChemicalStructure]:
         return {s.smiles: s for s in self.structures}
 
-    def get_chemical_class_by_id(self, class_id: str) -> ChemicalClass:
+    def get_chemical_class_by_id(self, class_id: CHEBI_ID) -> ChemicalClass:
         for cc in self.classes:
             if cc.id == class_id:
                 return cc
@@ -128,7 +130,7 @@ def load_c3po_slim_dataset(
 
     classes = {
         ChemicalClass(
-            id=str(row.id),
+            id=chebi_to_int(row.id),  # pyright: ignore[reportArgumentType]
             name=str(row.name),
             definition=str(row.definition),
             parents=_split_if_notna(str(row.parents)),

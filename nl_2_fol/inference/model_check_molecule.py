@@ -12,15 +12,16 @@ from nl_2_fol.inference.custom_exceptions import (
     mol_to_fol_exception,
     tptp_parse_exception,
 )
+from nl_2_fol.inference.definition_model import DefinitionLearningResults
 
 
 class GavelFOLReasoner:
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
-        self._background_definitions: (
-            dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]] | None
-        ) = None
+        self._background_definitions: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ] = {}
 
     @tptp_parse_exception
     def get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
@@ -93,6 +94,21 @@ class GavelFOLReasoner:
         traverse(formula.formula)
         return predicates
 
+    def set_background_definitions(self, new_definitions: DefinitionLearningResults):
+        """Update the background definitions with new learned definitions."""
+
+        for _, learned_def in new_definitions.root.items():
+            self._background_definitions[learned_def.name] = (
+                [],
+                learned_def.learned_FOL,
+            )
+
+    def update_background_definition(
+        self, name: str, definition: logic.QuantifiedFormula
+    ):
+        """Add a single background definition."""
+        self._background_definitions[name] = ([], definition)
+
 
 if __name__ == "__main__":
     # Example usage
@@ -139,7 +155,7 @@ if __name__ == "__main__":
                 "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
             ),
         ),
-    }  # pyright: ignore[reportAttributeAccessIssue]
+    }
     matches = fol_parser.does_mol_match_tptp_definition(
         carbonMonoxide, definition_to_match
     )

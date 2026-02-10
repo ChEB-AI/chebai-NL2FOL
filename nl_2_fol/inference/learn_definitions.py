@@ -71,13 +71,13 @@ class LearnDefinitions:
     def learn_fol_definitions(self):
 
         for chemical_class in self._dataset.classes:
-            self._attempts = 0
-            self._prompts_history = []
             if chemical_class.definition is None:
                 continue
             self._learn(chemical_class)
 
     def _learn(self, chemical_class: ChemicalClass) -> None:
+        self._attempts = 0
+        self._prompts_history = []
 
         # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
         # of the hydrogens is substituted by a hydroxy group."""
@@ -91,6 +91,7 @@ class LearnDefinitions:
         self._add_prompt_to_history(prompt_text, result)
         try:
             self._parse_and_validate_generated_definition(result, chemical_class)
+            self._dataset.classes.remove(chemical_class)
             return
         except Exception as e:
             raised_exception = e
@@ -109,6 +110,7 @@ class LearnDefinitions:
             self._add_prompt_to_history(prompt_text, result)
             try:
                 self._parse_and_validate_generated_definition(result, chemical_class)
+                self._dataset.classes.remove(chemical_class)
                 return
             except Exception as e:
                 output = e
@@ -164,6 +166,7 @@ class LearnDefinitions:
             definition=chemical_class.definition if chemical_class.definition else "",
             prompts_history=self._prompts_history,
         )
+        self._gavel.update_background_definition(chemical_class.name, tptp_def)
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
