@@ -13,3 +13,17 @@ class IntermediateOutput(BaseModel):
 class CHEBIFOLOutput(BaseModel):
     intermediate_output: IntermediateOutput
     FOL_formula: str = Field(..., description="First-order logic formula")
+
+
+if __name__ == "__main__":
+    # Example usage
+    intermediate_output = IntermediateOutput(
+        relevant_definition="A carbon monoxide is a compound that consists of one carbon atom and one oxygen atom.",
+        superclass="carbon compound",
+        explanation="The definition states that a carbon monoxide is a compound made of one carbon and one oxygen, which matches the superclass 'carbon compound'.",
+    )
+    fol_output = CHEBIFOLOutput(
+        intermediate_output=intermediate_output,
+        FOL_formula="carbonMonoxide(x) <=> (oneCarbonCompound(x) & hasPart(x, y) & c(y) & hasPart(x, z) & o(z))",
+    )
+    print(fol_output.model_dump_json(indent=2))

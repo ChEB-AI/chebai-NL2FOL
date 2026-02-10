@@ -9,7 +9,6 @@ which is available at https://huggingface.co/datasets/MonarchInit/C3PO
 
 import os
 from copy import copy
-from typing import Optional
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -38,11 +37,11 @@ class ChemicalClass(BaseModel):
 
     id: str = Field(..., description="id/curie of the CHEBI class")
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
-    definition: Optional[str] = Field(
+    definition: str | None = Field(
         None, description="definition of the structure from CHEBI"
     )
-    parents: Optional[list[str]] = Field(default=None, description="parent classes")
-    xrefs: Optional[list[str]] = Field(default=None, description="mappings")
+    parents: list[str] | None = Field(default=None, description="parent classes")
+    xrefs: list[str] | None = Field(default=None, description="mappings")
     all_positive_examples: list[SMILES_STRING] = []
 
     def lite_copy(self) -> "ChemicalClass":
@@ -68,12 +67,12 @@ class Dataset(BaseModel):
     Represents a dataset of chemical classes.
     """
 
-    ontology_version: Optional[str] = None
-    min_members: Optional[int] = None
-    max_members: Optional[int] = None
+    ontology_version: str | None = None
+    min_members: int | None = None
+    max_members: int | None = None
     classes: set[ChemicalClass]
     structures: set[ChemicalStructure] = set()
-    validation_examples: Optional[set[SMILES_STRING]] = None
+    validation_examples: set[SMILES_STRING] | None = None
 
     @property
     def name(self):

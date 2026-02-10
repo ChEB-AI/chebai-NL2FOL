@@ -16,13 +16,19 @@ class LearnedDefinition(BaseModel):
     metrics: DefinitionMetrics = Field(
         ..., description="Metrics of the learned definition"
     )
-    definition: QuantifiedFormula = Field(
+    learned_FOL: QuantifiedFormula = Field(
         ..., description="Learned TPTP FOL definition for the chemical class"
     )
+    prompts_history: list[str] = Field(
+        ..., description="History of prompts used to learn this definition"
+    )
+    name: str = Field(..., description="rdfs:label of the class in CHEBI")
+    definition: str = Field(..., description="definition of the structure from CHEBI")
 
 
 class DefinitionLearningResults(RootModel[dict[str, LearnedDefinition]]):
     """Dictionary mapping ChEBI IDs to their learned definitions."""
+
     root: dict[str, LearnedDefinition]
 
     def __getitem__(self, item):

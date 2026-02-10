@@ -60,11 +60,13 @@ class LearnDefinitions:
         ) = load_c3po_slim_dataset(self.slim_dataset_path, self.structures_path)
 
         self._attempts: int = 0
+        self._prompts_history: list[str] = []
 
     def learn_fol_definitions(self):
 
         for chemical_class in self._dataset.classes:
             self._attempts = 0
+            self._prompts_history = []
             if chemical_class.definition is None:
                 continue
             self._learn(chemical_class)
@@ -76,9 +78,11 @@ class LearnDefinitions:
         input_text = (
             f"{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
         )
-        result: CHEBIFOLOutput = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
+        result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
             input_text
         )
+        self._add_prompt_to_history(prompt_text, result)
+
         output = self._parse_and_validate_generated_definition(result, chemical_class)
         if not isinstance(output, Exception):
             return None
@@ -88,13 +92,12 @@ class LearnDefinitions:
         raised_exception = output
         while self._attempts < self.max_attempts:
             print(f"Attempt {self._attempts + 1} for {chemical_class.id}")
-            result: CHEBIFOLOutput = (
-                self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
-                    input_text,
-                    previous_fol_def,
-                    str(raised_exception),
-                )
+            result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
+                input_text,
+                previous_fol_def,
+                str(raised_exception),
             )
+            self._add_prompt_to_history(prompt_text, result)
             output = self._parse_and_validate_generated_definition(
                 result, chemical_class
             )
@@ -133,7 +136,7 @@ class LearnDefinitions:
         # TODO:  adjust threshold wrt how many def meet it
         if metrics.F1 < self.f1_threshold:
             # TODO: check if mol definition is present
-            raise LowF1ScoreException(
+            return LowF1ScoreException(
                 list(pos_samples),
                 list(neg_samples),
                 list(matched_neg_samples),
@@ -142,7 +145,11 @@ class LearnDefinitions:
             )
 
         self.definitions[chemical_class.id] = LearnedDefinition(
-            metrics=metrics, definition=output
+            metrics=metrics,
+            learned_FOL=output,
+            name=chemical_class.name,
+            definition=chemical_class.definition if chemical_class.definition else "",
+            prompts_history=self._prompts_history,
         )
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
@@ -256,6 +263,13 @@ class LearnDefinitions:
 
         with open(os.path.join(path, "__metadata__.txt"), "w") as f:
             f.write(str(self.chebi_prompt_obj))
+
+    def _add_prompt_to_history(self, prompt: str, result: CHEBIFOLOutput) -> None:
+        history_entry: str = (
+            f"Prompt:\n{prompt}\n"
+            f"{self.chebi_prompt_obj.model_name}(LLM) output:\n{result.FOL_formula}\n"
+        )
+        self._prompts_history.append(history_entry)
 
 
 if __name__ == "__main__":
