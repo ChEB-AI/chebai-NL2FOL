@@ -64,27 +64,57 @@ class ChebiPrompt:
             ]
         )
 
+    @staticmethod
+    def _normalize_input_text(input_text: str) -> str:
+        """
+        Normalize the input text by stripping leading/trailing whitespace
+        and collapsing multiple spaces into a single space.
+        """
+        return " ".join(str(input_text).split())
+
     def _get_system_prompt_for_fs(
         self, system_prompt_fp: str
     ) -> SystemMessagePromptTemplate:
         system_prompt_text = load_yaml_sys_prompt(system_prompt_fp)
+
+        # Escape curly braces that are not template variables
+        # We need to double curly braces except for {format_instructions}
+        # Replace all { and } with {{ and }}, then restore {format_instructions}
+        escaped_text = system_prompt_text.replace("{", "{{").replace("}", "}}")
+        escaped_text = escaped_text.replace(
+            "{{format_instructions}}", "{format_instructions}"
+        )
+
         format_instructions = self._few_shot_parser.get_format_instructions()
 
         # Create inner template and bind instructions
-        prompt = PromptTemplate.from_template(system_prompt_text)
+        prompt = PromptTemplate.from_template(escaped_text)
         partial_prompt = prompt.partial(format_instructions=format_instructions)
 
-        return SystemMessagePromptTemplate(prompt=partial_prompt)
+        return SystemMessagePromptTemplate(prompt=partial_prompt)  # pyright: ignore[reportArgumentType]
 
     def _get_few_shot_prompts_examples(
         self, few_shot_prompt_fp: str
     ) -> FewShotChatMessagePromptTemplate:
         raw_examples = json_to_pyObj(few_shot_prompt_fp)
 
+        def _normalize_fol_formula(ai_payload: dict) -> dict:
+            fol_formula = ai_payload.get("FOL_formula")
+            if isinstance(fol_formula, list):
+                ai_payload = dict(ai_payload)
+                ai_payload["FOL_formula"] = " ".join(
+                    part.strip() for part in fol_formula if part.strip()
+                )
+            return ai_payload
+
         processed_examples = [
             {
                 "human": ex["human"],
-                "ai": json.dumps(ex["ai"], indent=4, ensure_ascii=False),
+                "ai": json.dumps(
+                    _normalize_fol_formula(ex["ai"]),
+                    indent=4,
+                    ensure_ascii=False,
+                ),
             }
             for ex in raw_examples
         ]
@@ -102,20 +132,25 @@ class ChebiPrompt:
             example_prompt=example_prompt,
         )
 
-    def invoke_llm_with_fs_prompt(self, input_text: str) -> CHEBIFOLOutput:
+    def invoke_llm_with_fs_prompt(self, input_text: str) -> tuple[CHEBIFOLOutput, str]:
         try:
-            return self._few_shots_chain.invoke({"input": input_text})
+            input_text = self._normalize_input_text(input_text)
+            # Get the formatted prompt messages
+            prompt_text = self.get_fs_prompt_with_given_input(input_text)
+            # Invoke the chain
+            output = self._few_shots_chain.invoke({"input": input_text})
+            return output, prompt_text
         except Exception as e:
             print(f"Error during inference: {e}")
             raise e
 
-    def print_fs_prompt_with_given_input(self, input_text):
-        messages = self._fs_entire_prompt.format_messages(input=input_text)
-        print("-" * 30, "ENTIRE PROMPT", "-" * 30)
-        for m in messages:
-            print(f"--- {m.type.upper()} MESSAGE ---")
-            print(m.content)
-        print("-" * 30, "END OF THE PROMPT", "-" * 30)
+    def get_fs_prompt_with_given_input(self, input_text) -> str:
+        input_text = self._normalize_input_text(input_text)
+        prompt_messages = self._fs_entire_prompt.format_messages(input=input_text)
+        prompt_text = "\n".join(
+            [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
+        )
+        return prompt_text
 
     ## ----------------- FOL Definition Failure Prompt ----------------- ##
 
@@ -142,32 +177,40 @@ class ChebiPrompt:
 
     def invoke_llm_with_failure_prompt(
         self, input_text: str, previous_fol_definition: str, error_message: str
-    ) -> CHEBIFOLOutput:
+    ) -> tuple[CHEBIFOLOutput, str]:
         try:
-            return self._failure_chain.invoke(
+            input_text = self._normalize_input_text(input_text)
+            previous_fol_definition = self._normalize_input_text(
+                previous_fol_definition
+            )
+            prompt_text = self.get_failure_with_given_inputs(
+                input_text, previous_fol_definition, error_message
+            )
+            # Invoke the chain
+            output = self._failure_chain.invoke(
                 {
                     "input": input_text,
                     "previous_fol_definition": previous_fol_definition,
                     "error_message": error_message,
                 }
             )
+            return output, prompt_text
         except Exception as e:
             print(f"Error during failure prompt inference: {e}")
             raise e
 
-    def print_failure_prompt_with_given_inputs(
+    def get_failure_with_given_inputs(
         self, input_text: str, previous_fol_definition: str, error_message: str
-    ):
-        messages = self._failure_prompt.format_messages(
+    ) -> str:
+        prompt_messages = self._failure_prompt.format_messages(
             input=input_text,
             previous_fol_definition=previous_fol_definition,
             error_message=error_message,
         )
-        print("-" * 30, "FAILURE PROMPT", "-" * 30)
-        for m in messages:
-            print(f"--- {m.type.upper()} MESSAGE ---")
-            print(m.content)
-        print("-" * 30, "END OF THE FAILURE PROMPT", "-" * 30)
+        prompt_text = "\n".join(
+            [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
+        )
+        return prompt_text
 
     def __repr__(self) -> str:
         return f"""
@@ -199,11 +242,11 @@ if __name__ == "__main__":
         is ethane in which one of the hydrogens is substituted
         by a hydroxy group."""
 
-    chebai_prompt.print_fs_prompt_with_given_input(chebi_def)
-
     # Test the few-shot prompt
-    output: CHEBIFOLOutput = chebai_prompt.invoke_llm_with_fs_prompt(chebi_def)
-    print(output)
+    result, prompt_text = chebai_prompt.invoke_llm_with_fs_prompt(chebi_def)
+    print(f"Few-shot prompt text: \n {prompt_text} \n\n\n")
+    print(f"Few-shot result:\n {result}")
+    print("\n\n\n")
 
     previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
     AND (has_part SOME HydroxyGroup))"""
@@ -211,16 +254,11 @@ if __name__ == "__main__":
     which is not defined in the system prompt.",
     """
 
-    chebai_prompt.print_failure_prompt_with_given_inputs(
-        input_text=chebi_def,
-        previous_fol_definition=previous_fol_definition,
-        error_message=error_message,
-    )
-
     # Test the failure prompt
-    failure_output = chebai_prompt.invoke_llm_with_failure_prompt(
+    failure_result, failure_prompt_text = chebai_prompt.invoke_llm_with_failure_prompt(
         input_text=chebi_def,
         previous_fol_definition=previous_fol_definition,
         error_message=error_message,
     )
-    print(failure_output)
+    print(f"Failure prompt text: \n {failure_prompt_text} \n\n\n")
+    print(f"Failure result:\n {failure_result}")

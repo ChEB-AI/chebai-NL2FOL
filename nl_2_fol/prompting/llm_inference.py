@@ -8,12 +8,12 @@ def get_llm_for_inference(platform, model_name):
         result = llm.invoke("Hello LLM").content
         if result:
             print(
-                "Model `{model_name}` from platform `{platform}` is ready for inference."
+                f"Model `{model_name}` from platform `{platform}` is ready for inference."
             )
             return
 
         raise Exception(
-            "Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
+            f"Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
         )
 
     if platform == "groq":
@@ -70,7 +70,7 @@ def get_llm_for_inference(platform, model_name):
         result = llm.invoke("All dogs are animals.")
         if result is None:
             raise Exception(
-                "Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
+                f"Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
             )
         return llm
 
