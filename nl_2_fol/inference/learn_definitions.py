@@ -270,7 +270,3 @@ class LearnDefinitions:
             f"{self.chebi_prompt_obj.model_name}(LLM) output:\n{result.FOL_formula}\n"
         )
         self._prompts_history.append(history_entry)
-
-
-if __name__ == "__main__":
-    chebi_data = ChEBIData(chebi_version=247)
