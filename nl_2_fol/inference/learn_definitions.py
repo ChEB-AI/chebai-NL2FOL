@@ -1,9 +1,12 @@
 import os
 
+from chemlog.preprocessing.chebi_data import ChEBIData
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
+from nl_2_fol.inference.custom_exceptions import LowF1ScoreException
 from nl_2_fol.inference.data_model import (
+    SMILES_STRING,
     ChemicalClass,
     ChemicalStructure,
     load_c3po_slim_dataset,
@@ -106,42 +109,18 @@ class LearnDefinitions:
         self, result: CHEBIFOLOutput, chemical_class: ChemicalClass
     ) -> bool | Exception:
 
-        output = self._parse_generated_fol_definition(
-            result.FOL_formula, chemical_class
-        )
-        if isinstance(output, Exception):
-            return output
-
-        tptp_def, metrics = output
-
-        # Validate against the threshold
-        # TODO:  adjust threshold wrt how many def meet it
-        if metrics.F1 < self.f1_threshold:
-            # TODO:
-            #   raise exception with molecule names for postive samples, if def present, then definition
-            #  and molecule names for negative samples, and definition is present                         attempts += 1
-            return Exception("")
-
-        self.definitions[chemical_class.id] = LearnedDefinition(
-            metrics=metrics, definition=tptp_def
-        )
-        print(
-            f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
-        )
-        return True
-
-    def _parse_generated_fol_definition(
-        self, fol_def_str: str, chemical_class: ChemicalClass
-    ) -> tuple[QuantifiedFormula, DefinitionMetrics] | Exception:
-        tptp_def = self._gavel.get_tptp_fol_definition(fol_def_str)
+        output = self._gavel.get_tptp_fol_definition(result.FOL_formula)
 
         pos_samples, neg_samples = self._get_positive_and_negative_samples(
             chemical_class
         )
 
+        if isinstance(output, Exception):
+            return output
+
         unmatched_pos_samples, matched_neg_samples = (
             self._check_if_definition_matches_samples(
-                tptp_def,
+                output,
                 pos_samples,
                 neg_samples,
             )
@@ -149,32 +128,51 @@ class LearnDefinitions:
         metrics = self._get_metrics(
             unmatched_pos_samples, matched_neg_samples, pos_samples, neg_samples
         )
-        return tptp_def, metrics
+
+        # Validate against the threshold
+        # TODO:  adjust threshold wrt how many def meet it
+        if metrics.F1 < self.f1_threshold:
+            # TODO: check if mol definition is present
+            raise LowF1ScoreException(
+                list(pos_samples),
+                list(neg_samples),
+                list(matched_neg_samples),
+                list(unmatched_pos_samples),
+                max_examples=10,
+            )
+
+        self.definitions[chemical_class.id] = LearnedDefinition(
+            metrics=metrics, definition=output
+        )
+        print(
+            f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
+        )
+        return True
 
     def _get_positive_and_negative_samples(
         self, chemical_class: ChemicalClass
-    ) -> tuple[list[ChemicalStructure], list[ChemicalStructure]]:
+    ) -> tuple[set[ChemicalStructure], set[ChemicalStructure]]:
         all_positive = set(chemical_class.all_positive_examples)
         positive_examples = list(all_positive - self.validation_smiles)
-        positive_instances = [
+        positive_instances = {
             self.smiles_to_instance[smiles] for smiles in positive_examples
-        ]
+        }
         negative_examples = list(
             (self.all_smiles - all_positive) - self.validation_smiles
         )
-        negative_instances = [
+        negative_instances = {
             self.smiles_to_instance[smiles] for smiles in negative_examples
-        ]
+        }
         return positive_instances, negative_instances
 
     def _check_if_definition_matches_samples(
         self,
         tptp_def: QuantifiedFormula,
-        pos_samples: list[ChemicalStructure],
-        neg_samples: list[ChemicalStructure],
-    ) -> tuple[list[str], list[str]]:
+        pos_samples: set[ChemicalStructure],
+        neg_samples: set[ChemicalStructure],
+    ) -> tuple[set[SMILES_STRING], set[SMILES_STRING]]:
 
-        def is_matched(smiles: str) -> bool:
+        def is_matched(smiles: SMILES_STRING) -> bool:
             try:
                 mol = Chem.MolFromSmiles(smiles)
                 if mol is None:
@@ -187,22 +185,26 @@ class LearnDefinitions:
                 return False
             return bool(matches)
 
-        unmatched_pos_samples = []
+        unmatched_pos_samples = set()
         for chemical in pos_samples:
             matches = is_matched(chemical.smiles)
             if not matches:
-                unmatched_pos_samples.append(chemical.smiles)
+                unmatched_pos_samples.add(chemical.smiles)
 
-        matched_neg_samples = []
+        matched_neg_samples = set()
         for chemical in neg_samples:
             matches = is_matched(chemical.smiles)
             if matches:
-                matched_neg_samples.append(chemical.smiles)
+                matched_neg_samples.add(chemical.smiles)
 
         return unmatched_pos_samples, matched_neg_samples
 
     def _get_metrics(
-        self, unmatched_pos_samples, matched_neg_samples, pos_samples, neg_samples
+        self,
+        unmatched_pos_samples: set[SMILES_STRING],
+        matched_neg_samples: set[SMILES_STRING],
+        pos_samples: set[ChemicalStructure],
+        neg_samples: set[ChemicalStructure],
     ) -> DefinitionMetrics:
 
         num_true_positives = len(pos_samples) - len(unmatched_pos_samples)
@@ -254,3 +256,7 @@ class LearnDefinitions:
 
         with open(os.path.join(path, "__metadata__.txt"), "w") as f:
             f.write(str(self.chebi_prompt_obj))
+
+
+if __name__ == "__main__":
+    chebi_data = ChEBIData(chebi_version=247)

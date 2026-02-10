@@ -103,9 +103,9 @@ def load_c3po_slim_dataset(
     structures_path: str = "data/structures.csv",
 ) -> tuple[
     Dataset,
-    dict[str, ChemicalStructure],
-    set[str],
-    set[str],
+    dict[SMILES_STRING, ChemicalStructure],
+    set[SMILES_STRING],
+    set[SMILES_STRING],
 ]:
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
         raise FileNotFoundError(

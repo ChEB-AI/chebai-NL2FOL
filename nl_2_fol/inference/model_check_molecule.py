@@ -23,7 +23,9 @@ class GavelFOLReasoner:
         ) = None
 
     @tptp_parse_exception
-    def get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
+    def get_tptp_fol_definition(
+        self, formula: str
+    ) -> logic.QuantifiedFormula | Exception:
         """Parses a formula in TPTP format (as obtained from an LLM) into gavel's internal representation."""
         # wrap formula into an *annotated formula* for parsing
         formula_wrapped = f"fof(temp, axiom, {formula})."
@@ -39,7 +41,7 @@ class GavelFOLReasoner:
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-    ) -> bool:
+    ) -> bool | Exception:
         """Checks if a given molecule matches the logical definition."""
         predicates = self._extract_predicates(definition_to_match)
         missing_predicates = predicates - self._base_predicates.keys()
@@ -105,6 +107,7 @@ if __name__ == "__main__":
     # Logical definition to match (I removed the oneCarbonCompound predicate for simplicity)
     definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
     definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
+    assert not isinstance(definition_to_match, Exception)
 
     # Background definitions (none needed here)
     background_definitions = {}
@@ -124,6 +127,7 @@ if __name__ == "__main__":
     # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
     definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
     definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
+    assert not isinstance(definition_to_match, Exception)
     fol_parser._background_definitions = {
         "oneCarbonCompound": (
             [],
@@ -137,7 +141,7 @@ if __name__ == "__main__":
                 "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
             ),
         ),
-    }
+    }  # pyright: ignore[reportAttributeAccessIssue]
     matches = fol_parser.does_mol_match_tptp_definition(
         carbonMonoxide, definition_to_match
     )
