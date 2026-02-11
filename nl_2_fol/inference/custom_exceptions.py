@@ -46,11 +46,27 @@ def model_check_exception(func):
 
 
 class MissingPredicateException(Exception):
-    def __init__(self, missing_predicates: set) -> None:
-        self.missing_predicates: set = missing_predicates
+    def __init__(self, missing_predicates: set[str]) -> None:
+        self.missing_predicates: set[str] = missing_predicates
         message = (
             f"Definition contains unknown predicates not in base predicates "
             f"or background definitions: {missing_predicates}"
+        )
+        super().__init__(message)
+
+
+class LearnOutOfBoxPredicateException(Exception):
+    def __init__(self, predicates_to_learn: dict[str, str | None]) -> None:
+        self.predicates_to_learn: dict[str, str | None] = predicates_to_learn
+
+        predicates_details = "\n".join(
+            f"  - Predicate: {name}"
+            + (f"\n    Chemical Definition: {definition}" if definition else "")
+            for name, definition in predicates_to_learn.items()
+        )
+        message = (
+            "Below is the list of predicates whose FOL formulas are not defined.\n\n"
+            f"{predicates_details}\n\n"
         )
         super().__init__(message)
 

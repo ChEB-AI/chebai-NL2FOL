@@ -15,6 +15,15 @@ class CHEBIFOLOutput(BaseModel):
     FOL_formula: str = Field(..., description="First-order logic formula")
 
 
+class OutOfBoxPredicateDefinitions(BaseModel):
+    """Model for parsing predicate definitions from LLM response."""
+
+    predicate_definitions: dict[str, str] = Field(
+        ...,
+        description="Dictionary mapping predicate names to their FOL formulas",
+    )
+
+
 if __name__ == "__main__":
     # Example usage
     intermediate_output = IntermediateOutput(
@@ -27,3 +36,11 @@ if __name__ == "__main__":
         FOL_formula="carbonMonoxide(x) <=> (oneCarbonCompound(x) & hasPart(x, y) & c(y) & hasPart(x, z) & o(z))",
     )
     print(fol_output.model_dump_json(indent=2))
+
+    out_of_box_predicates = OutOfBoxPredicateDefinitions(
+        predicate_definitions={
+            "oneCarbonCompound": "oneCarbonCompound(x) <=> ...",
+            "hasPart": "hasPart(x, y) <=> ...",
+        }
+    )
+    print(out_of_box_predicates.model_dump_json(indent=2))

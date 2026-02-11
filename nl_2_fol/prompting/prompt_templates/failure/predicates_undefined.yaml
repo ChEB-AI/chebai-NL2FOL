@@ -1,0 +1,12 @@
+failure_prompt: |
+  Your last attempt to convert the CHEBI class definition into first-order logic (FOL) was unsuccessful.
+  Let's analyze the failure and try again.
+
+  This was the CHEBI class FOL definition you generated:
+  {previous_fol_definition}
+
+  In above FOL definition, below is the list of predicates whose FOL formulas are not defined.
+  {undefined_predicates_details}
+
+  Now, Please provide their FOL formulas. Follow the below format exactly:
+  {undef_predicates_format_instructions}

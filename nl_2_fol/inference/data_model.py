@@ -86,6 +86,13 @@ class Dataset(BaseModel):
     def smiles_to_instance(self) -> dict[SMILES_STRING, ChemicalStructure]:
         return {s.smiles: s for s in self.structures}
 
+    @property
+    def name_to_class(self) -> dict[str, ChemicalClass]:
+        """Cached mapping of class name to ChemicalClass object for O(1) lookup."""
+        if not hasattr(self, "_name_to_class_cache"):
+            self._name_to_class_cache = {cc.name: cc for cc in self.classes}
+        return self._name_to_class_cache
+
     def get_chemical_class_by_id(self, class_id: CHEBI_ID) -> ChemicalClass:
         for cc in self.classes:
             if cc.id == class_id:
@@ -93,10 +100,9 @@ class Dataset(BaseModel):
         raise ValueError(f"Class {class_id} not found in dataset")
 
     def get_chemical_class_by_name(self, class_name: str) -> ChemicalClass:
-        for cc in self.classes:
-            if cc.name == class_name:
-                return cc
-        raise ValueError(f"Class {class_name} not found in dataset")
+        if class_name not in self.name_to_class:
+            raise ValueError(f"Class {class_name} not found in dataset")
+        return self.name_to_class[class_name]
 
 
 def load_c3po_slim_dataset(
@@ -131,7 +137,7 @@ def load_c3po_slim_dataset(
     classes = {
         ChemicalClass(
             id=chebi_to_int(row.id),  # pyright: ignore[reportArgumentType]
-            name=str(row.name),
+            name=str(row.name).lower().strip(),
             definition=str(row.definition),
             parents=_split_if_notna(str(row.parents)),
             xrefs=_split_if_notna(str(row.xrefs)),
@@ -140,12 +146,13 @@ def load_c3po_slim_dataset(
     }
 
     structures = {
-        ChemicalStructure(name=str(row.name), smiles=str(row.smiles))
+        ChemicalStructure(name=str(row.name).lower().strip(), smiles=str(row.smiles))
         for row in structures_df.itertuples()
     }
 
     dataset = Dataset(
         ontology_version="slim",
+        # TODO: sort classes hierarchy with help of build_graph
         classes=classes,
         structures=structures,
         validation_examples=validation_smiles,
