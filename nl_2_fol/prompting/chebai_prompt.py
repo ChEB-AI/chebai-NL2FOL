@@ -259,7 +259,7 @@ class ChebiPrompt:
         input_text: str,
         previous_fol_definition: str,
         undefined_predicates: dict[str, str | None],
-    ) -> tuple[CHEBIFOLOutput, str]:
+    ) -> tuple[OutOfBoxPredicateDefinitions, str]:
         try:
             input_text = self._normalize_input_text(input_text)
             previous_fol_definition = self._normalize_input_text(

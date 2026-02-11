@@ -1,10 +1,16 @@
 import os
 
+from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
 from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
-from nl_2_fol.inference.custom_exceptions import LowF1ScoreException
+from nl_2_fol.inference.custom_exceptions import (
+    LearnOutOfBoxPredicateException,
+    LowF1ScoreException,
+    MissingPredicateException,
+    RetryException,
+)
 from nl_2_fol.inference.data_model import (
     SMILES_STRING,
     ChemicalClass,
@@ -95,6 +101,8 @@ class LearnDefinitions:
             return
         except Exception as e:
             raised_exception = e
+            if isinstance(e, MissingPredicateException):
+                raised_exception = self._handle_missing_predicates_exception(e)
 
         print(
             f"Failed to parse FOL definition for {chemical_class.id}: {raised_exception}"
@@ -102,25 +110,96 @@ class LearnDefinitions:
         previous_fol_def = result.FOL_formula
         while self._attempts < self.max_attempts:
             print(f"Attempt {self._attempts + 1} for {chemical_class.id}")
-            result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_failure_prompt(
-                input_text,
-                previous_fol_def,
-                str(raised_exception),
-            )
-            self._add_prompt_to_history(prompt_text, result)
+            add_bck_def = None
+            if isinstance(raised_exception, LearnOutOfBoxPredicateException):
+                learned_predicates, prompt_to_learn_predicates = (
+                    self.chebi_prompt_obj.invoke_llm_with_undef_failure_prompt(
+                        input_text,
+                        previous_fol_def,
+                        raised_exception.predicates_to_learn,
+                    )
+                )
+                prompt_text += "\n" + prompt_to_learn_predicates
+                self._add_prompt_to_history(prompt_text, result)
+                additional_def = learned_predicates.predicate_definitions
+                try:
+                    add_bck_def = self._gavel.convert_to_background_defintions(
+                        additional_def
+                    )
+                except Exception as e:
+                    # TODO:
+                    raised_exception = e
+                    continue
+            elif isinstance(raised_exception, RetryException):
+                # Retries the result generated from previous attempt
+                # This is because certain undefined predicated might be known by now
+                pass
+            else:
+                result, prompt_text = (
+                    self.chebi_prompt_obj.invoke_llm_with_err_failure_prompt(
+                        input_text,
+                        previous_fol_def,
+                        str(raised_exception),
+                    )
+                )
+
+                self._add_prompt_to_history(prompt_text, result)
+
             try:
-                self._parse_and_validate_generated_definition(result, chemical_class)
+                self._parse_and_validate_generated_definition(
+                    result, chemical_class, background_definitions=add_bck_def
+                )
                 self._dataset.classes.remove(chemical_class)
+                if add_bck_def:
+                    self._gavel.merge_to_background_definitions(add_bck_def)
                 return
             except Exception as e:
-                output = e
-            print(f"Failed to parse FOL definition for {chemical_class.id}: {output}")
-            self._attempts += 1
-            previous_fol_def = result.FOL_formula
-            raised_exception = output
+                raised_exception = e
+                if isinstance(e, MissingPredicateException):
+                    raised_exception = self._handle_missing_predicates_exception(e)
+                print(
+                    f"Failed to parse FOL definition for {chemical_class.id}: {raised_exception}"
+                )
+                self._attempts += 1
+                previous_fol_def = result.FOL_formula
+
+    def _handle_missing_predicates_exception(
+        self, e: MissingPredicateException
+    ) -> Exception:
+        chemical_class_predicates = {
+            predicate.lower().strip()
+            for predicate in e.missing_predicates
+            if predicate.lower().strip() in self._dataset.classes
+        }
+        for predicate in chemical_class_predicates:
+            # NOTE: Recursively learn definition for the predicate if it's
+            # in c3po slim dataset
+            self._learn(self._dataset.get_chemical_class_by_name(predicate))
+
+        raised_exception = RetryException()
+        other_predicates = e.missing_predicates - chemical_class_predicates
+        if other_predicates:
+            predicates_to_learn: dict[str, str | None] = {}
+            for predicate in other_predicates:
+                if predicate in self._chebi_name_to_data_mapping:
+                    chebi_data = self._chebi_name_to_data_mapping[predicate]
+                    predicates_to_learn[predicate] = chebi_data["definition"]
+                else:
+                    predicates_to_learn[predicate] = None
+
+            raised_exception = LearnOutOfBoxPredicateException(
+                predicates_to_learn=predicates_to_learn
+            )
+        return raised_exception
 
     def _parse_and_validate_generated_definition(
-        self, result: CHEBIFOLOutput, chemical_class: ChemicalClass
+        self,
+        result: CHEBIFOLOutput,
+        chemical_class: ChemicalClass,
+        background_definitions: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None = None,
     ) -> None:
         """
         Parses the generated FOL definition and validates it against the positive
@@ -140,6 +219,7 @@ class LearnDefinitions:
                 tptp_def,
                 pos_samples,
                 neg_samples,
+                background_definitions,
             )
         )
         metrics = self._get_metrics(
@@ -192,6 +272,10 @@ class LearnDefinitions:
         tptp_def: QuantifiedFormula,
         pos_samples: set[ChemicalStructure],
         neg_samples: set[ChemicalStructure],
+        background_definitions: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None = None,
     ) -> tuple[set[SMILES_STRING], set[SMILES_STRING]]:
 
         def is_matched(smiles: SMILES_STRING) -> bool:
@@ -201,6 +285,7 @@ class LearnDefinitions:
             matches = self._gavel.does_mol_match_tptp_definition(
                 mol,
                 tptp_def,
+                additional_background_definitions=background_definitions,
             )
             return bool(matches)
 

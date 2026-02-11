@@ -45,6 +45,10 @@ def model_check_exception(func):
     return wrapper
 
 
+class RetryException(Exception):
+    pass
+
+
 class MissingPredicateException(Exception):
     def __init__(self, missing_predicates: set[str]) -> None:
         self.missing_predicates: set[str] = missing_predicates

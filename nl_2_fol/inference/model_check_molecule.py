@@ -40,6 +40,10 @@ class GavelFOLReasoner:
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
+        additional_background_definitions: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None = None,
     ) -> bool:
         """Checks if a given molecule matches the logical definition."""
         predicates = self._extract_predicates(definition_to_match)
@@ -49,18 +53,19 @@ class GavelFOLReasoner:
             if self._background_definitions
             else missing_predicates
         )
+        if additional_background_definitions:
+            missing_predicates = (
+                missing_predicates - additional_background_definitions.keys()
+            )
         if missing_predicates:
-            # TODO: check if any missing predicates is a chebi class
-            # if the predicate is chebi class in original data
-            # (chemlog.preprocessing.chebi_data), then extract the definiton
-            # and prompt the llm to give def for this predicate
-
-            # if above and also in c3po slim dataset, then
-            # recusively learn definition for this predicate first and add to background definitions
             raise MissingPredicateException(missing_predicates)
 
         universe, extensions = self._mol_to_fol(molecule)
-        model_checker = ModelChecker(universe, extensions, self._background_definitions)
+        bck_def = {
+            **self._background_definitions,
+            **(additional_background_definitions or {}),
+        }
+        model_checker = ModelChecker(universe, extensions, bck_def)
 
         outcome, _ = model_checker.find_model(definition_to_match)
         return outcome
@@ -108,6 +113,31 @@ class GavelFOLReasoner:
     ):
         """Add a single background definition."""
         self._background_definitions[name] = ([], definition)
+
+    def merge_to_background_definitions(
+        self,
+        additional_definitions: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ],
+    ):
+        """Merge additional background definitions into existing ones."""
+        self._background_definitions = {
+            **self._background_definitions,
+            **additional_definitions,
+        }
+
+    def convert_to_background_defintions(
+        self,
+        predicates: dict[str, str],
+    ) -> dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]]:
+        """Convert a dictionary of predicate definitions (as strings) to the internal format."""
+        converted = {}
+        for name, def_str in predicates.items():
+            converted[name] = (
+                [],
+                GavelFOLReasoner().get_tptp_fol_definition(def_str),
+            )
+        return converted
 
 
 if __name__ == "__main__":
