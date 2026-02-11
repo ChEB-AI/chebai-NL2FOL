@@ -127,8 +127,14 @@ class LearnDefinitions:
                         additional_def
                     )
                 except Exception as e:
-                    # TODO:
-                    raised_exception = e
+                    # If additional generated definitions for the missing predicates
+                    # are not parseable, we return the error to llm.
+                    # This will lead generating new FOL formula input chemical class
+                    # instead of trying to fix the additional missing predicates definitions
+                    raised_exception = Exception(
+                        f"Failed to parse FOL definition for the following predicate:"
+                        f"{additional_def}. Error: {e}"
+                    )
                     continue
             elif isinstance(raised_exception, RetryException):
                 # Retries the result generated from previous attempt
@@ -229,7 +235,6 @@ class LearnDefinitions:
         # Validate against the threshold
         # TODO:  adjust threshold wrt how many def meet it
         if metrics.F1 < self.f1_threshold:
-            # TODO: check if mol definition is present
             raise LowF1ScoreException(
                 list(pos_samples),
                 list(neg_samples),
