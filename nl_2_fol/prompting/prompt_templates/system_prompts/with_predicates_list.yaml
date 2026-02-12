@@ -14,7 +14,7 @@ system_prompt: |
   If you use other predicates, please provide the definition of the predicate.
 
   - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
-    Hydrogen atoms are not represented explicitly, but as a property of their neighbours 
+    Hydrogen atoms are not represented explicitly, but as a property of their neighbours
         `has_{n}_hs` - exactly n hydrogens (e.g., has_0_hs, has_1_hs)
         `has_at_least_{n}_hs` - at least n hydrogens
         `has_min_{n}_hs` - minimum hydrogens

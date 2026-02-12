@@ -38,7 +38,6 @@ class Main:
         f1_threshold: float = 0.8,
         load_definitions_path: str | None = None,
     ):
-
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
             model_name=model_name,

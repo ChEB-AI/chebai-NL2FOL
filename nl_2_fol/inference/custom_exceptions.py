@@ -97,12 +97,10 @@ class LowF1ScoreException(Exception):
         max_examples: int,
         chebi_id_to_data_mapping: dict[str, dict],
     ) -> None:
-
         def get_chemical_details(
             chemicals: list[ChemicalStructure],
             matched_smiles: list[SMILES_STRING],
         ) -> list[tuple[str, str | None]]:
-
             chemical_details: list[tuple[str, str | None]] = []
             for chemical in chemicals:
                 if chemical.smiles in matched_smiles:

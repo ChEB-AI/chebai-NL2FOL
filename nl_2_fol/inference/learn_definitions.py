@@ -78,7 +78,6 @@ class LearnDefinitions:
         self._prompts_history: list[str] = []
 
     def learn_fol_definitions(self):
-
         for chemical_class in self._dataset.classes.values():
             if chemical_class.definition is None:
                 continue
@@ -289,7 +288,6 @@ class LearnDefinitions:
         ]
         | None = None,
     ) -> tuple[set[SMILES_STRING], set[SMILES_STRING]]:
-
         def is_matched(smiles: SMILES_STRING) -> bool:
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
@@ -322,7 +320,6 @@ class LearnDefinitions:
         pos_samples: set[ChemicalStructure],
         neg_samples: set[ChemicalStructure],
     ) -> DefinitionMetrics:
-
         num_true_positives = len(pos_samples) - len(unmatched_pos_samples)
         num_false_negatives = len(unmatched_pos_samples)
         num_false_positives = len(matched_neg_samples)
