@@ -8,6 +8,7 @@ which is available at https://huggingface.co/datasets/MonarchInit/C3PO
 """
 
 import os
+import sys
 from copy import copy
 
 import pandas as pd
@@ -140,6 +141,14 @@ def load_c3po_slim_dataset(
     topological_ordering = chemlog_chebi_class.get_topological_ordering()
     order_index = {v: i for i, v in enumerate(topological_ordering)}
     slim_df = slim_df.sort_values("id", key=lambda x: x.map(order_index))
+
+    assert sys.version_info >= (
+        3,
+        7,
+    ), "This code requires Python 3.7 or higher."
+    # For python 3.7+, the standard dict type preserves insertion order, and is iterated over in same order
+    # https://docs.python.org/3/whatsnew/3.7.html#summary-release-highlights
+    # https://mail.python.org/pipermail/python-dev/2017-December/151283.html
 
     classes = {
         row.name: ChemicalClass(

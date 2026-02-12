@@ -6,29 +6,30 @@ from nl_2_fol.inference.learn_definitions import LearnDefinitions
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 
 # should be the root of the repo
-# eg. G:\github-aditya0by0\chebai-NL2FOL
+# eg. G:\github-aditya0by0\chebai-NL2FOL\
 WORKING_DIR = os.getcwd()
 
+PROJECT_DIR = os.path.join(WORKING_DIR, "nl_2_fol")
 DATA_DIR = os.path.join(WORKING_DIR, "data")
-PROMPTING_DIR = os.path.join(WORKING_DIR, "prompting", "prompt_templates")
+PROMPT_TEMPLATES_DIR = os.path.join(PROJECT_DIR, "prompting", "prompt_templates")
 
 
 class Main:
+    @staticmethod
     def learn(
-        self,
         api_platform: str,
         model_name: str,
         system_prompt_fp: str = os.path.join(
-            PROMPTING_DIR, "system_prompts", "with_predicates_list.yaml"
+            PROMPT_TEMPLATES_DIR, "system_prompts", "with_predicates_list.yaml"
         ),
         few_shot_prompt_fp: str = os.path.join(
-            PROMPTING_DIR, "few_shots", "with_DL_style.json"
+            PROMPT_TEMPLATES_DIR, "few_shots", "with_DL_style.json"
         ),
         err_failure_prompt_fp: str = os.path.join(
-            PROMPTING_DIR, "failure", "error_prompt.yaml"
+            PROMPT_TEMPLATES_DIR, "failure", "error_prompt.yaml"
         ),
         undef_failure_prompt_fp: str = os.path.join(
-            PROMPTING_DIR, "failure", "predicates_undefined.yaml"
+            PROMPT_TEMPLATES_DIR, "failure", "predicates_undefined.yaml"
         ),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),

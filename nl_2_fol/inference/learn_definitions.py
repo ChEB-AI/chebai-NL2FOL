@@ -48,13 +48,13 @@ class LearnDefinitions:
         self.f1_threshold = f1_threshold
         # load definitions from the path and store them in a suitable data structure
         # this will be used to learn new definitions based on the classified chemical classes
-        self.definitions: DefinitionLearningResults = self._load_definitions(
-            definitions_path
-        )
         self._default_def_save_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "learned",
             self.chebi_prompt_obj.model_name,
+        )
+        self.definitions: DefinitionLearningResults = self._load_definitions(
+            definitions_path
         )
 
         self._gavel = GavelFOLReasoner()
@@ -89,12 +89,16 @@ class LearnDefinitions:
 
         # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
         # of the hydrogens is substituted by a hydroxy group."""
-        input_text = (
-            f"{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
-        )
+        input_text = f"CHEBI:{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
         result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
             input_text
         )
+        print(
+            f"Initial attempt for CHEBI:{chemical_class.id}: {chemical_class.name}",
+            f"\nInput text to LLM: {input_text}\n",
+            f"Generated FOL definition: {result.FOL_formula}\n",
+        )
+
         raised_exception = None
         self._add_prompt_to_history(prompt_text, result)
         try:
@@ -107,11 +111,14 @@ class LearnDefinitions:
                 raised_exception = self._handle_missing_predicates_exception(e)
 
         print(
-            f"Failed to parse FOL definition for {chemical_class.id}: {raised_exception}"
+            f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
+            f"\tRaised exception: {raised_exception}]\n",
         )
         previous_fol_def = result.FOL_formula
         while self._attempts < self.max_attempts:
-            print(f"Attempt {self._attempts + 1} for {chemical_class.id}")
+            print(
+                f"Attempt {self._attempts + 1} for CHEBI:{chemical_class.id}: {chemical_class.name}"
+            )
             add_bck_def = None
             if isinstance(raised_exception, LearnOutOfBoxPredicateException):
                 learned_predicates, prompt_to_learn_predicates = (
@@ -152,6 +159,7 @@ class LearnDefinitions:
                 )
 
                 self._add_prompt_to_history(prompt_text, result)
+                print(f"\tGenerated FOL definition: {result.FOL_formula}\n")
 
             try:
                 self._parse_and_validate_generated_definition(
@@ -164,7 +172,8 @@ class LearnDefinitions:
                 if isinstance(e, MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
                 print(
-                    f"Failed to parse FOL definition for {chemical_class.id}: {raised_exception}"
+                    f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}\n",
+                    f"\tRaised exception: {raised_exception}]\n",
                 )
                 self._attempts += 1
                 previous_fol_def = result.FOL_formula

@@ -148,12 +148,11 @@ if __name__ == "__main__":
     ethanol = Chem.MolFromSmiles("CCO")
     thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
 
-    # Logical definition to match (I removed the oneCarbonCompound predicate for simplicity)
+    # Logical definition to match (I removed the `oneCarbonCompound` predicate for simplicity)
     definition_str = (
         "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
     )
     definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
-    assert not isinstance(definition_to_match, Exception)
 
     # Background definitions (none needed here)
     background_definitions = {}
