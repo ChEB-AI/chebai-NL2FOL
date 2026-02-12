@@ -29,9 +29,32 @@ class GavelFOLReasoner:
         # wrap formula into an *annotated formula* for parsing
         formula_wrapped = f"fof(temp, axiom, {formula})."
         # unwrap the annotated formula after parsing, only take the right-hand side of the biimplication
-        tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula.right
+        try:
+            tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula.right
+        except Exception as e:
+            raise Exception(
+                f"Error parsing FOL formula `{formula}` to TPTP formula: \n"
+                f"More specifics on above error: {e}"
+            )
         # the model checker expects the matrix (the part after the quantifiers) to be in CNF (with N-ary conjunctions and disjunctions)
-        tptp_parsed.formula = convert_to_cnf(tptp_parsed.formula)
+        try:
+            # Eg. `oligopeptide(x) <=> (peptide(x) & has_few_amino_acid_residues(x))`
+            # The above fol formula will be parsed and will have no formula attribute
+            assert hasattr(tptp_parsed, "formula")
+        except AssertionError as e:
+            raise Exception(
+                f"The parsed TPTP formula `{tptp_parsed}` does not have the\n"
+                f" expected structure (missing `.formula` attribute after parsing).\n"
+                f"More specifics on above error: {e}"
+            )
+
+        try:
+            tptp_parsed.formula = convert_to_cnf(tptp_parsed.formula)
+        except Exception as e:
+            raise Exception(
+                f"Error converting the parsed TPTP formula `{tptp_parsed.formula}` to CNF format\n"
+                f"More specifics on above error: {e}"
+            )
         print(f"Input formula: {formula}\n\t Parsed as: {tptp_parsed}")
         return tptp_parsed
 
