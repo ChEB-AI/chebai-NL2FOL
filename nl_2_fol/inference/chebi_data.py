@@ -1,6 +1,6 @@
 import os
-from typing import Hashable
 
+import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
@@ -13,7 +13,12 @@ class ChEBIDataWrapper(ChEBIData):
         os.makedirs(
             os.path.join(self.base_dir, f"chebi_v{self.chebi_version}"), exist_ok=True
         )
-        # chebi: dict with entries from chebi
+        # ---- Dont want both chebi and processed data to be loaded into memory
+        # ---- processed data will be loaded when required
+        # # chebi: dict with entries from chebi
+        # self.chebi = self.process_chebi()
+        # # processed: dataframe that combines chebi data with mols from sdf file
+        # self.processed = self.process_data()
 
     def get_name_to_data_mapping(self) -> dict[str, dict]:
         df = self._preprocess_data()
@@ -30,15 +35,6 @@ class ChEBIDataWrapper(ChEBIData):
 
     def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
         df = self._preprocess_data()
-        # --- One Duplicate entry in Chebi 244 -----
-        # 1. Name: l-lysine zwitterion
-        #    Count: 2
-        #    - ID: 133538, SMILES: [O-]C([C@H](CCCCN)[NH3+])=O...
-        #    - ID: 194466, SMILES: [NH3+]CCCC[C@@H](C([O-])=O)N...
-
-        # Latest chebi version has only 194466, so delete the duplicate entry with 133538
-        df = df[df.index != 133538]
-
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def _preprocess_data(self) -> pd.DataFrame:
@@ -49,6 +45,47 @@ class ChEBIDataWrapper(ChEBIData):
         df = df.dropna(subset=["smiles", "definition", "name"])
         return df
 
+    def build_hierarchy_graph(self) -> nx.DiGraph:
+        print("Building hierarchy graph from ChEBI data...")
+        g = nx.DiGraph()
+        chebi = self.process_chebi()
+        g.add_nodes_from(chebi.keys())
+        for chebi_id, row in chebi.items():
+            if "parents" in row:
+                for parent in row["parents"]:
+                    g.add_edge(parent, chebi_id)
+        return g
+
+    def get_topological_ordering(self) -> list[int]:
+        """Sort nodes by number of children (out-degree) in descending order.
+
+        Nodes with the most children come first.
+
+        Returns:
+            List of node IDs sorted by out-degree (number of children) descending.
+        """
+        g = self.get_trans_hierarchy()
+        print("Sorting nodes by out-degree (number of children) in descending order...")
+        # Sort nodes by out-degree (number of children) in descending order
+        # The most abstract classes will be first, specific classes will be last
+        sorted_nodes = sorted(
+            g.nodes(), key=lambda node: g.out_degree(node), reverse=True
+        )
+        return sorted_nodes
+
+    @staticmethod
+    def chebi_to_int(s: str) -> int:
+        """
+        Converts a ChEBI term string representation to an integer ID.
+
+        Args:
+        - s (str): A ChEBI term string, e.g., "CHEBI:12345".
+
+        Returns:
+        - int: The integer ID extracted from the ChEBI term string.
+        """
+        return int(s[s.index(":") + 1 :])
+
 
 if __name__ == "__main__":
     chebi_data_wrapper = ChEBIDataWrapper(chebi_version=244)
@@ -58,3 +95,11 @@ if __name__ == "__main__":
     print(f"Sample entries: {list(name_to_data_mapping)[:5]}")
     chebi_id_to_data_mapping = chebi_data_wrapper.get_chebi_id_to_data_mapping()
     print(f"Sample entries: {list(chebi_id_to_data_mapping)[:5]}")
+    # Get hierarchy graph and topological ordering
+    topological_ordering = chebi_data_wrapper.get_topological_ordering()
+    print(
+        f"Topological ordering of classes (by out-degree) first 10: {topological_ordering[:10]}"
+    )
+    print(
+        f"Topological ordering of classes (by out-degree) last 10: {topological_ordering[-10:]}"
+    )

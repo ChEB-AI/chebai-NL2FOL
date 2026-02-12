@@ -11,8 +11,9 @@ import os
 from copy import copy
 
 import pandas as pd
-from chemlog.preprocessing.chebi_data import chebi_to_int
 from pydantic import BaseModel, Field
+
+from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
 
 SMILES_STRING = str
 CHEBI_ID = int
@@ -72,7 +73,9 @@ class Dataset(BaseModel):
     ontology_version: str | None = None
     min_members: int | None = None
     max_members: int | None = None
-    classes: set[ChemicalClass]
+    # class name -> ChemicalClass object, dict is needed to preserve insertion order
+
+    classes: dict[str, ChemicalClass]
     structures: set[ChemicalStructure] = set()
     validation_examples: set[SMILES_STRING] | None = None
 
@@ -86,26 +89,20 @@ class Dataset(BaseModel):
     def smiles_to_instance(self) -> dict[SMILES_STRING, ChemicalStructure]:
         return {s.smiles: s for s in self.structures}
 
-    @property
-    def name_to_class(self) -> dict[str, ChemicalClass]:
-        """Cached mapping of class name to ChemicalClass object for O(1) lookup."""
-        if not hasattr(self, "_name_to_class_cache"):
-            self._name_to_class_cache = {cc.name: cc for cc in self.classes}
-        return self._name_to_class_cache
-
     def get_chemical_class_by_id(self, class_id: CHEBI_ID) -> ChemicalClass:
-        for cc in self.classes:
+        for cc in self.classes.values():
             if cc.id == class_id:
                 return cc
         raise ValueError(f"Class {class_id} not found in dataset")
 
     def get_chemical_class_by_name(self, class_name: str) -> ChemicalClass:
-        if class_name not in self.name_to_class:
+        if class_name not in self.classes:
             raise ValueError(f"Class {class_name} not found in dataset")
-        return self.name_to_class[class_name]
+        return self.classes[class_name]
 
 
 def load_c3po_slim_dataset(
+    chemlog_chebi_class: ChEBIDataWrapper,
     slim_dataset_path: str = "data/classes_slim.csv",
     structures_path: str = "data/structures.csv",
 ) -> tuple[
@@ -134,10 +131,20 @@ def load_c3po_slim_dataset(
     def _split_if_notna(val: str) -> list[str] | None:
         return val.split("|") if pd.notna(val) else None
 
+    slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
+    slim_df["name"] = slim_df["name"].str.lower().str.strip()
+
+    # Sorting abstract classes first, specific classes later,
+    # This to ensure when FOL definition for specific class is generated, all
+    # the predicates in the definition are known
+    topological_ordering = chemlog_chebi_class.get_topological_ordering()
+    order_index = {v: i for i, v in enumerate(topological_ordering)}
+    slim_df = slim_df.sort_values("id", key=lambda x: x.map(order_index))
+
     classes = {
-        ChemicalClass(
-            id=chebi_to_int(row.id),  # pyright: ignore[reportArgumentType]
-            name=str(row.name).lower().strip(),
+        row.name: ChemicalClass(
+            id=row.id,  # pyright: ignore[reportArgumentType]
+            name=str(row.name),
             definition=str(row.definition),
             parents=_split_if_notna(str(row.parents)),
             xrefs=_split_if_notna(str(row.xrefs)),
@@ -145,15 +152,15 @@ def load_c3po_slim_dataset(
         for row in slim_df.itertuples()
     }
 
+    structures_df["name"] = structures_df["name"].str.lower().str.strip()
     structures = {
-        ChemicalStructure(name=str(row.name).lower().strip(), smiles=str(row.smiles))
+        ChemicalStructure(name=str(row.name), smiles=str(row.smiles))
         for row in structures_df.itertuples()
     }
 
     dataset = Dataset(
         ontology_version="slim",
-        # TODO: sort classes hierarchy with help of build_graph
-        classes=classes,
+        classes=classes,  # pyright: ignore[reportArgumentType]
         structures=structures,
         validation_examples=validation_smiles,
     )
@@ -175,4 +182,4 @@ def load_c3po_slim_dataset(
 
 
 if __name__ == "__main__":
-    load_c3po_slim_dataset()
+    load_c3po_slim_dataset(ChEBIDataWrapper(chebi_version=244))

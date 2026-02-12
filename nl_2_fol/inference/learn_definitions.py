@@ -58,25 +58,28 @@ class LearnDefinitions:
         )
 
         self._gavel = GavelFOLReasoner()
+
+        # ------ Entire Chebi data loading -------
+        entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
+        self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
+
         # ----- C3PO slim dataset loading -----
         (
             self._dataset,
             self.smiles_to_instance,
             self.validation_smiles,
             self.all_smiles,
-        ) = load_c3po_slim_dataset(self.slim_dataset_path, self.structures_path)
+        ) = load_c3po_slim_dataset(
+            entire_chebi_data, self.slim_dataset_path, self.structures_path
+        )
         # ---------------------------------------
 
         self._attempts: int = 0
         self._prompts_history: list[str] = []
 
-        # ------ Entire Chebi data loading -------
-        entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
-        self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
-
     def learn_fol_definitions(self):
 
-        for chemical_class in self._dataset.classes:
+        for chemical_class in self._dataset.classes.values():
             if chemical_class.definition is None:
                 continue
             self._learn(chemical_class)
@@ -97,7 +100,7 @@ class LearnDefinitions:
         self._add_prompt_to_history(prompt_text, result)
         try:
             self._parse_and_validate_generated_definition(result, chemical_class)
-            self._dataset.classes.remove(chemical_class)
+            self._dataset.classes.pop(chemical_class.name)
             return
         except Exception as e:
             raised_exception = e
@@ -155,9 +158,10 @@ class LearnDefinitions:
                 self._parse_and_validate_generated_definition(
                     result, chemical_class, background_definitions=add_bck_def
                 )
-                self._dataset.classes.remove(chemical_class)
+                self._dataset.classes.pop(chemical_class.name)
                 if add_bck_def:
                     self._gavel.merge_to_background_definitions(add_bck_def)
+                    # TODO: save additional background def too
                 return
             except Exception as e:
                 raised_exception = e
