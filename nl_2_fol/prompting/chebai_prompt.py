@@ -10,8 +10,11 @@ from langchain_core.prompts import (
 )
 
 from nl_2_fol.prompting.llm_inference import get_llm_for_inference
-from nl_2_fol.prompting.models import CHEBIFOLOutput, OutOfBoxPredicateDefinitions
-from nl_2_fol.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
+from nl_2_fol.prompting.prompt_models import (
+    CHEBIFOLOutput,
+    OutOfBoxPredicateDefinitions,
+)
+from nl_2_fol.prompting.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
 
 # TODO: Use memory in case of failure prompts
 

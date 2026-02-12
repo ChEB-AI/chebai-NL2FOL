@@ -24,7 +24,7 @@ from nl_2_fol.inference.definition_model import (
 )
 from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
-from nl_2_fol.prompting.models import CHEBIFOLOutput
+from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
 # TODO: can langchain-graph be used here? or will it be an overkill?
