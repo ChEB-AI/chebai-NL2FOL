@@ -4,6 +4,7 @@ from rdkit import Chem
 from nl_2_fol.inference.model_check_molecule import molecule_matches_definition
 
 
+# TODO: rectify
 class NL2FOLChebiClassifier:
     def __init__(self, definitions_path: str):
         self.definitions_path = definitions_path

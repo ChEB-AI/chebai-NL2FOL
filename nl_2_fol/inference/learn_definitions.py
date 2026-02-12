@@ -34,8 +34,8 @@ class LearnDefinitions:
     def __init__(
         self,
         chebi_prompt_obj: ChebiPrompt,
-        slim_dataset_path: str = "data/classes_slim.csv",  # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
-        structures_path: str = "data/structures.csv",  # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
+        slim_dataset_path: str,
+        structures_path: str,
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
         definitions_path: str | None = None,

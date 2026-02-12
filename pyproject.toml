@@ -18,6 +18,7 @@ dependencies = [
     "chemlog @ git+https://github.com/sfluegel05/chemlog-peptides.git",
     "rdkit",
     "dotenv",
+    "jsonargparse",
 ]
 
 [project.optional-dependencies]

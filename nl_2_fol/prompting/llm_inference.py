@@ -29,8 +29,8 @@ def get_llm_for_inference(platform, model_name):
         )
 
         llm = ChatGroq(
-            model_name=model_name,  # "openai/gpt-oss-120b",
-            temperature=0,
+            model=model_name,  # "openai/gpt-oss-120b",
+            temperature=0.0,
         )
         _test_api_with_a_prompt(llm)
         return llm
@@ -43,12 +43,12 @@ def get_llm_for_inference(platform, model_name):
                 "Please install openai by using `pip install langchain-openai`"
             )
         assert OPENAI_API_KEY_NAME in os.environ, (
-            f"Please set the api key {OPENAI_API_KEY_NAME} for groq in `api_keys.env` file."
+            f"Please set the api key {OPENAI_API_KEY_NAME} for openai in `api_keys.env` file."
         )
 
         llm = ChatOpenAI(
-            model_name=model_name,
-            temperature=0,
+            model=model_name,
+            temperature=0.0,
         )
         _test_api_with_a_prompt(llm)
         return llm

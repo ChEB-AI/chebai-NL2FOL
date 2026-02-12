@@ -1,0 +1,63 @@
+import os
+
+from jsonargparse import CLI
+
+from nl_2_fol.inference.learn_definitions import LearnDefinitions
+from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
+
+# should be the root of the repo
+# eg. G:\github-aditya0by0\chebai-NL2FOL
+WORKING_DIR = os.getcwd()
+
+DATA_DIR = os.path.join(WORKING_DIR, "data")
+PROMPTING_DIR = os.path.join(WORKING_DIR, "prompting", "prompt_templates")
+
+
+class Main:
+    def learn(
+        self,
+        api_platform: str,
+        model_name: str,
+        system_prompt_fp: str = os.path.join(
+            PROMPTING_DIR, "system_prompts", "with_predicates_list.yaml"
+        ),
+        few_shot_prompt_fp: str = os.path.join(
+            PROMPTING_DIR, "few_shots", "with_DL_style.json"
+        ),
+        err_failure_prompt_fp: str = os.path.join(
+            PROMPTING_DIR, "failure", "error_prompt.yaml"
+        ),
+        undef_failure_prompt_fp: str = os.path.join(
+            PROMPTING_DIR, "failure", "predicates_undefined.yaml"
+        ),
+        # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
+        slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
+        # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
+        structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
+        max_attempts: int = 4,
+        f1_threshold: float = 0.8,
+        load_definitions_path: str | None = None,
+    ):
+
+        chebai_prompt = ChebiPrompt(
+            platform=api_platform,
+            model_name=model_name,
+            system_prompt_fp=system_prompt_fp,
+            few_shot_prompt_fp=few_shot_prompt_fp,
+            err_failure_prompt_fp=err_failure_prompt_fp,
+            undef_failure_prompt_fp=undef_failure_prompt_fp,
+        )
+
+        learner = LearnDefinitions(
+            chebi_prompt_obj=chebai_prompt,
+            slim_dataset_path=slim_dataset_path,
+            structures_path=structures_data_path,
+            max_attempts=max_attempts,
+            f1_threshold=f1_threshold,
+            definitions_path=load_definitions_path,
+        )
+        learner.learn_fol_definitions()
+
+
+if __name__ == "__main__":
+    CLI(Main)
