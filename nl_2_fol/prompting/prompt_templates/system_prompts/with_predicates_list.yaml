@@ -3,7 +3,7 @@ system_prompt: |
   1. Identify the relevant part of the definition
   2. Identify the relevant superclass
   3. Explain how the class is defined using its superclass and structural group
-  4. Translate this into a first-order logic (FOL) formula using atom, bond, and charge predicates
+  4. Translate this into a first-order logic (FOL).
 
   Follow the format exactly:
   {format_instructions}
@@ -11,7 +11,6 @@ system_prompt: |
   When constructing the FOL formula, you should preferentially use the following
   predicate names. These predicates are not strictly mandatory,
   but should be followed wherever applicable and sufficient to express the definition.
-  If you use other predicates, please provide the definition of the predicate.
 
   - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
     Hydrogen atoms are not represented explicitly, but as a property of their neighbours
