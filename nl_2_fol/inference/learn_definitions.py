@@ -87,21 +87,21 @@ class LearnDefinitions:
         self._attempts = 0
         self._prompts_history = []
 
-        # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
-        # of the hydrogens is substituted by a hydroxy group."""
-        input_text = f"CHEBI:{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
-        result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
-            input_text
-        )
-        print(
-            f"Initial attempt for CHEBI:{chemical_class.id}: {chemical_class.name}",
-            f"\nInput text to LLM: {input_text}\n",
-            f"Generated FOL definition: {result.FOL_formula}\n",
-        )
-
         raised_exception = None
-        self._add_prompt_to_history(prompt_text, result)
+        result, prompt_text = None, None
         try:
+            # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
+            # of the hydrogens is substituted by a hydroxy group."""
+            input_text = f"CHEBI:{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
+            result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
+                input_text
+            )
+            print(
+                f"Initial attempt for CHEBI:{chemical_class.id}: {chemical_class.name}",
+                f"\nInput text to LLM: {input_text}\n",
+                f"Generated FOL definition: {result.FOL_formula}\n",
+            )
+            self._add_prompt_to_history(prompt_text, result)
             self._parse_and_validate_generated_definition(result, chemical_class)
             self._dataset.classes.pop(chemical_class.name)
             return
@@ -114,7 +114,7 @@ class LearnDefinitions:
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
             f"\tRaised exception: {raised_exception}]\n",
         )
-        previous_fol_def = result.FOL_formula
+        previous_fol_def = result.FOL_formula if result else ""
         while self._attempts < self.max_attempts:
             print(
                 f"Attempt {self._attempts + 1} for CHEBI:{chemical_class.id}: {chemical_class.name}"
@@ -163,7 +163,9 @@ class LearnDefinitions:
 
             try:
                 self._parse_and_validate_generated_definition(
-                    result, chemical_class, add_background_defs=add_bck_def
+                    result,  # pyright: ignore[reportArgumentType]
+                    chemical_class,
+                    add_background_defs=add_bck_def,
                 )
                 self._dataset.classes.pop(chemical_class.name)
                 return
@@ -176,7 +178,7 @@ class LearnDefinitions:
                     f"\tRaised exception: {raised_exception}]\n",
                 )
                 self._attempts += 1
-                previous_fol_def = result.FOL_formula
+                previous_fol_def = result.FOL_formula if result else previous_fol_def
 
     def _handle_missing_predicates_exception(
         self, e: MissingPredicateException
@@ -381,9 +383,12 @@ class LearnDefinitions:
         with open(os.path.join(path, "__metadata__.txt"), "w") as f:
             f.write(str(self.chebi_prompt_obj))
 
-    def _add_prompt_to_history(self, prompt: str, result: CHEBIFOLOutput) -> None:
+    def _add_prompt_to_history(
+        self, prompt: str, result: CHEBIFOLOutput | None
+    ) -> None:
+        output = result.FOL_formula if result is not None else ""
         history_entry: str = (
             f"Prompt:\n{prompt}\n"
-            f"{self.chebi_prompt_obj.model_name}(LLM) output:\n{result.FOL_formula}\n"
+            f"{self.chebi_prompt_obj.model_name}(LLM) output:\n{output}\n"
         )
         self._prompts_history.append(history_entry)
