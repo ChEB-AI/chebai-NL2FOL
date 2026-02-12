@@ -6,10 +6,16 @@ from rdkit.Chem import GetPeriodicTable
 def get_atom_predicates() -> dict[str, str]:
     pt = GetPeriodicTable()
     atom_predicates = {}
-    for atomic_num in range(1, pt.GetNAtoms() + 1):
-        symbol = pt.GetElementSymbol(atomic_num)
-        name = pt.GetElementName(atomic_num)
-        atom_predicates[symbol.lower()] = name.lower()
+    # Iterate through all known elements (1-118)
+    for atomic_num in range(1, 119):
+        try:
+            symbol = pt.GetElementSymbol(atomic_num)
+            name = pt.GetElementName(atomic_num)
+            if symbol and name:  # Ensure valid element
+                atom_predicates[symbol.lower()] = name.lower()
+        except Exception:
+            # Skip if element doesn't exist in this version of RDKit
+            continue
     return atom_predicates
 
 

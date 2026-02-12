@@ -156,12 +156,9 @@ class LearnDefinitions:
 
             try:
                 self._parse_and_validate_generated_definition(
-                    result, chemical_class, background_definitions=add_bck_def
+                    result, chemical_class, add_background_defs=add_bck_def
                 )
                 self._dataset.classes.pop(chemical_class.name)
-                if add_bck_def:
-                    self._gavel.merge_to_background_definitions(add_bck_def)
-                    # TODO: save additional background def too
                 return
             except Exception as e:
                 raised_exception = e
@@ -206,7 +203,7 @@ class LearnDefinitions:
         self,
         result: CHEBIFOLOutput,
         chemical_class: ChemicalClass,
-        background_definitions: dict[
+        add_background_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
@@ -229,7 +226,7 @@ class LearnDefinitions:
                 tptp_def,
                 pos_samples,
                 neg_samples,
-                background_definitions,
+                add_background_defs,
             )
         )
         metrics = self._get_metrics(
@@ -248,7 +245,13 @@ class LearnDefinitions:
                 chebi_id_to_data_mapping=self._chebi_name_to_data_mapping,
             )
 
-        self.definitions[chemical_class.id] = LearnedDefinition(
+        if add_background_defs:
+            self._gavel.merge_to_background_definitions(add_background_defs)
+            for def_name, (_, background_def) in add_background_defs.items():
+                if def_name not in self.definitions.additional_definitions:
+                    self.definitions.additional_definitions[def_name] = background_def
+
+        self.definitions.learned_definitions[chemical_class.id] = LearnedDefinition(
             metrics=metrics,
             learned_FOL=tptp_def,
             name=chemical_class.name,
@@ -355,7 +358,9 @@ class LearnDefinitions:
             with open(default_path, "r") as f:
                 definitions = DefinitionLearningResults.model_validate_json(f.read())
         else:
-            definitions = DefinitionLearningResults(root={})
+            definitions = DefinitionLearningResults(
+                learned_definitions={}, additional_definitions={}
+            )
         return definitions
 
     def _save_definitions(self, path: str | None) -> None:

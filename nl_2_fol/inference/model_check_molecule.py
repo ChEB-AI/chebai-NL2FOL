@@ -102,7 +102,7 @@ class GavelFOLReasoner:
     def set_background_definitions(self, new_definitions: DefinitionLearningResults):
         """Update the background definitions with new learned definitions."""
 
-        for _, learned_def in new_definitions.root.items():
+        for _, learned_def in new_definitions.learned_definitions.items():
             self._background_definitions[learned_def.name] = (
                 [],
                 learned_def.learned_FOL,
@@ -149,7 +149,9 @@ if __name__ == "__main__":
     thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
 
     # Logical definition to match (I removed the oneCarbonCompound predicate for simplicity)
-    definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
+    definition_str = (
+        "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
+    )
     definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
     assert not isinstance(definition_to_match, Exception)
 
