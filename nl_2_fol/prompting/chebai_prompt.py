@@ -36,6 +36,8 @@ class ChebiPrompt:
         self.few_shot_prompt_fp: str = few_shot_prompt_fp
         self.err_failure_prompt_fp: str = err_failure_prompt_fp
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
+        # To keep track of predicates generated across iterations, for prompting
+        self._generated_predicates_names: set[str] = set()
 
         self._few_shot_parser = PydanticOutputParser(pydantic_object=CHEBIFOLOutput)
         self._undef_parser = PydanticOutputParser(
@@ -86,6 +88,22 @@ class ChebiPrompt:
         self, system_prompt_fp: str
     ) -> SystemMessagePromptTemplate:
         system_prompt_text = load_yaml_sys_prompt(system_prompt_fp)
+
+        # Only add predicates section if list is not empty
+        # TODO: Check if needed, as list of predicates can be long and may overwhelm the prompt.
+        # Maybe only add if there are less than N predicates?
+        # Advanced models (Claude Sonnet 4.5/4.6, Claude Opus 4) support a 1,000,000-token
+        # context window, other models handles 200,000 and 1,000,000 tokens
+        if len(self._generated_predicates_names) > 0:
+            predicates_section = (
+                "\n\nAlso, here is the list of predicates that were already"
+                "defined in previous iterations for other CHEBI classes.\n"
+                "You can reuse these predicates if they are applicable to the"
+                "current class definition.\n"
+                f"Predicate List: {', '.join(self._generated_predicates_names)}"
+            )
+            # Remove the placeholder from system_prompt_text if it exists
+            system_prompt_text = system_prompt_text + predicates_section
 
         # Escape curly braces that are not template variables
         # We need to double curly braces except for {format_instructions}

@@ -12,7 +12,6 @@ from nl_2_fol.inference.custom_exceptions import (
     mol_to_fol_exception,
     tptp_parse_exception,
 )
-from nl_2_fol.inference.definition_model import DefinitionLearningResults
 
 
 class GavelFOLReasoner:
@@ -126,34 +125,13 @@ class GavelFOLReasoner:
         traverse(formula.formula)
         return predicates
 
-    def set_background_definitions(self, new_definitions: DefinitionLearningResults):
-        """Update the background definitions with new learned definitions."""
-
-        for _, learned_def in new_definitions.learned_definitions.items():
-            self._background_definitions[learned_def.name] = (
-                [],
-                learned_def.learned_FOL,
-            )
-
     def update_background_definition(
         self, name: str, definition: logic.QuantifiedFormula
     ):
         """Add a single background definition."""
         self._background_definitions[name] = ([], definition)
 
-    def merge_to_background_definitions(
-        self,
-        additional_definitions: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ],
-    ):
-        """Merge additional background definitions into existing ones."""
-        self._background_definitions = {
-            **self._background_definitions,
-            **additional_definitions,
-        }
-
-    def convert_to_background_defintions(
+    def convert_to_background_definitions(
         self,
         predicates: dict[str, str],
     ) -> dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]]:

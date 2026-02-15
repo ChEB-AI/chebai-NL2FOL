@@ -53,11 +53,12 @@ class LearnDefinitions:
             "learned",
             self.chebi_prompt_obj.model_name,
         )
+
+        self._gavel = GavelFOLReasoner()
+
         self.definitions: DefinitionLearningResults = self._load_definitions(
             definitions_path
         )
-
-        self._gavel = GavelFOLReasoner()
 
         # ------ Entire Chebi data loading -------
         entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
@@ -88,7 +89,7 @@ class LearnDefinitions:
         self._prompts_history = []
 
         raised_exception = None
-        result, prompt_text = None, None
+        result, prompt_text = None, ""
         try:
             # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
             # of the hydrogens is substituted by a hydroxy group."""
@@ -135,7 +136,7 @@ class LearnDefinitions:
                     f"Learned additional definitions for out-of-box predicates: {additional_def}\n"
                 )
                 try:
-                    add_bck_def = self._gavel.convert_to_background_defintions(
+                    add_bck_def = self._gavel.convert_to_background_definitions(
                         additional_def
                     )
                 except Exception as e:
@@ -257,12 +258,14 @@ class LearnDefinitions:
                 max_examples=10,
                 chebi_id_to_data_mapping=self._chebi_name_to_data_mapping,
             )
-
+        # TODO: What if the additonal defintions are changed in next attempt
+        # and both are valid? rn the earliest
         if add_background_defs:
-            self._gavel.merge_to_background_definitions(add_background_defs)
             for def_name, (_, background_def) in add_background_defs.items():
                 if def_name not in self.definitions.additional_definitions:
                     self.definitions.additional_definitions[def_name] = background_def
+                    self.chebi_prompt_obj._generated_predicates_names.add(def_name)
+                    self._gavel.update_background_definition(def_name, background_def)
 
         self.definitions.learned_definitions[chemical_class.id] = LearnedDefinition(
             metrics=metrics,
@@ -272,6 +275,7 @@ class LearnDefinitions:
             prompts_history=self._prompts_history,
         )
         self._gavel.update_background_definition(chemical_class.name, tptp_def)
+        self.chebi_prompt_obj._generated_predicates_names.add(chemical_class.name)
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
@@ -372,7 +376,24 @@ class LearnDefinitions:
             definitions = DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
             )
+        self._load_background_defs_from_pmodel(definitions)
         return definitions
+
+    def _load_background_defs_from_pmodel(
+        self, new_definitions: DefinitionLearningResults
+    ):
+        """Load back the state from from learned definitions."""
+
+        for _, learned_def in new_definitions.learned_definitions.items():
+            self._gavel._background_definitions[learned_def.name] = (
+                [],
+                learned_def.learned_FOL,
+            )
+            self.chebi_prompt_obj._generated_predicates_names.add(learned_def.name)
+
+        for name, add_def in new_definitions.additional_definitions.items():
+            self._gavel._background_definitions[name] = ([], add_def)
+            self.chebi_prompt_obj._generated_predicates_names.add(name)
 
     def _save_definitions(self, path: str | None) -> None:
         # save the learned definitions to the given path
