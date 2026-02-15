@@ -7,6 +7,7 @@ which is available at https://huggingface.co/datasets/MonarchInit/C3PO
 
 """
 
+import ast
 import os
 import sys
 from copy import copy
@@ -46,7 +47,10 @@ class ChemicalClass(BaseModel):
     )
     parents: list[str] | None = Field(default=None, description="parent classes")
     xrefs: list[str] | None = Field(default=None, description="mappings")
-    all_positive_examples: list[SMILES_STRING] = []
+    all_positive_examples: list[SMILES_STRING] = Field(
+        ...,
+        description="list of SMILES strings of all positive examples of the class",
+    )
 
     def lite_copy(self) -> "ChemicalClass":
         """
@@ -128,10 +132,6 @@ def load_c3po_slim_dataset(
         "No validation examples found in the dataset. Please check the dataset files."
     )
 
-    # Convert to string type to avoid type errors with pandas Scalar
-    def _split_if_notna(val: str) -> list[str] | None:
-        return val.split("|") if pd.notna(val) else None
-
     slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
     slim_df["name"] = slim_df["name"].str.lower().str.strip()
 
@@ -155,8 +155,7 @@ def load_c3po_slim_dataset(
             id=row.id,  # pyright: ignore[reportArgumentType]
             name=str(row.name),
             definition=str(row.definition),
-            parents=_split_if_notna(str(row.parents)),
-            xrefs=_split_if_notna(str(row.xrefs)),
+            all_positive_examples=ast.literal_eval(str(row.all_positive_examples)),
         )
         for row in slim_df.itertuples()
     }
