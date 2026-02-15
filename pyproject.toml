@@ -23,6 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 groq = ["langchain-groq>=1.1.1"]
+anthropic = ["langchain-anthropic>=1.1.0"]
 
 custom_host = [
     "torch",

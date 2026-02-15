@@ -1,6 +1,6 @@
 import os
 
-from nl_2_fol.prompting import GROQ_API_KEY_NAME, OPENAI_API_KEY_NAME
+from nl_2_fol.prompting import ANTHROPIC_API_KEY, GROQ_API_KEY_NAME, OPENAI_API_KEY_NAME
 
 
 def get_llm_for_inference(platform, model_name):
@@ -35,6 +35,24 @@ def get_llm_for_inference(platform, model_name):
         _test_api_with_a_prompt(llm)
         return llm
 
+    elif platform == "anthropic":
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            raise ImportError(
+                "Please install anthropic by using `pip install langchain-anthropic`"
+            )
+
+        assert ANTHROPIC_API_KEY in os.environ, (
+            f"Please set the api key {ANTHROPIC_API_KEY} for anthropic in `api_keys.env` file."
+        )
+
+        llm = ChatAnthropic(
+            model_name=model_name,  # "claude-opus-4-6",
+            temperature=0.0,
+        )  # pyright: ignore[reportCallIssue]
+        _test_api_with_a_prompt(llm)
+        return llm
     elif platform == "openai":
         try:
             from langchain_openai import ChatOpenAI
@@ -78,5 +96,11 @@ def get_llm_for_inference(platform, model_name):
 
 
 if __name__ == "__main__":
+    # import anthropic
+    # client = anthropic.Anthropic()
+    # models = client.models.list()
+    # for model in models.data:
+    #     print(model.id)
+
     # Example usage:
-    llm = get_llm_for_inference(platform="custom", model_name="t5-3b-nl-to-fol")
+    llm = get_llm_for_inference(platform="anthropic", model_name="claude-opus-4-6")
