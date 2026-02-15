@@ -1,9 +1,12 @@
 import os
+from typing import Literal
 
 from nl_2_fol.prompting import ANTHROPIC_API_KEY, GROQ_API_KEY_NAME, OPENAI_API_KEY_NAME
 
+API_PLATFORM = Literal["groq", "anthropic", "openai", "custom"]
 
-def get_llm_for_inference(platform, model_name):
+
+def get_llm_for_inference(platform: API_PLATFORM, model_name):
     def _test_api_with_a_prompt(llm):
         result = llm.invoke("Hello LLM").content
         if result:

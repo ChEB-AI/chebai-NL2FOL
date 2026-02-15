@@ -4,6 +4,7 @@ from jsonargparse import CLI
 
 from nl_2_fol.inference.learn_definitions import LearnDefinitions
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
+from nl_2_fol.prompting.llm_inference import API_PLATFORM
 
 # should be the root of the repo
 # eg. G:\github-aditya0by0\chebai-NL2FOL\
@@ -17,7 +18,7 @@ PROMPT_TEMPLATES_DIR = os.path.join(PROJECT_DIR, "prompting", "prompt_templates"
 class Main:
     @staticmethod
     def learn(
-        api_platform: str,
+        api_platform: API_PLATFORM,
         model_name: str,
         system_prompt_fp: str = os.path.join(
             PROMPT_TEMPLATES_DIR, "system_prompts", "with_predicates_list.yaml"

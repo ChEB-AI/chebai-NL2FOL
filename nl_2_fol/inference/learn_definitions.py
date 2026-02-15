@@ -131,6 +131,9 @@ class LearnDefinitions:
                 prompt_text += "\n" + prompt_to_learn_predicates
                 self._add_prompt_to_history(prompt_text, result)
                 additional_def = learned_predicates.predicate_definitions
+                print(
+                    f"Learned additional definitions for out-of-box predicates: {additional_def}\n"
+                )
                 try:
                     add_bck_def = self._gavel.convert_to_background_defintions(
                         additional_def

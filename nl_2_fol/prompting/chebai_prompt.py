@@ -9,7 +9,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
 
-from nl_2_fol.prompting.llm_inference import get_llm_for_inference
+from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
 from nl_2_fol.prompting.prompt_models import (
     CHEBIFOLOutput,
     OutOfBoxPredicateDefinitions,
@@ -23,14 +23,14 @@ from nl_2_fol.prompting.utils.read_configs import json_to_pyObj, load_yaml_sys_p
 class ChebiPrompt:
     def __init__(
         self,
-        platform: str,
+        platform: API_PLATFORM,
         model_name: str,
         system_prompt_fp: str,
         few_shot_prompt_fp: str,
         err_failure_prompt_fp: str,
         undef_failure_prompt_fp: str,
     ):
-        self.platform: str = platform
+        self.platform: API_PLATFORM = platform
         self.model_name: str = model_name
         self.system_prompt_fp: str = system_prompt_fp
         self.few_shot_prompt_fp: str = few_shot_prompt_fp

@@ -40,7 +40,10 @@ class GavelFOLReasoner:
         try:
             # Eg. `oligopeptide(x) <=> (peptide(x) & has_few_amino_acid_residues(x))`
             # The above fol formula will be parsed and will have no formula attribute
-            assert hasattr(tptp_parsed, "formula")
+            if not isinstance(tptp_parsed, logic.QuantifiedFormula):
+                tptp_parsed = logic.QuantifiedFormula(
+                    logic.Quantifier.EXISTENTIAL, [], tptp_parsed
+                )
         except AssertionError as e:
             raise Exception(
                 f"The parsed TPTP formula `{tptp_parsed}` does not have the\n"
@@ -90,6 +93,7 @@ class GavelFOLReasoner:
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
 
+        # Can fail for definitions like: `∃[]: ((peptide(x)))`
         outcome, _ = model_checker.find_model(definition_to_match)
         return outcome
 
@@ -158,7 +162,7 @@ class GavelFOLReasoner:
         for name, def_str in predicates.items():
             converted[name] = (
                 [],
-                GavelFOLReasoner().get_tptp_fol_definition(def_str),
+                self.get_tptp_fol_definition(def_str),
             )
         return converted
 
