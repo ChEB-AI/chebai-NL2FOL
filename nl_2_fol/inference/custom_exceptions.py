@@ -50,6 +50,20 @@ class StopProgramException(Exception):
         super().__init__(message)
 
 
+def stop_program_exception(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"{func.__name__} failed: {e}")
+            # Error can be customized here for LLMs feedback,
+            # for now we just print the error and return it
+            raise StopProgramException(str(e)) from e
+
+    return wrapper
+
+
 class RetryException(Exception):
     pass
 

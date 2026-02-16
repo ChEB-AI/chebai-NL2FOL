@@ -4,25 +4,10 @@ import tqdm
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
+from nl_2_fol.inference import custom_exceptions as ce
+from nl_2_fol.inference import data_model as dm
+from nl_2_fol.inference import definition_model as def_model
 from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
-from nl_2_fol.inference.custom_exceptions import (
-    LearnOutOfBoxPredicateException,
-    LowF1ScoreException,
-    MissingPredicateException,
-    RetryException,
-    StopProgramException,
-)
-from nl_2_fol.inference.data_model import (
-    SMILES_STRING,
-    ChemicalClass,
-    ChemicalStructure,
-    load_c3po_slim_dataset,
-)
-from nl_2_fol.inference.definition_model import (
-    DefinitionLearningResults,
-    DefinitionMetrics,
-    LearnedDefinition,
-)
 from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
@@ -57,7 +42,7 @@ class LearnDefinitions:
 
         self._gavel = GavelFOLReasoner()
 
-        self.definitions: DefinitionLearningResults = self._load_definitions(
+        self.definitions: def_model.DefinitionLearningResults = self._load_definitions(
             definitions_path
         )
 
@@ -71,7 +56,7 @@ class LearnDefinitions:
             self.smiles_to_instance,
             self.validation_smiles,
             self.all_smiles,
-        ) = load_c3po_slim_dataset(
+        ) = dm.load_c3po_slim_dataset(
             entire_chebi_data, self.slim_dataset_path, self.structures_path
         )
         # ---------------------------------------
@@ -87,7 +72,7 @@ class LearnDefinitions:
                 continue
             self._learn(chemical_class)
 
-    def _learn(self, chemical_class: ChemicalClass) -> None:
+    def _learn(self, chemical_class: dm.ChemicalClass) -> None:
         self._attempts = 0
         self._prompts_history = []
 
@@ -112,9 +97,9 @@ class LearnDefinitions:
             return
         except Exception as e:
             raised_exception = e
-            if isinstance(e, MissingPredicateException):
+            if isinstance(e, ce.MissingPredicateException):
                 raised_exception = self._handle_missing_predicates_exception(e)
-            elif isinstance(e, StopProgramException):
+            elif isinstance(e, ce.StopProgramException):
                 raise e
 
         print(
@@ -127,7 +112,7 @@ class LearnDefinitions:
                 f"Attempt {self._attempts + 1} for CHEBI:{chemical_class.id}: {chemical_class.name}"
             )
             add_bck_def = None
-            if isinstance(raised_exception, LearnOutOfBoxPredicateException):
+            if isinstance(raised_exception, ce.LearnOutOfBoxPredicateException):
                 learned_predicates, prompt_to_learn_predicates = (
                     self.chebi_prompt_obj.invoke_llm_with_undef_failure_prompt(
                         input_text,
@@ -155,7 +140,7 @@ class LearnDefinitions:
                         f"{additional_def}. Error: {e}"
                     )
                     continue
-            elif isinstance(raised_exception, RetryException):
+            elif isinstance(raised_exception, ce.RetryException):
                 # Retries the result generated from previous attempt
                 # This is because certain undefined predicated might be known by now
                 pass
@@ -182,9 +167,9 @@ class LearnDefinitions:
                 return
             except Exception as e:
                 raised_exception = e
-                if isinstance(e, MissingPredicateException):
+                if isinstance(e, ce.MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
-                elif isinstance(e, StopProgramException):
+                elif isinstance(e, ce.StopProgramException):
                     raise e
                 print(
                     f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}\n",
@@ -194,7 +179,7 @@ class LearnDefinitions:
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
     def _handle_missing_predicates_exception(
-        self, e: MissingPredicateException
+        self, e: ce.MissingPredicateException
     ) -> Exception:
         chemical_class_predicates = {
             predicate.lower().strip()
@@ -206,7 +191,7 @@ class LearnDefinitions:
             # in c3po slim dataset
             self._learn(self._dataset.get_chemical_class_by_name(predicate))
 
-        raised_exception = RetryException()
+        raised_exception = ce.RetryException()
         other_predicates = e.missing_predicates - chemical_class_predicates
         if other_predicates:
             predicates_to_learn: dict[str, str | None] = {}
@@ -217,7 +202,7 @@ class LearnDefinitions:
                 else:
                     predicates_to_learn[predicate] = None
 
-            raised_exception = LearnOutOfBoxPredicateException(
+            raised_exception = ce.LearnOutOfBoxPredicateException(
                 predicates_to_learn=predicates_to_learn
             )
         return raised_exception
@@ -225,7 +210,7 @@ class LearnDefinitions:
     def _parse_and_validate_generated_definition(
         self,
         result: CHEBIFOLOutput,
-        chemical_class: ChemicalClass,
+        chemical_class: dm.ChemicalClass,
         add_background_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
@@ -259,7 +244,7 @@ class LearnDefinitions:
         # Validate against the threshold
         # TODO:  adjust threshold wrt how many def meet it
         if metrics.F1 < self.f1_threshold:
-            raise LowF1ScoreException(
+            raise ce.LowF1ScoreException(
                 list(pos_samples),
                 list(neg_samples),
                 list(matched_neg_samples),
@@ -276,12 +261,16 @@ class LearnDefinitions:
                     self.chebi_prompt_obj._generated_predicates_names.add(def_name)
                     self._gavel.update_background_definition(def_name, background_def)
 
-        self.definitions.learned_definitions[chemical_class.id] = LearnedDefinition(
-            metrics=metrics,
-            learned_FOL=tptp_def,
-            name=chemical_class.name,
-            definition=chemical_class.definition if chemical_class.definition else "",
-            prompts_history=self._prompts_history,
+        self.definitions.learned_definitions[chemical_class.id] = (
+            def_model.LearnedDefinition(
+                metrics=metrics,
+                learned_FOL=tptp_def,
+                name=chemical_class.name,
+                definition=chemical_class.definition
+                if chemical_class.definition
+                else "",
+                prompts_history=self._prompts_history,
+            )
         )
         self._gavel.update_background_definition(chemical_class.name, tptp_def)
         self.chebi_prompt_obj._generated_predicates_names.add(chemical_class.name)
@@ -289,9 +278,10 @@ class LearnDefinitions:
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
 
+    @ce.stop_program_exception
     def _get_positive_and_negative_samples(
-        self, chemical_class: ChemicalClass
-    ) -> tuple[set[ChemicalStructure], set[ChemicalStructure]]:
+        self, chemical_class: dm.ChemicalClass
+    ) -> tuple[set[dm.ChemicalStructure], set[dm.ChemicalStructure]]:
         # validation examples already substracted during from positive examples
         positive_examples = chemical_class.all_positive_examples
         positive_instances = {
@@ -307,10 +297,10 @@ class LearnDefinitions:
             for smiles in negative_examples
             if smiles in self.smiles_to_instance
         }
-        assert len(positive_instances) > 0, StopProgramException(
+        assert len(positive_instances) > 0, (
             f"No positive samples found for {chemical_class.name}"
         )
-        assert len(negative_instances) > 0, StopProgramException(
+        assert len(negative_instances) > 0, (
             f"No negative samples found for {chemical_class.name}"
         )
 
@@ -319,14 +309,14 @@ class LearnDefinitions:
     def _check_if_definition_matches_samples(
         self,
         tptp_def: QuantifiedFormula,
-        pos_samples: set[ChemicalStructure],
-        neg_samples: set[ChemicalStructure],
+        pos_samples: set[dm.ChemicalStructure],
+        neg_samples: set[dm.ChemicalStructure],
         background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
-    ) -> tuple[set[SMILES_STRING], set[SMILES_STRING]]:
-        def is_matched(chemical: ChemicalStructure) -> bool:
+    ) -> tuple[set[dm.SMILES_STRING], set[dm.SMILES_STRING]]:
+        def is_matched(chemical: dm.ChemicalStructure) -> bool:
             return self._gavel.does_mol_match_tptp_definition(
                 chemical.mol,
                 tptp_def,
@@ -356,13 +346,14 @@ class LearnDefinitions:
         )
         return unmatched_pos_samples, matched_neg_samples
 
+    @ce.stop_program_exception
     def _get_metrics(
         self,
-        unmatched_pos_samples: set[SMILES_STRING],
-        matched_neg_samples: set[SMILES_STRING],
-        pos_samples: set[ChemicalStructure],
-        neg_samples: set[ChemicalStructure],
-    ) -> DefinitionMetrics:
+        unmatched_pos_samples: set[dm.SMILES_STRING],
+        matched_neg_samples: set[dm.SMILES_STRING],
+        pos_samples: set[dm.ChemicalStructure],
+        neg_samples: set[dm.ChemicalStructure],
+    ) -> def_model.DefinitionMetrics:
         num_true_positives = len(pos_samples) - len(unmatched_pos_samples)
         num_false_negatives = len(unmatched_pos_samples)
         num_false_positives = len(matched_neg_samples)
@@ -374,7 +365,7 @@ class LearnDefinitions:
         )
         ppv = num_true_positives / (num_true_positives + num_false_positives)
         npv = num_true_negatives / (num_true_negatives + num_false_negatives)
-        return DefinitionMetrics(
+        return def_model.DefinitionMetrics(
             F1=f1,
             PPV=ppv,
             NPV=npv,
@@ -384,28 +375,34 @@ class LearnDefinitions:
             TN=num_true_negatives,
         )
 
-    def _load_definitions(self, path: str | None) -> DefinitionLearningResults:
+    def _load_definitions(
+        self, path: str | None
+    ) -> def_model.DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
         if path is not None:
             with open(path, "r") as f:
-                definitions = DefinitionLearningResults.model_validate_json(f.read())
+                definitions = def_model.DefinitionLearningResults.model_validate_json(
+                    f.read()
+                )
         elif os.path.exists(
             default_path := os.path.join(
                 self._default_def_save_path, self._DEFINITION_JSON_FILE_NAME
             )
         ):
             with open(default_path, "r") as f:
-                definitions = DefinitionLearningResults.model_validate_json(f.read())
+                definitions = def_model.DefinitionLearningResults.model_validate_json(
+                    f.read()
+                )
         else:
-            definitions = DefinitionLearningResults(
+            definitions = def_model.DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
             )
         self._load_background_defs_from_pmodel(definitions)
         return definitions
 
     def _load_background_defs_from_pmodel(
-        self, new_definitions: DefinitionLearningResults
+        self, new_definitions: def_model.DefinitionLearningResults
     ):
         """Load back the state from from learned definitions."""
 
@@ -420,6 +417,7 @@ class LearnDefinitions:
             self._gavel._background_definitions[name] = ([], add_def)
             self.chebi_prompt_obj._generated_predicates_names.add(name)
 
+    @ce.stop_program_exception
     def _save_definitions(self, path: str | None = None) -> None:
         # save the learned definitions to the given path
         if path is None:
@@ -439,6 +437,7 @@ class LearnDefinitions:
         with open(meta_data_path, "w") as f:
             f.write(str(self.chebi_prompt_obj))
 
+    @ce.stop_program_exception
     def _add_prompt_to_history(
         self, prompt: str, result: CHEBIFOLOutput | None
     ) -> None:
