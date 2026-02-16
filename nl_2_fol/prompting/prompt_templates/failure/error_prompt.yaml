@@ -1,0 +1,12 @@
+failure_prompt: |
+  Your last attempt to convert the CHEBI class definition into first-order logic (FOL) was unsuccessful.
+  Let's analyze the failure and try again.
+
+  This was the CHEBI class FOL definition you generated:
+  {previous_fol_definition}
+
+  And this was the error the above FOL definition produced when we tried to use it:
+  {error_message}
+
+  Now, please review the CHEBI class definition again and identify where the mistake might have occurred.
+  Then, generate a corrected FOL definition that addresses the identified issues.
