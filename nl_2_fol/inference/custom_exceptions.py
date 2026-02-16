@@ -103,48 +103,71 @@ class LowF1ScoreException(Exception):
         chebi_id_to_data_mapping: dict[str, dict],
     ) -> None:
         def get_chemical_details(
-            chemicals: list[ChemicalStructure],
+            chemicals: set[ChemicalStructure],
             matched_smiles: list[SMILES_STRING],
         ) -> list[tuple[str, str | None]]:
             chemical_details: list[tuple[str, str | None]] = []
-            for chemical in chemicals:
-                if chemical.smiles in matched_smiles:
+            for smiles in matched_smiles[:max_examples]:
+                if smiles in chemicals:
                     chemical_data = chebi_id_to_data_mapping.get(
-                        str(chemical.name).lower().strip(), None
+                        str(smiles).lower().strip(), None
                     )
                     chemical_def = None
                     if chemical_data:
                         chemical_def = chemical_data.get("definition", "")
-                    chemical_details.append((chemical.name, chemical_def))
+                    chemical_details.append((smiles, chemical_def))
             return chemical_details
 
-        fp_mol_names = get_chemical_details(
-            chemicals=neg_samples,
-            matched_smiles=matched_neg_samples,
-        )[:max_examples]
+        fp_percentage = (
+            len(matched_neg_samples) / len(neg_samples) if neg_samples else 0
+        )
+        fn_percentage = (
+            len(unmatched_pos_samples) / len(pos_samples) if pos_samples else 0
+        )
+        if fn_percentage < 0.1 and fp_percentage > 0.1:
+            # When FN is less than 10% but FP is more than 10%,
+            # we prioritize showing FP examples as they are more prevalent
+            error_priority = "FP"
+        elif fn_percentage > 0.1 and fp_percentage < 0.1:
+            error_priority = "FN"
+        else:
+            error_priority = "both"
 
-        fn_mol_names = get_chemical_details(
-            chemicals=pos_samples,
-            matched_smiles=unmatched_pos_samples,
-        )[:max_examples]
+        fp_details, fn_details = None, None
+        fn_mol_names: list[tuple[str, str | None]] = []
+        if error_priority == "FP" or error_priority == "both":
+            fp_mol_names = get_chemical_details(
+                chemicals=set(neg_samples),
+                matched_smiles=matched_neg_samples,
+            )
+            fp_details = "\n".join(
+                f"\t- Chemical Name: {name}"
+                + (f", Chemical Definition: {chem_def}" if chem_def else "")
+                for name, chem_def in fp_mol_names
+            )
 
-        fp_details = "\n".join(
-            f"\t- Chemical Name: {name}"
-            + (f", Chemical Definition: {chem_def}" if chem_def else "")
-            for name, chem_def in fp_mol_names
-        )
-        fn_details = "\n".join(
-            f"\t- Chemical Name: {name}"
-            + (f", Chemical Definition: {chem_def}" if chem_def else "")
-            for name, chem_def in fn_mol_names
-        )
-        message = (
-            f"The generated FOL definition did not meet the required F1 score threshold:\n"
-            f"Please find below the names of molecules and optionally their definitions"
-            f" that were misclassified:\n"
-            f"False Positives (FP): \n{fp_details}\n"
-            f"False Negatives (FN): \n{fn_details}"
-        )
+        if error_priority == "FN" or error_priority == "both":
+            fn_mol_names = get_chemical_details(
+                chemicals=set(pos_samples),
+                matched_smiles=unmatched_pos_samples,
+            )
+            fn_details = "\n".join(
+                f"\t- Chemical Name: {name}"
+                + (f", Chemical Definition: {chem_def}" if chem_def else "")
+                for name, chem_def in fn_mol_names
+            )
+
+        message_parts = [
+            "The generated FOL definition did not meet the required F1 score threshold:\n"
+            "Please find below the names of molecules and optionally their definitions"
+            " that were misclassified:\n"
+        ]
+        if fp_details is not None:
+            message_parts.append(f"False Positives (FP): \n{fp_details}\n")
+        if fn_details is not None:
+            message_parts.append(f"False Negatives (FN): \n{fn_details}\n")
+
+        message = "".join(message_parts)
 
         super().__init__(message)
 
