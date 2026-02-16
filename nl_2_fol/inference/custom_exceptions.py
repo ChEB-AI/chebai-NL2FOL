@@ -45,6 +45,11 @@ def model_check_exception(func):
     return wrapper
 
 
+class StopProgramException(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class RetryException(Exception):
     pass
 
@@ -146,6 +151,8 @@ class LowF1ScoreException(Exception):
 
 if __name__ == "__main__":
     # Example usage of the custom exceptions
+    from rdkit import Chem
+
     try:
         raise MissingPredicateException({"UnknownPredicate1", "UnknownPredicate2"})
     except MissingPredicateException as e:
@@ -153,12 +160,28 @@ if __name__ == "__main__":
 
     try:
         pos_samples = [
-            ChemicalStructure(name="MoleculeA", smiles="C1=CC=CC=C1"),
-            ChemicalStructure(name="MoleculeB", smiles="C1=CC=CC=C1O"),
+            ChemicalStructure(
+                name="MoleculeA",
+                smiles="C1=CC=CC=C1",
+                mol=Chem.MolFromSmiles("C1=CC=CC=C1"),
+            ),
+            ChemicalStructure(
+                name="MoleculeB",
+                smiles="C1=CC=CC=C1O",
+                mol=Chem.MolFromSmiles("C1=CC=CC=C1O"),
+            ),
         ]
         neg_samples = [
-            ChemicalStructure(name="MoleculeC", smiles="C1=CC=CC=C1N"),
-            ChemicalStructure(name="MoleculeD", smiles="C1=CC=CC=C1F"),
+            ChemicalStructure(
+                name="MoleculeC",
+                smiles="C1=CC=CC=C1N",
+                mol=Chem.MolFromSmiles("C1=CC=CC=C1N"),
+            ),
+            ChemicalStructure(
+                name="MoleculeD",
+                smiles="C1=CC=CC=C1F",
+                mol=Chem.MolFromSmiles("C1=CC=CC=C1F"),
+            ),
         ]
         matched_neg_samples = ["C1=CC=CC=C1N"]  # False positive
         unmatched_pos_samples = ["C1=CC=CC=C1O", "C1=CC=CC=C1"]  # False negative

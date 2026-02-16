@@ -13,6 +13,7 @@ import sys
 from copy import copy
 
 import pandas as pd
+import tqdm
 from pydantic import BaseModel, Field
 from rdkit import Chem
 
@@ -25,6 +26,8 @@ CHEBI_ID = int
 # make this hashable?
 class ChemicalStructure(BaseModel):
     """Represents a chemical entity with a known specific structure/formula."""
+
+    model_config = {"arbitrary_types_allowed": True}
 
     name: str = Field(..., description="rdfs:label of the structure in CHEBI")
     smiles: SMILES_STRING = Field(..., description="SMILES string derived from CHEBI")
@@ -120,6 +123,7 @@ def load_c3po_slim_dataset(
     set[SMILES_STRING],
     set[SMILES_STRING],
 ]:
+    print("Loading and processing C3PO slim dataset...")
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
         raise FileNotFoundError(
             f"Dataset files not found. Please ensure {slim_dataset_path} "
@@ -154,22 +158,6 @@ def load_c3po_slim_dataset(
     # https://docs.python.org/3/whatsnew/3.7.html#summary-release-highlights
     # https://mail.python.org/pipermail/python-dev/2017-December/151283.html
 
-    def parse_positive_examples(examples: str) -> set[SMILES_STRING]:
-        p_examples = set(ast.literal_eval(str(examples)))
-        return p_examples - validation_smiles
-
-    classes = {
-        row.name: ChemicalClass(
-            id=row.id,  # pyright: ignore[reportArgumentType]
-            name=str(row.name),
-            definition=str(row.definition),
-            all_positive_examples=parse_positive_examples(
-                str(row.all_positive_examples)
-            ),
-        )
-        for row in slim_df.itertuples()
-    }
-
     def parse_smiles_to_mol(smiles: str) -> Chem.Mol | None:
         try:
             mol = Chem.MolFromSmiles(smiles)
@@ -184,8 +172,30 @@ def load_c3po_slim_dataset(
             smiles=str(row.smiles),
             mol=mol,
         )
-        for row in structures_df.itertuples()
+        for row in tqdm.tqdm(
+            structures_df.itertuples(),
+            total=len(structures_df),
+            desc="Loading structures",
+        )
         if (mol := parse_smiles_to_mol(str(row.smiles))) is not None
+    }
+
+    def parse_positive_examples(examples: str) -> set[SMILES_STRING]:
+        p_examples: set[SMILES_STRING] = set(ast.literal_eval(str(examples)))
+        return p_examples - validation_smiles
+
+    classes = {
+        row.name: ChemicalClass(
+            id=row.id,  # pyright: ignore[reportArgumentType]
+            name=str(row.name),
+            definition=str(row.definition),
+            all_positive_examples=parse_positive_examples(
+                str(row.all_positive_examples)
+            ),
+        )
+        for row in tqdm.tqdm(
+            slim_df.itertuples(), total=len(slim_df), desc="Loading classes"
+        )
     }
 
     dataset = Dataset(

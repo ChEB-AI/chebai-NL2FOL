@@ -10,6 +10,7 @@ from nl_2_fol.inference.custom_exceptions import (
     LowF1ScoreException,
     MissingPredicateException,
     RetryException,
+    StopProgramException,
 )
 from nl_2_fol.inference.data_model import (
     SMILES_STRING,
@@ -112,6 +113,8 @@ class LearnDefinitions:
             raised_exception = e
             if isinstance(e, MissingPredicateException):
                 raised_exception = self._handle_missing_predicates_exception(e)
+            elif isinstance(e, StopProgramException):
+                raise e
 
         print(
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
@@ -179,6 +182,8 @@ class LearnDefinitions:
                 raised_exception = e
                 if isinstance(e, MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
+                elif isinstance(e, StopProgramException):
+                    raise e
                 print(
                     f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}\n",
                     f"\tRaised exception: {raised_exception}]\n",
@@ -285,16 +290,28 @@ class LearnDefinitions:
     def _get_positive_and_negative_samples(
         self, chemical_class: ChemicalClass
     ) -> tuple[set[ChemicalStructure], set[ChemicalStructure]]:
+        # validation examples already substracted during from positive examples
         positive_examples = chemical_class.all_positive_examples
         positive_instances = {
-            self.smiles_to_instance[smiles] for smiles in positive_examples
+            self.smiles_to_instance[smiles]
+            for smiles in positive_examples
+            if smiles in self.smiles_to_instance
         }
         negative_examples = list(
             (self.all_smiles - positive_examples) - self.validation_smiles
         )
         negative_instances = {
-            self.smiles_to_instance[smiles] for smiles in negative_examples
+            self.smiles_to_instance[smiles]
+            for smiles in negative_examples
+            if smiles in self.smiles_to_instance
         }
+        assert len(positive_instances) > 0, StopProgramException(
+            f"No positive samples found for {chemical_class.name}"
+        )
+        assert len(negative_instances) > 0, StopProgramException(
+            f"No negative samples found for {chemical_class.name}"
+        )
+
         return positive_instances, negative_instances
 
     def _check_if_definition_matches_samples(
