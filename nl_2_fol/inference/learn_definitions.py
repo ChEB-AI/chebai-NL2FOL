@@ -83,6 +83,8 @@ class LearnDefinitions:
         for chemical_class in self._dataset.classes.values():
             if chemical_class.definition is None:
                 continue
+            if chemical_class.id in self.definitions.learned_definitions:
+                continue
             self._learn(chemical_class)
 
     def _learn(self, chemical_class: ChemicalClass) -> None:
@@ -106,6 +108,7 @@ class LearnDefinitions:
             self._add_prompt_to_history(prompt_text, result)
             self._parse_and_validate_generated_definition(result, chemical_class)
             self._dataset.classes.pop(chemical_class.name)
+            self._save_definitions()
             return
         except Exception as e:
             raised_exception = e
@@ -175,6 +178,7 @@ class LearnDefinitions:
                     add_background_defs=add_bck_def,
                 )
                 self._dataset.classes.pop(chemical_class.name)
+                self._save_definitions()
                 return
             except Exception as e:
                 raised_exception = e
@@ -416,16 +420,23 @@ class LearnDefinitions:
             self._gavel._background_definitions[name] = ([], add_def)
             self.chebi_prompt_obj._generated_predicates_names.add(name)
 
-    def _save_definitions(self, path: str | None) -> None:
+    def _save_definitions(self, path: str | None = None) -> None:
         # save the learned definitions to the given path
         if path is None:
             path = self._default_def_save_path
             os.makedirs(path, exist_ok=True)
 
-        with open(os.path.join(path, self._DEFINITION_JSON_FILE_NAME), "w") as f:
+        file_path = os.path.join(path, self._DEFINITION_JSON_FILE_NAME)
+        meta_data_path = os.path.join(path, "__metadata__.txt")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if os.path.exists(meta_data_path):
+            os.remove(meta_data_path)
+
+        with open(file_path, "w") as f:
             f.write(self.definitions.model_dump_json(indent=2))
 
-        with open(os.path.join(path, "__metadata__.txt"), "w") as f:
+        with open(meta_data_path, "w") as f:
             f.write(str(self.chebi_prompt_obj))
 
     def _add_prompt_to_history(
