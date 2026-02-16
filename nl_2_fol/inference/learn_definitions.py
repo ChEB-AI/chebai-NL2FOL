@@ -3,7 +3,6 @@ import os
 import tqdm
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
-from rdkit import Chem
 
 from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
 from nl_2_fol.inference.custom_exceptions import (
@@ -80,7 +79,9 @@ class LearnDefinitions:
         self._prompts_history: list[str] = []
 
     def learn_fol_definitions(self):
-        for chemical_class in self._dataset.classes.values():
+        for chemical_class in tqdm.tqdm(
+            self._dataset.classes.values(), desc="Learning FOL definitions"
+        ):
             if chemical_class.definition is None:
                 continue
             self._learn(chemical_class)
@@ -284,13 +285,12 @@ class LearnDefinitions:
     def _get_positive_and_negative_samples(
         self, chemical_class: ChemicalClass
     ) -> tuple[set[ChemicalStructure], set[ChemicalStructure]]:
-        all_positive = set(chemical_class.all_positive_examples)
-        positive_examples = list(all_positive - self.validation_smiles)
+        positive_examples = chemical_class.all_positive_examples
         positive_instances = {
             self.smiles_to_instance[smiles] for smiles in positive_examples
         }
         negative_examples = list(
-            (self.all_smiles - all_positive) - self.validation_smiles
+            (self.all_smiles - positive_examples) - self.validation_smiles
         )
         negative_instances = {
             self.smiles_to_instance[smiles] for smiles in negative_examples
@@ -307,12 +307,9 @@ class LearnDefinitions:
         ]
         | None = None,
     ) -> tuple[set[SMILES_STRING], set[SMILES_STRING]]:
-        def is_matched(smiles: SMILES_STRING) -> bool:
-            mol = Chem.MolFromSmiles(smiles)
-            if mol is None:
-                return False
+        def is_matched(chemical: ChemicalStructure) -> bool:
             return self._gavel.does_mol_match_tptp_definition(
-                mol,
+                chemical.mol,
                 tptp_def,
                 additional_background_definitions=background_definitions,
             )
@@ -321,7 +318,7 @@ class LearnDefinitions:
         for chemical in tqdm.tqdm(
             pos_samples, desc="Checking definition for positive samples..."
         ):
-            matches = is_matched(chemical.smiles)
+            matches = is_matched(chemical)
             if not matches:
                 unmatched_pos_samples.add(chemical.smiles)
 
@@ -329,7 +326,7 @@ class LearnDefinitions:
         for chemical in tqdm.tqdm(
             neg_samples, desc="Checking definition against negative samples..."
         ):
-            matches = is_matched(chemical.smiles)
+            matches = is_matched(chemical)
             if matches:
                 matched_neg_samples.add(chemical.smiles)
 

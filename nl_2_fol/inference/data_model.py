@@ -14,6 +14,7 @@ from copy import copy
 
 import pandas as pd
 from pydantic import BaseModel, Field
+from rdkit import Chem
 
 from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
 
@@ -27,6 +28,9 @@ class ChemicalStructure(BaseModel):
 
     name: str = Field(..., description="rdfs:label of the structure in CHEBI")
     smiles: SMILES_STRING = Field(..., description="SMILES string derived from CHEBI")
+    mol: Chem.Mol = Field(
+        ..., description="RDKit Mol object derived from the SMILES string"
+    )
 
     def __hash__(self):
         return hash(self.smiles)
@@ -47,7 +51,7 @@ class ChemicalClass(BaseModel):
     )
     parents: list[str] | None = Field(default=None, description="parent classes")
     xrefs: list[str] | None = Field(default=None, description="mappings")
-    all_positive_examples: list[SMILES_STRING] = Field(
+    all_positive_examples: set[SMILES_STRING] = Field(
         ...,
         description="list of SMILES strings of all positive examples of the class",
     )
@@ -58,7 +62,7 @@ class ChemicalClass(BaseModel):
         Returns:
         """
         cc = copy(self)
-        cc.all_positive_examples = []
+        cc.all_positive_examples = set()
         return cc
 
     def __hash__(self):
@@ -150,20 +154,38 @@ def load_c3po_slim_dataset(
     # https://docs.python.org/3/whatsnew/3.7.html#summary-release-highlights
     # https://mail.python.org/pipermail/python-dev/2017-December/151283.html
 
+    def parse_positive_examples(examples: str) -> set[SMILES_STRING]:
+        p_examples = set(ast.literal_eval(str(examples)))
+        return p_examples - validation_smiles
+
     classes = {
         row.name: ChemicalClass(
             id=row.id,  # pyright: ignore[reportArgumentType]
             name=str(row.name),
             definition=str(row.definition),
-            all_positive_examples=ast.literal_eval(str(row.all_positive_examples)),
+            all_positive_examples=parse_positive_examples(
+                str(row.all_positive_examples)
+            ),
         )
         for row in slim_df.itertuples()
     }
 
+    def parse_smiles_to_mol(smiles: str) -> Chem.Mol | None:
+        try:
+            mol = Chem.MolFromSmiles(smiles)
+            return mol
+        except Exception:
+            return None
+
     structures_df["name"] = structures_df["name"].str.lower().str.strip()
     structures = {
-        ChemicalStructure(name=str(row.name), smiles=str(row.smiles))
+        ChemicalStructure(
+            name=str(row.name),
+            smiles=str(row.smiles),
+            mol=mol,
+        )
         for row in structures_df.itertuples()
+        if (mol := parse_smiles_to_mol(str(row.smiles))) is not None
     }
 
     dataset = Dataset(
