@@ -259,7 +259,7 @@ class LearnDefinitions:
                 chebi_id_to_data_mapping=self._chebi_name_to_data_mapping,
             )
         # TODO: What if the additonal defintions are changed in next attempt
-        # and both are valid? rn the earliest
+        # and both are valid which to use? rn the earliest
         if add_background_defs:
             for def_name, (_, background_def) in add_background_defs.items():
                 if def_name not in self.definitions.additional_definitions:
@@ -310,12 +310,11 @@ class LearnDefinitions:
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 return False
-            matches = self._gavel.does_mol_match_tptp_definition(
+            return self._gavel.does_mol_match_tptp_definition(
                 mol,
                 tptp_def,
                 additional_background_definitions=background_definitions,
             )
-            return bool(matches)
 
         unmatched_pos_samples = set()
         for chemical in pos_samples:

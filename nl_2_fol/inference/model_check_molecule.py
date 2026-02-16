@@ -1,4 +1,4 @@
-from chemlog.fol_classification.model_checking import ModelChecker
+from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
 from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
@@ -94,7 +94,7 @@ class GavelFOLReasoner:
 
         # Can fail for definitions like: `∃[]: ((peptide(x)))`
         outcome, _ = model_checker.find_model(definition_to_match)
-        return outcome
+        return outcome == ModelCheckerOutcome.MODEL_FOUND
 
     @mol_to_fol_exception
     def _mol_to_fol(self, mol: Chem.Mol):
