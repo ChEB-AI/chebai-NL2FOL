@@ -1,5 +1,6 @@
 import os
 
+import tqdm
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
@@ -317,13 +318,17 @@ class LearnDefinitions:
             )
 
         unmatched_pos_samples = set()
-        for chemical in pos_samples:
+        for chemical in tqdm.tqdm(
+            pos_samples, desc="Checking definition for positive samples..."
+        ):
             matches = is_matched(chemical.smiles)
             if not matches:
                 unmatched_pos_samples.add(chemical.smiles)
 
         matched_neg_samples = set()
-        for chemical in neg_samples:
+        for chemical in tqdm.tqdm(
+            neg_samples, desc="Checking definition against negative samples..."
+        ):
             matches = is_matched(chemical.smiles)
             if matches:
                 matched_neg_samples.add(chemical.smiles)
