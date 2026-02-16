@@ -80,9 +80,7 @@ class LearnDefinitions:
         self._prompts_history: list[str] = []
 
     def learn_fol_definitions(self):
-        for chemical_class in tqdm.tqdm(
-            self._dataset.classes.values(), desc="Learning FOL definitions"
-        ):
+        for chemical_class in self._dataset.classes.values():
             if chemical_class.definition is None:
                 continue
             self._learn(chemical_class)
@@ -338,6 +336,9 @@ class LearnDefinitions:
             matches = is_matched(chemical)
             if not matches:
                 unmatched_pos_samples.add(chemical.smiles)
+        print(
+            f"Unmatched positive samples: {len(unmatched_pos_samples)}/{len(pos_samples)}"
+        )
 
         matched_neg_samples = set()
         for chemical in tqdm.tqdm(
@@ -346,7 +347,9 @@ class LearnDefinitions:
             matches = is_matched(chemical)
             if matches:
                 matched_neg_samples.add(chemical.smiles)
-
+        print(
+            f"Matched negative samples: {len(matched_neg_samples)}/{len(neg_samples)}"
+        )
         return unmatched_pos_samples, matched_neg_samples
 
     def _get_metrics(
