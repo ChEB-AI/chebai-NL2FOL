@@ -284,7 +284,7 @@ class LearnDefinitions:
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def _get_positive_and_negative_samples(
         self, chemical_class: dm.ChemicalClass
     ) -> tuple[set[dm.ChemicalStructure], set[dm.ChemicalStructure]]:
@@ -352,7 +352,7 @@ class LearnDefinitions:
         )
         return unmatched_pos_samples, matched_neg_samples
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def _get_metrics(
         self,
         unmatched_pos_samples: set[dm.SMILES_STRING],
@@ -419,7 +419,7 @@ class LearnDefinitions:
             self._gavel._background_definitions[name] = ([], add_def)
             self.chebi_prompt_obj._generated_predicates_names.add(name)
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def _save_definitions(self, path: str | None = None) -> None:
         # save the learned definitions to the given path
         if path is None:
@@ -439,7 +439,7 @@ class LearnDefinitions:
         with open(meta_data_path, "w") as f:
             f.write(str(self.chebi_prompt_obj))
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def _add_prompt_to_history(
         self, prompt: str, result: CHEBIFOLOutput | None
     ) -> None:

@@ -50,7 +50,7 @@ class StopProgramException(Exception):
         super().__init__(message)
 
 
-def stop_program_exception(func):
+def stop_program_upon_failure(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:

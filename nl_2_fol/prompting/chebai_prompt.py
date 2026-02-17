@@ -161,7 +161,7 @@ class ChebiPrompt:
             example_prompt=example_prompt,
         )
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def invoke_llm_with_fs_prompt(self, input_text: str) -> tuple[CHEBIFOLOutput, str]:
         try:
             input_text = self._normalize_input_text(input_text)
@@ -207,7 +207,7 @@ class ChebiPrompt:
             ]
         )
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def invoke_llm_with_err_failure_prompt(
         self, input_text: str, previous_fol_definition: str, error_message: str
     ) -> tuple[CHEBIFOLOutput, str]:
@@ -274,7 +274,7 @@ class ChebiPrompt:
             ]
         )
 
-    @ce.stop_program_exception
+    @ce.stop_program_upon_failure
     def invoke_llm_with_undef_failure_prompt(
         self,
         input_text: str,
