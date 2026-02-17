@@ -9,6 +9,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
 
+from nl_2_fol.inference import custom_exceptions as ce
 from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
 from nl_2_fol.prompting.prompt_models import (
     CHEBIFOLOutput,
@@ -160,6 +161,7 @@ class ChebiPrompt:
             example_prompt=example_prompt,
         )
 
+    @ce.stop_program_exception
     def invoke_llm_with_fs_prompt(self, input_text: str) -> tuple[CHEBIFOLOutput, str]:
         try:
             input_text = self._normalize_input_text(input_text)
@@ -205,6 +207,7 @@ class ChebiPrompt:
             ]
         )
 
+    @ce.stop_program_exception
     def invoke_llm_with_err_failure_prompt(
         self, input_text: str, previous_fol_definition: str, error_message: str
     ) -> tuple[CHEBIFOLOutput, str]:
@@ -271,6 +274,7 @@ class ChebiPrompt:
             ]
         )
 
+    @ce.stop_program_exception
     def invoke_llm_with_undef_failure_prompt(
         self,
         input_text: str,
