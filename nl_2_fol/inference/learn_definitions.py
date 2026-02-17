@@ -1,4 +1,5 @@
 import os
+import pickle
 
 import tqdm
 from gavel.logic import logic
@@ -15,7 +16,7 @@ from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 # TODO: can langchain-graph be used here? or will it be an overkill?
 class LearnDefinitions:
-    _DEFINITION_JSON_FILE_NAME = "learned_definitions.json"
+    _DEFINITION_FILE_NAME = "learned_definitions.pkl"
 
     def __init__(
         self,
@@ -65,7 +66,12 @@ class LearnDefinitions:
         self._prompts_history: list[str] = []
 
     def learn_fol_definitions(self):
-        for chemical_class in self._dataset.classes.values():
+        # Create a list copy to avoid "dictionary changed size during iteration" error
+        # since self._dataset.classes.pop() is called during the loop
+        for chemical_class_name in tqdm.tqdm(list(self._dataset.classes.keys())):
+            if chemical_class_name not in self._dataset.classes:
+                continue
+            chemical_class = self._dataset.classes[chemical_class_name]
             if chemical_class.definition is None:
                 continue
             if chemical_class.id in self.definitions.learned_definitions:
@@ -381,19 +387,15 @@ class LearnDefinitions:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
         if path is not None:
-            with open(path, "r") as f:
-                definitions = def_model.DefinitionLearningResults.model_validate_json(
-                    f.read()
-                )
+            with open(path, "rb") as f:
+                definitions = pickle.load(f)
         elif os.path.exists(
             default_path := os.path.join(
-                self._default_def_save_path, self._DEFINITION_JSON_FILE_NAME
+                self._default_def_save_path, self._DEFINITION_FILE_NAME
             )
         ):
-            with open(default_path, "r") as f:
-                definitions = def_model.DefinitionLearningResults.model_validate_json(
-                    f.read()
-                )
+            with open(default_path, "rb") as f:
+                definitions = pickle.load(f)
         else:
             definitions = def_model.DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
@@ -424,15 +426,15 @@ class LearnDefinitions:
             path = self._default_def_save_path
             os.makedirs(path, exist_ok=True)
 
-        file_path = os.path.join(path, self._DEFINITION_JSON_FILE_NAME)
+        file_path = os.path.join(path, self._DEFINITION_FILE_NAME)
         meta_data_path = os.path.join(path, "__metadata__.txt")
         if os.path.exists(file_path):
             os.remove(file_path)
         if os.path.exists(meta_data_path):
             os.remove(meta_data_path)
 
-        with open(file_path, "w") as f:
-            f.write(self.definitions.model_dump_json(indent=2))
+        with open(file_path, "wb") as f:
+            pickle.dump(self.definitions, f)
 
         with open(meta_data_path, "w") as f:
             f.write(str(self.chebi_prompt_obj))
