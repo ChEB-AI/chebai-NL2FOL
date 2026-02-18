@@ -1,4 +1,5 @@
 from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
+from chemlog.fol_classification.fol_utils import normalize_fol_formula
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
 from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
@@ -51,7 +52,7 @@ class GavelFOLReasoner:
             )
 
         try:
-            tptp_parsed.formula = convert_to_cnf(tptp_parsed.formula)
+            tptp_parsed.formula = normalize_fol_formula(tptp_parsed.formula)
         except Exception as e:
             raise Exception(
                 f"Error converting the parsed TPTP formula `{tptp_parsed.formula}` to CNF format\n"
