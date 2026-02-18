@@ -24,7 +24,14 @@ class GavelFOLReasoner:
 
     @tptp_parse_exception
     def get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
-        """Parses a formula in TPTP format (as obtained from an LLM) into gavel's internal representation."""
+        """Parses a formula in TPTP format into gavel's internal representation.
+
+        Parsing Process:
+        1. Wrap the input formula into TPTP annotated format: fof(temp, axiom, <formula>).
+        2. Parse using TPTP parser and extract the right-hand side of the biimplication.
+        3. Ensure the result is a QuantifiedFormula (wrap in existential quantifier if not).
+        4. Normalize the formula to PNF (Prenex Normal Form) with matrix in CNF for model checking.
+        """
         # wrap formula into an *annotated formula* for parsing
         formula_wrapped = f"fof(temp, axiom, {formula})."
         # unwrap the annotated formula after parsing, only take the right-hand side of the biimplication
@@ -32,8 +39,9 @@ class GavelFOLReasoner:
             tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula.right
         except Exception as e:
             raise Exception(
-                f"Error parsing FOL formula `{formula}` to TPTP formula: \n"
-                f"More specifics on above error: {e}"
+                f"PARSING STEP 1/3 FAILED - Error parsing FOL formula to TPTP format.\n"
+                f"Process: The formula is wrapped in TPTP annotated format and parsed.\n"
+                f"More specifics: {e}"
             )
         # the model checker expects the matrix (the part after the quantifiers) to be in CNF (with N-ary conjunctions and disjunctions)
         try:
@@ -45,17 +53,21 @@ class GavelFOLReasoner:
                 )
         except AssertionError as e:
             raise Exception(
-                f"The parsed TPTP formula `{tptp_parsed}` does not have the\n"
-                f" expected structure (missing `.formula` attribute after parsing).\n"
-                f"More specifics on above error: {e}"
+                f"PARSING STEP 2/3 FAILED - Error wrapping parsed formula in QuantifiedFormula.\n"
+                f"Parsed result: `{tptp_parsed}`\n"
+                f"Process: If the parsed formula is not already quantified, it's wrapped in an existential quantifier.\n"
+                f"More specifics: {e}"
             )
 
         try:
             tptp_parsed.formula = normalize_fol_formula(tptp_parsed.formula)
         except Exception as e:
             raise Exception(
-                f"Error converting the parsed TPTP formula `{tptp_parsed.formula}` to CNF format\n"
-                f"More specifics on above error: {e}"
+                "PARSING STEP 3/3 FAILED - Error normalizing formula to PNF (Prenex Normal Form).\n"
+                f"Formula before normalization: `{tptp_parsed.formula}`\n"
+                f"Process: The formula is converted to PNF (all quantifiers moved to the front)"
+                "with the matrix in CNF (Conjunctive Normal Form with N-ary conjunctions and disjunctions).\n"
+                f"More specifics: {e}"
             )
         print(f"Input formula: {formula}\n\t Parsed as: {tptp_parsed}")
         return tptp_parsed
@@ -91,9 +103,19 @@ class GavelFOLReasoner:
             **(additional_background_definitions or {}),
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
-
-        # Can fail for definitions like: `∃[]: ((peptide(x)))`
-        outcome, _ = model_checker.find_model(definition_to_match)
+        try:
+            # Can fail for definitions like: `∃[]: ((peptide(x)))`
+            outcome, _ = model_checker.find_model(definition_to_match)
+        except Exception as e:
+            raise Exception(
+                f"MODEL CHECKING FAILED - Error during model checking for the formula.\n"
+                f"Formula being checked: `{definition_to_match}`\n\n"
+                f"Background: The formula was parsed through these steps:\n"
+                f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
+                f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
+                f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
+                f"More specifics: {e}"
+            )
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 
     @mol_to_fol_exception
