@@ -59,13 +59,15 @@ class LearnDefinitions:
         self._attempts: int = 0
         self._prompts_history: list[str] = []
 
+        # Do Not use this, classes are popped from the dataset during learning,
+        # this is only used to check if a predicate is in the dataset during missing predicate exception handling
+        self.__iter_classes: set[str] = set(self._c3po_slim_dataset.classes.keys())
+
     def learn_fol_definitions(self):
-        # Create a list copy to avoid "dictionary changed size during iteration" error
-        # since self._dataset.classes.pop() is called during the loop
-        for chemical_class_name in tqdm.tqdm(
-            list(self._c3po_slim_dataset.classes.keys())
-        ):
-            if chemical_class_name not in self._c3po_slim_dataset.classes:
+        for chemical_class_name in tqdm.tqdm(self._c3po_slim_dataset.classes.keys()):
+            if chemical_class_name not in self.__iter_classes:
+                # This class could have been learned duing recursive learning
+                # when handling missing predicate exception, so we skip it in the main loop
                 continue
             chemical_class = self._c3po_slim_dataset.classes[chemical_class_name]
             if chemical_class.definition is None:
@@ -94,7 +96,7 @@ class LearnDefinitions:
             )
             self._add_prompt_to_history(prompt_text, result)
             self._parse_and_validate_generated_definition(result, chemical_class)
-            self._c3po_slim_dataset.classes.pop(chemical_class.name)
+            self.__iter_classes.remove(chemical_class.name)
             self._save_definitions()
             return
         except Exception as e:
@@ -164,7 +166,7 @@ class LearnDefinitions:
                     chemical_class,
                     add_background_defs=add_bck_def,
                 )
-                self._c3po_slim_dataset.classes.pop(chemical_class.name)
+                self.__iter_classes.remove(chemical_class.name)
                 self._save_definitions()
                 return
             except Exception as e:
@@ -439,16 +441,23 @@ class LearnDefinitions:
         self, new_definitions: def_model.DefinitionLearningResults
     ):
         """Load back the state from from learned definitions."""
-
+        loaded_def_names = []
         for _, learned_def in new_definitions.learned_definitions.items():
             self._gavel.add_background_definition(
                 learned_def.name, learned_def.learned_FOL
             )
             self.chebi_prompt_obj.generated_predicates_names.add(learned_def.name)
+            loaded_def_names.append(learned_def.name)
+        print(f"Loaded definitions for the following classes: {loaded_def_names}")
 
+        loaded_additional_def_names = []
         for name, add_def in new_definitions.additional_definitions.items():
             self._gavel.add_background_definition(name, add_def)
             self.chebi_prompt_obj.generated_predicates_names.add(name)
+            loaded_additional_def_names.append(name)
+        print(
+            f"Loaded the following additional definitions for out-of-box predicates: {loaded_additional_def_names}"
+        )
 
     @ce.stop_program_upon_failure
     def _save_definitions(self, path: str | None = None) -> None:
