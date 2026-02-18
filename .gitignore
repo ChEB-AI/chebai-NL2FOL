@@ -209,4 +209,5 @@ __marimo__/
 .isort.cfg
 *.env
 data/
-.vscode
+.vscode/launch.json
+.vscode/tasks.json

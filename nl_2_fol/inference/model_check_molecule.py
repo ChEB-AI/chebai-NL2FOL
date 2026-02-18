@@ -18,7 +18,7 @@ class GavelFOLReasoner:
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
-        self._background_definitions: dict[
+        self.background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ] = {}
 
@@ -74,8 +74,8 @@ class GavelFOLReasoner:
         predicates = self._extract_predicates(definition_to_match)
         missing_predicates = predicates - self._base_predicates.keys()
         missing_predicates = (
-            missing_predicates - self._background_definitions.keys()
-            if self._background_definitions
+            missing_predicates - self.background_definitions.keys()
+            if self.background_definitions
             else missing_predicates
         )
         if additional_background_definitions:
@@ -87,7 +87,7 @@ class GavelFOLReasoner:
 
         universe, extensions = self._mol_to_fol(molecule)
         bck_def = {
-            **self._background_definitions,
+            **self.background_definitions,
             **(additional_background_definitions or {}),
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
@@ -125,11 +125,9 @@ class GavelFOLReasoner:
         traverse(formula.formula)
         return predicates
 
-    def update_background_definition(
-        self, name: str, definition: logic.QuantifiedFormula
-    ):
+    def add_background_definition(self, name: str, definition: logic.QuantifiedFormula):
         """Add a single background definition."""
-        self._background_definitions[name] = ([], definition)
+        self.background_definitions[name] = ([], definition)
 
     def convert_to_background_definitions(
         self,
@@ -178,7 +176,7 @@ if __name__ == "__main__":
     definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
     definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
     assert not isinstance(definition_to_match, Exception)
-    fol_parser._background_definitions = {
+    fol_parser.background_definitions = {
         "oneCarbonCompound": (
             [],
             fol_parser.get_tptp_fol_definition(

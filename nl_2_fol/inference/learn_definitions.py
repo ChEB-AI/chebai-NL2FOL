@@ -48,7 +48,7 @@ class LearnDefinitions:
             definitions_path
         )
 
-        # ------ Entire Chebi data loading -------
+        # Load Entire Chebi data
         entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
         self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
 
@@ -260,8 +260,8 @@ class LearnDefinitions:
             for def_name, (_, background_def) in add_background_defs.items():
                 if def_name not in self.definitions.additional_definitions:
                     self.definitions.additional_definitions[def_name] = background_def
-                    self.chebi_prompt_obj._generated_predicates_names.add(def_name)
-                    self._gavel.update_background_definition(def_name, background_def)
+                    self.chebi_prompt_obj.generated_predicates_names.add(def_name)
+                    self._gavel.add_background_definition(def_name, background_def)
 
         self.definitions.learned_definitions[chemical_class.id] = (
             def_model.LearnedDefinition(
@@ -274,8 +274,8 @@ class LearnDefinitions:
                 prompts_history=self._prompts_history,
             )
         )
-        self._gavel.update_background_definition(chemical_class.name, tptp_def)
-        self.chebi_prompt_obj._generated_predicates_names.add(chemical_class.name)
+        self._gavel.add_background_definition(chemical_class.name, tptp_def)
+        self.chebi_prompt_obj.generated_predicates_names.add(chemical_class.name)
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
@@ -441,15 +441,14 @@ class LearnDefinitions:
         """Load back the state from from learned definitions."""
 
         for _, learned_def in new_definitions.learned_definitions.items():
-            self._gavel._background_definitions[learned_def.name] = (
-                [],
-                learned_def.learned_FOL,
+            self._gavel.add_background_definition(
+                learned_def.name, learned_def.learned_FOL
             )
-            self.chebi_prompt_obj._generated_predicates_names.add(learned_def.name)
+            self.chebi_prompt_obj.generated_predicates_names.add(learned_def.name)
 
         for name, add_def in new_definitions.additional_definitions.items():
-            self._gavel._background_definitions[name] = ([], add_def)
-            self.chebi_prompt_obj._generated_predicates_names.add(name)
+            self._gavel.add_background_definition(name, add_def)
+            self.chebi_prompt_obj.generated_predicates_names.add(name)
 
     @ce.stop_program_upon_failure
     def _save_definitions(self, path: str | None = None) -> None:

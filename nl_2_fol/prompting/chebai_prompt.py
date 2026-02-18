@@ -38,7 +38,7 @@ class ChebiPrompt:
         self.err_failure_prompt_fp: str = err_failure_prompt_fp
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
         # To keep track of predicates generated across iterations, for prompting
-        self._generated_predicates_names: set[str] = set()
+        self.generated_predicates_names: set[str] = set()
 
         self._few_shot_parser = PydanticOutputParser(pydantic_object=CHEBIFOLOutput)
         self._undef_parser = PydanticOutputParser(
@@ -84,13 +84,13 @@ class ChebiPrompt:
         # Maybe only add if there are less than N predicates?
         # Advanced models (Claude Sonnet 4.5/4.6, Claude Opus 4) support a 1,000,000-token
         # context window, other models handles 200,000 and 1,000,000 tokens
-        if len(self._generated_predicates_names) > 0:
+        if len(self.generated_predicates_names) > 0:
             return (
                 "\nAlso, here is the list of predicates that were already "
                 "defined in previous iterations for other CHEBI classes.\n"
                 "You can reuse these predicates if they are applicable to the "
                 "current class definition.\n"
-                f"Predicate List: {', '.join(sorted(self._generated_predicates_names))}"
+                f"Predicate List: {', '.join(sorted(self.generated_predicates_names))}"
             )
         return ""
 
@@ -371,8 +371,8 @@ if __name__ == "__main__":
     chebi_def = """CHEBI:16236 - ethanol: A primary alcohol that
         is ethane in which one of the hydrogens is substituted
         by a hydroxy group."""
-    chebai_prompt._generated_predicates_names.add("primary_alcohol")
-    chebai_prompt._generated_predicates_names.add("hydroxy_group")
+    chebai_prompt.generated_predicates_names.add("primary_alcohol")
+    chebai_prompt.generated_predicates_names.add("hydroxy_group")
 
     print("---" * 50, "FEW-SHOT PROMPT TEST", "---" * 50)
     # Test the few-shot prompt
@@ -380,7 +380,6 @@ if __name__ == "__main__":
     print(f"Few-shot prompt text: \n {prompt_text} \n\n\n")
     print(f"Few-shot result:\n {result}")
     print("\n\n\n")
-    exit()
 
     previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
     AND (has_part SOME HydroxyGroup))"""
