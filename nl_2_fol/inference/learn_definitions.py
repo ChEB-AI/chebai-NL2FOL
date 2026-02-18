@@ -1,5 +1,6 @@
 import os
 import pickle
+import queue
 
 import tqdm
 from gavel.logic import logic
@@ -50,29 +51,23 @@ class LearnDefinitions:
         # ------ Entire Chebi data loading -------
         entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
         self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
-        self.undirected_chebi_graph = entire_chebi_data.build_hierarchy_graph().to_undirected()
 
-        # ----- C3PO slim dataset loading -----
-        (
-            self._dataset,
-            self.smiles_to_instance,
-            self.validation_smiles,
-            self.all_smiles,
-        ) = dm.load_c3po_slim_dataset(
+        self._c3po_slim_dataset = dm.load_c3po_slim_dataset(
             entire_chebi_data, self.slim_dataset_path, self.structures_path
         )
-        # ---------------------------------------
-
+        self.undirected_chebi_graph = entire_chebi_data.get_undirected_hierarchy_graph()
         self._attempts: int = 0
         self._prompts_history: list[str] = []
 
     def learn_fol_definitions(self):
         # Create a list copy to avoid "dictionary changed size during iteration" error
         # since self._dataset.classes.pop() is called during the loop
-        for chemical_class_name in tqdm.tqdm(list(self._dataset.classes.keys())):
-            if chemical_class_name not in self._dataset.classes:
+        for chemical_class_name in tqdm.tqdm(
+            list(self._c3po_slim_dataset.classes.keys())
+        ):
+            if chemical_class_name not in self._c3po_slim_dataset.classes:
                 continue
-            chemical_class = self._dataset.classes[chemical_class_name]
+            chemical_class = self._c3po_slim_dataset.classes[chemical_class_name]
             if chemical_class.definition is None:
                 continue
             if chemical_class.id in self.definitions.learned_definitions:
@@ -99,7 +94,7 @@ class LearnDefinitions:
             )
             self._add_prompt_to_history(prompt_text, result)
             self._parse_and_validate_generated_definition(result, chemical_class)
-            self._dataset.classes.pop(chemical_class.name)
+            self._c3po_slim_dataset.classes.pop(chemical_class.name)
             self._save_definitions()
             return
         except Exception as e:
@@ -169,7 +164,7 @@ class LearnDefinitions:
                     chemical_class,
                     add_background_defs=add_bck_def,
                 )
-                self._dataset.classes.pop(chemical_class.name)
+                self._c3po_slim_dataset.classes.pop(chemical_class.name)
                 self._save_definitions()
                 return
             except Exception as e:
@@ -191,12 +186,12 @@ class LearnDefinitions:
         chemical_class_predicates = {
             predicate.lower().strip()
             for predicate in e.missing_predicates
-            if predicate.lower().strip() in self._dataset.classes
+            if predicate.lower().strip() in self._c3po_slim_dataset.classes
         }
         for predicate in chemical_class_predicates:
             # NOTE: Recursively learn definition for the predicate if it's
             # in c3po slim dataset
-            self._learn(self._dataset.get_chemical_class_by_name(predicate))
+            self._learn(self._c3po_slim_dataset.get_chemical_class_by_name(predicate))
 
         raised_exception = ce.RetryException()
         other_predicates = e.missing_predicates - chemical_class_predicates
@@ -285,16 +280,19 @@ class LearnDefinitions:
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
 
-    def get_closest_negatives(self, available_smiles: list[str], target_id, n_samples=100):
+    @ce.stop_program_upon_failure
+    def _get_closest_negatives(
+        self, available_smiles: list[str], target_id, n_samples=100
+    ) -> list[dm.SMILES_STRING]:
         # get closest samples in terms of distance in chebi
         if n_samples >= len(available_smiles):
             return available_smiles
-        import queue 
+
         q = queue.Queue()
         q.put(int(target_id))
         visited = set()
         selected_smiles = set()
-        id_to_class_name = {str(cls.id): cls.name for cls in self._dataset.classes.values()}
+
         # BFS until we get n_samples or exhaust the graph
         # select closest labels to target_id and choose SMILES from those labels until we have n_samples
         while not q.empty() and len(selected_smiles) < n_samples:
@@ -303,13 +301,15 @@ class LearnDefinitions:
                 if neighbor not in visited:
                     visited.add(neighbor)
                     q.put(neighbor)
-                    if str(neighbor) in id_to_class_name:
-                        for smiles in self._dataset.classes[id_to_class_name[str(neighbor)]].all_positive_examples:
+                    if str(neighbor) in self._c3po_slim_dataset.id_to_class_name:
+                        for smiles in self._c3po_slim_dataset.classes[
+                            self._c3po_slim_dataset.id_to_class_name[str(neighbor)]
+                        ].all_positive_examples:
                             if smiles in available_smiles:
                                 selected_smiles.add(smiles)
                             if len(selected_smiles) >= n_samples:
                                 return list(selected_smiles)
-            
+
         return list(selected_smiles)
 
     @ce.stop_program_upon_failure
@@ -319,18 +319,21 @@ class LearnDefinitions:
         # validation examples already substracted during from positive examples
         positive_examples = chemical_class.all_positive_examples
         positive_instances = {
-            self.smiles_to_instance[smiles]
+            self._c3po_slim_dataset.smiles_to_instance[smiles]
             for smiles in positive_examples
-            if smiles in self.smiles_to_instance
+            if smiles in self._c3po_slim_dataset.smiles_to_instance
         }
         negative_examples = list(
-            (self.all_smiles - positive_examples) - self.validation_smiles
+            (self._c3po_slim_dataset.all_smiles - positive_examples)
+            - self._c3po_slim_dataset.validation_examples
         )
-        negative_examples = self.get_closest_negatives(negative_examples, chemical_class.id, n_samples=max_neg_samples)
+        negative_examples = self._get_closest_negatives(
+            negative_examples, chemical_class.id, n_samples=max_neg_samples
+        )
         negative_instances = {
-            self.smiles_to_instance[smiles]
+            self._c3po_slim_dataset.smiles_to_instance[smiles]
             for smiles in negative_examples
-            if smiles in self.smiles_to_instance
+            if smiles in self._c3po_slim_dataset.smiles_to_instance
         }
         assert len(positive_instances) > 0, (
             f"No positive samples found for {chemical_class.name}"

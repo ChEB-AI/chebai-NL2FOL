@@ -89,17 +89,36 @@ class Dataset(BaseModel):
 
     classes: dict[str, ChemicalClass]
     structures: set[ChemicalStructure] = set()
-    validation_examples: set[SMILES_STRING] | None = None
+    validation_examples: set[SMILES_STRING] = set()
 
     @property
     def name(self):
         return f"bench-{self.ontology_version}-{self.min_members}-{self.max_members}"
 
+    @property
     def all_smiles(self) -> set[SMILES_STRING]:
-        return {s.smiles for s in self.structures}
+        cache_attr = "_all_smiles_cache"
+        if not hasattr(self, cache_attr):
+            setattr(self, cache_attr, {s.smiles for s in self.structures})
+        return getattr(self, cache_attr)
 
+    @property
     def smiles_to_instance(self) -> dict[SMILES_STRING, ChemicalStructure]:
-        return {s.smiles: s for s in self.structures}
+        cache_attr = "_smiles_to_instance_cache"
+        if not hasattr(self, cache_attr):
+            setattr(self, cache_attr, {s.smiles: s for s in self.structures})
+        return getattr(self, cache_attr)
+
+    @property
+    def id_to_class_name(self) -> dict[str, str]:
+        cache_attr = "_id_to_class_name_cache"
+        if not hasattr(self, cache_attr):
+            setattr(
+                self,
+                cache_attr,
+                {str(cls.id): cls.name for cls in self.classes.values()},
+            )
+        return getattr(self, cache_attr)
 
     def get_chemical_class_by_id(self, class_id: CHEBI_ID) -> ChemicalClass:
         for cc in self.classes.values():
@@ -117,12 +136,7 @@ def load_c3po_slim_dataset(
     chemlog_chebi_class: ChEBIDataWrapper,
     slim_dataset_path: str = "data/classes_slim.csv",
     structures_path: str = "data/structures.csv",
-) -> tuple[
-    Dataset,
-    dict[SMILES_STRING, ChemicalStructure],
-    set[SMILES_STRING],
-    set[SMILES_STRING],
-]:
+) -> Dataset:
     print("Loading and processing C3PO slim dataset...")
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
         raise FileNotFoundError(
@@ -211,14 +225,7 @@ def load_c3po_slim_dataset(
         f"Validation examples: {len(dataset.validation_examples)}"  # pyright: ignore[reportArgumentType]
     )
 
-    s2i = dataset.smiles_to_instance()
-    all_validation = (
-        set(dataset.validation_examples)
-        if dataset.validation_examples is not None
-        else set()
-    )
-    all_smiles = dataset.all_smiles()
-    return dataset, s2i, all_validation, all_smiles
+    return dataset
 
 
 if __name__ == "__main__":

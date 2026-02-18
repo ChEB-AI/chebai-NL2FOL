@@ -1,9 +1,8 @@
-from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.fol_classification.fol_utils import normalize_fol_formula
+from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
 from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
-from gavel.logic.logic_utils import convert_to_cnf
 from rdkit import Chem
 
 from nl_2_fol.inference.base_predicates import GAVEL_PREDICATES
