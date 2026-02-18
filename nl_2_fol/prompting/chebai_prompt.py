@@ -77,6 +77,23 @@ class ChebiPrompt:
             ]
         )
 
+    def _get_predicates_section(self) -> str:
+        """Generate the predicates list section dynamically."""
+        # Only add predicates section if list is not empty
+        # TODO: Check if needed, as list of predicates can be long and may overwhelm the prompt.
+        # Maybe only add if there are less than N predicates?
+        # Advanced models (Claude Sonnet 4.5/4.6, Claude Opus 4) support a 1,000,000-token
+        # context window, other models handles 200,000 and 1,000,000 tokens
+        if len(self._generated_predicates_names) > 0:
+            return (
+                "\nAlso, here is the list of predicates that were already "
+                "defined in previous iterations for other CHEBI classes.\n"
+                "You can reuse these predicates if they are applicable to the "
+                "current class definition.\n"
+                f"Predicate List: {', '.join(sorted(self._generated_predicates_names))}"
+            )
+        return ""
+
     @staticmethod
     def _normalize_input_text(input_text: str) -> str:
         """
@@ -90,28 +107,15 @@ class ChebiPrompt:
     ) -> SystemMessagePromptTemplate:
         system_prompt_text = load_yaml_sys_prompt(system_prompt_fp)
 
-        # Only add predicates section if list is not empty
-        # TODO: Check if needed, as list of predicates can be long and may overwhelm the prompt.
-        # Maybe only add if there are less than N predicates?
-        # Advanced models (Claude Sonnet 4.5/4.6, Claude Opus 4) support a 1,000,000-token
-        # context window, other models handles 200,000 and 1,000,000 tokens
-        if len(self._generated_predicates_names) > 0:
-            predicates_section = (
-                "\n\nAlso, here is the list of predicates that were already"
-                "defined in previous iterations for other CHEBI classes.\n"
-                "You can reuse these predicates if they are applicable to the"
-                "current class definition.\n"
-                f"Predicate List: {', '.join(self._generated_predicates_names)}"
-            )
-            # Remove the placeholder from system_prompt_text if it exists
-            system_prompt_text = system_prompt_text + predicates_section
-
         # Escape curly braces that are not template variables
-        # We need to double curly braces except for {format_instructions}
-        # Replace all { and } with {{ and }}, then restore {format_instructions}
+        # We need to double curly braces except for {format_instructions} and {learned_predicates_list}
+        # Replace all { and } with {{ and }}, then restore template variables
         escaped_text = system_prompt_text.replace("{", "{{").replace("}", "}}")
         escaped_text = escaped_text.replace(
             "{{format_instructions}}", "{format_instructions}"
+        )
+        escaped_text = escaped_text.replace(
+            "{{learned_predicates_list}}", "{learned_predicates_list}"
         )
 
         format_instructions = self._few_shot_parser.get_format_instructions()
@@ -167,8 +171,13 @@ class ChebiPrompt:
             input_text = self._normalize_input_text(input_text)
             # Get the formatted prompt messages
             prompt_text = self.get_fs_prompt_with_given_input(input_text)
-            # Invoke the chain
-            output = self._few_shots_chain.invoke({"input": input_text})
+            # Invoke the chain with dynamic predicates list
+            output = self._few_shots_chain.invoke(
+                {
+                    "input": input_text,
+                    "learned_predicates_list": self._get_predicates_section(),
+                }
+            )
             return output, prompt_text
         except Exception as e:
             print(f"Error during inference: {e}")
@@ -176,7 +185,9 @@ class ChebiPrompt:
 
     def get_fs_prompt_with_given_input(self, input_text) -> str:
         input_text = self._normalize_input_text(input_text)
-        prompt_messages = self._fs_entire_prompt.format_messages(input=input_text)
+        prompt_messages = self._fs_entire_prompt.format_messages(
+            input=input_text, learned_predicates_list=self._get_predicates_section()
+        )
         prompt_text = "\n".join(
             [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
         )
@@ -219,12 +230,13 @@ class ChebiPrompt:
             prompt_text = self.get_err_failure_with_given_inputs(
                 input_text, previous_fol_definition, error_message
             )
-            # Invoke the chain
+            # Invoke the chain with dynamic predicates list
             output = self._err_failure_chain.invoke(
                 {
                     "input": input_text,
                     "previous_fol_definition": previous_fol_definition,
                     "error_message": error_message,
+                    "learned_predicates_list": self._get_predicates_section(),
                 }
             )
             return output, prompt_text
@@ -239,6 +251,7 @@ class ChebiPrompt:
             input=input_text,
             previous_fol_definition=previous_fol_definition,
             error_message=error_message,
+            learned_predicates_list=self._get_predicates_section(),
         )
         prompt_text = "\n".join(
             [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
@@ -294,12 +307,13 @@ class ChebiPrompt:
             prompt_text = self.get_undef_failure_with_given_inputs(
                 input_text, previous_fol_definition, undefined_predicates_details
             )
-            # Invoke the chain
+            # Invoke the chain with dynamic predicates list
             output = self._undef_failure_chain.invoke(
                 {
                     "input": input_text,
                     "previous_fol_definition": previous_fol_definition,
                     "undefined_predicates_details": undefined_predicates_details,
+                    "learned_predicates_list": self._get_predicates_section(),
                 }
             )
             return output, prompt_text
@@ -317,6 +331,7 @@ class ChebiPrompt:
             input=input_text,
             previous_fol_definition=previous_fol_definition,
             undefined_predicates_details=undefined_predicates_details,
+            learned_predicates_list=self._get_predicates_section(),
         )
         prompt_text = "\n".join(
             [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
@@ -356,6 +371,8 @@ if __name__ == "__main__":
     chebi_def = """CHEBI:16236 - ethanol: A primary alcohol that
         is ethane in which one of the hydrogens is substituted
         by a hydroxy group."""
+    chebai_prompt._generated_predicates_names.add("primary_alcohol")
+    chebai_prompt._generated_predicates_names.add("hydroxy_group")
 
     print("---" * 50, "FEW-SHOT PROMPT TEST", "---" * 50)
     # Test the few-shot prompt
@@ -363,6 +380,7 @@ if __name__ == "__main__":
     print(f"Few-shot prompt text: \n {prompt_text} \n\n\n")
     print(f"Few-shot result:\n {result}")
     print("\n\n\n")
+    exit()
 
     previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
     AND (has_part SOME HydroxyGroup))"""
