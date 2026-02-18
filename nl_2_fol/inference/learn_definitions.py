@@ -50,6 +50,7 @@ class LearnDefinitions:
         # ------ Entire Chebi data loading -------
         entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
         self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
+        self.undirected_chebi_graph = entire_chebi_data.build_hierarchy_graph().to_undirected()
 
         # ----- C3PO slim dataset loading -----
         (
@@ -284,9 +285,36 @@ class LearnDefinitions:
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
 
+    def get_closest_negatives(self, available_smiles: list[str], target_id, n_samples=100):
+        # get closest samples in terms of distance in chebi
+        if n_samples >= len(available_smiles):
+            return available_smiles
+        import queue 
+        q = queue.Queue()
+        q.put(int(target_id))
+        visited = set()
+        selected_smiles = set()
+        id_to_class_name = {str(cls.id): cls.name for cls in self._dataset.classes.values()}
+        # BFS until we get n_samples or exhaust the graph
+        # select closest labels to target_id and choose SMILES from those labels until we have n_samples
+        while not q.empty() and len(selected_smiles) < n_samples:
+            current = q.get()
+            for neighbor in self.undirected_chebi_graph.neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    q.put(neighbor)
+                    if str(neighbor) in id_to_class_name:
+                        for smiles in self._dataset.classes[id_to_class_name[str(neighbor)]].all_positive_examples:
+                            if smiles in available_smiles:
+                                selected_smiles.add(smiles)
+                            if len(selected_smiles) >= n_samples:
+                                return list(selected_smiles)
+            
+        return list(selected_smiles)
+
     @ce.stop_program_upon_failure
     def _get_positive_and_negative_samples(
-        self, chemical_class: dm.ChemicalClass
+        self, chemical_class: dm.ChemicalClass, max_neg_samples: int = 1000
     ) -> tuple[set[dm.ChemicalStructure], set[dm.ChemicalStructure]]:
         # validation examples already substracted during from positive examples
         positive_examples = chemical_class.all_positive_examples
@@ -298,6 +326,7 @@ class LearnDefinitions:
         negative_examples = list(
             (self.all_smiles - positive_examples) - self.validation_smiles
         )
+        negative_examples = self.get_closest_negatives(negative_examples, chemical_class.id, n_samples=max_neg_samples)
         negative_instances = {
             self.smiles_to_instance[smiles]
             for smiles in negative_examples
