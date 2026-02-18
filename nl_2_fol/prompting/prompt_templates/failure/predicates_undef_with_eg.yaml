@@ -8,5 +8,14 @@ failure_prompt: |
   In the above FOL definition, the following predicates have no FOL formulas defined:
   {undefined_predicates_details}
 
+  Here is an example of how to define undefined predicates in FOL:
+
+  Example FOL definition for carbon monoxide:
+  carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))
+
+  If the predicate `oneCarbonCompound` is undefined, define it using FOL:
+  "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)"
+  "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
+
   Please provide FOL formulas for all undefined predicates. Follow the format exactly:
   {undef_predicates_format_instructions}
