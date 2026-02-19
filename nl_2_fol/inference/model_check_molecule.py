@@ -60,11 +60,11 @@ class GavelFOLReasoner:
             )
 
         try:
-            tptp_parsed.formula = normalize_fol_formula(tptp_parsed.formula)
+            tptp_parsed = normalize_fol_formula(tptp_parsed)
         except Exception as e:
             raise Exception(
                 "PARSING STEP 3/3 FAILED - Error normalizing formula to PNF (Prenex Normal Form).\n"
-                f"Formula before normalization: `{tptp_parsed.formula}`\n"
+                f"Formula before normalization: `{tptp_parsed}`\n"
                 f"Process: The formula is converted to PNF (all quantifiers moved to the front)"
                 "with the matrix in CNF (Conjunctive Normal Form with N-ary conjunctions and disjunctions).\n"
                 f"More specifics: {e}"
