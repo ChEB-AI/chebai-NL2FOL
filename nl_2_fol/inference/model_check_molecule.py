@@ -147,6 +147,34 @@ class GavelFOLReasoner:
         traverse(formula.formula)
         return predicates
 
+    def _extract_predicate_variables(self, formula_str: str) -> list[logic.Variable]:
+        """Extract the variables from a predicate definition string.
+
+        For a definition like `new_predicate(X1, X2) <=> ?[X3]: (...)`
+        This extracts [X1, X2] from the predicate call on the left side of the biimplication.
+        """
+        formula_wrapped = f"fof(temp, axiom, {formula_str})."
+        try:
+            parsed = self._tptp_parser.parse(formula_wrapped)[0].formula
+            # Get the left side of the biimplication (the predicate definition)
+            left_side = parsed.left
+
+            # Extract variables from the predicate expression
+            variables = []
+            if isinstance(left_side, logic.PredicateExpression):
+                # The arguments should be Variable objects
+                if hasattr(left_side, "arguments") and left_side.arguments:
+                    for arg in left_side.arguments:
+                        if isinstance(arg, logic.Variable):
+                            variables.append(arg)
+
+            return variables
+        except Exception as e:
+            raise Exception(
+                f"Failed to extract predicate variables from definition: {formula_str}\n"
+                f"More specifics: {e}"
+            )
+
     def add_background_definition(self, name: str, definition: logic.QuantifiedFormula):
         """Add a single background definition."""
         self.background_definitions[name] = ([], definition)
@@ -158,8 +186,9 @@ class GavelFOLReasoner:
         """Convert a dictionary of predicate definitions (as strings) to the internal format."""
         converted = {}
         for name, def_str in predicates.items():
+            variables = self._extract_predicate_variables(def_str)
             converted[name] = (
-                [],
+                variables,
                 self.get_tptp_fol_definition(def_str),
             )
         return converted
