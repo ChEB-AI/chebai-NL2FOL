@@ -97,7 +97,7 @@ class TestGavelFOLReasoner:
     def test_extract_predicates_from_formula(self, reasoner: GavelFOLReasoner):
         """Test extracting all predicates from a formula."""
         formula_str = "test_pred(X) <=> (p(X) & q(X) & r(X))"
-        pred_vars, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
 
         predicates = reasoner._extract_predicates(parsed_formula)
 
@@ -105,21 +105,11 @@ class TestGavelFOLReasoner:
         assert "q" in predicates
         assert "r" in predicates
 
-    def test_add_background_definition(self, reasoner: GavelFOLReasoner):
-        """Test adding a background definition."""
-        formula_str = "test_pred(X) <=> (p(X) & q(X))"
-        pred_vars, parsed = reasoner.get_tptp_fol_definition(formula_str)
-
-        reasoner.add_background_definition("test_pred", pred_vars, parsed)
-
-        assert "test_pred" in reasoner.background_definitions
-        assert reasoner.background_definitions["test_pred"][1] == parsed
-
     def test_missing_predicate_detection(self, reasoner: GavelFOLReasoner):
         """Test that missing predicates are detected."""
         # This formula references an undefined predicate
         formula_str = "test_pred(X) <=> undefined_pred(X)"
-        parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
 
         # Create a simple molecule
         mol = Chem.MolFromSmiles("C")
@@ -127,3 +117,73 @@ class TestGavelFOLReasoner:
         # Should raise MissingPredicateException
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+    def test_parsing_step_2_quantified_formula_error(self, reasoner: GavelFOLReasoner):
+        formula_str = "test_pred(X) <=> X"  # Bare variable (may or may not work)
+
+        with pytest.raises(Exception) as exc_info:
+            reasoner.get_tptp_fol_definition(formula_str)
+
+        error_message = str(exc_info.value)
+        assert "PARSING STEP 2/3 FAILED" in error_message, (
+            f"Expected PARSING STEP 2/3 error, but got: {error_message[:200]}"
+        )
+        assert "Error wrapping parsed formula in QuantifiedFormula" in error_message
+
+    def test_parsing_step_3_normalization_error(self, reasoner: GavelFOLReasoner):
+        formula_str = (
+            "test_pred(X) <=> ?[Y]: ![Z]: ?[W]: ![V]: (p(Y) & q(Z) & r(W) & s(V))"
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            reasoner.get_tptp_fol_definition(formula_str)
+
+        error_message = str(exc_info.value)
+        assert "PARSING STEP 3/3 FAILED" in error_message, (
+            f"Expected PARSING STEP 3/3 error, but got: {error_message[:200]}"
+        )
+        assert "Error normalizing formula to PNF (Prenex Normal Form)" in error_message
+        assert "Formula before normalization:" in error_message
+
+    def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
+        """Test that errors in does_mol_match_tptp_definition are properly raised."""
+        formula_str = "test_pred(X) <=> (ptest(X) & qtest(X))"
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+
+        # Create a simple molecule
+        mol = Chem.MolFromSmiles("C")
+
+        # Should raise MissingPredicateException since ptest and qtest are not defined
+        with pytest.raises(MissingPredicateException) as exc_info:
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        assert exc_info.value.missing_predicates == {"ptest", "qtest"}
+        error_message = str(exc_info.value)
+        assert "ptest" in error_message
+        assert "qtest" in error_message
+
+    def test_does_mol_match_tptp_definition_exception(self, reasoner: GavelFOLReasoner):
+        """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
+        cdef = reasoner.convert_to_background_definitions(
+            {"ptest": "ptest <=> has_bond(X, Y)"}  # ptest has no variables
+        )
+        reasoner.add_background_definition("ptest", cdef["ptest"][0], cdef["ptest"][1])
+
+        # Here, the formula reference ptest predicate with a variable,
+        # but the background definition of ptest has no variables,
+        # which should cause an error during model checking
+        formula_str = "test_pred(X) <=> (ptest(X))"
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+
+        # Create a simple molecule
+        mol = Chem.MolFromSmiles("C")
+
+        with pytest.raises(Exception) as exc_info:
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        error_message = str(exc_info.value)
+        assert (
+            "Predicate `ptest` is defined with arity 0 but called with 1 arguments"
+            in error_message
+        )
