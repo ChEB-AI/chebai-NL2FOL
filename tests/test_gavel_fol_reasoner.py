@@ -1,6 +1,7 @@
 """Tests for GavelFOLReasoner class."""
 
 import pytest
+from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
@@ -22,18 +23,30 @@ class TestGavelFOLReasoner:
         assert reasoner._base_predicates is not None
         assert reasoner.background_definitions == {}
 
+    def test_tptp_parsing_error(self, reasoner):
+        """Test that invalid TPTP formulas raise a parsing error."""
+        invalid_formula = (
+            "invalid_pred(X) <=> (p(X) & q(X)"  # Missing closing parenthesis
+        )
+
+        with pytest.raises(Exception):
+            reasoner.get_tptp_fol_definition(invalid_formula)
+
     def test_get_tptp_fol_definition_simple(self, reasoner: GavelFOLReasoner):
         """Test parsing a simple FOL definition."""
         formula_str = "simple_pred(x) <=> (p(x) & q(x))"
-        result = reasoner.get_tptp_fol_definition(formula_str)
+        pred_vars, formula = reasoner.get_tptp_fol_definition(formula_str)
 
-        assert isinstance(result, logic.QuantifiedFormula)
-        assert result.quantifier == logic.Quantifier.EXISTENTIAL
+        assert len(pred_vars) == 1
+        assert str(pred_vars[0]) == "x0"
+        assert isinstance(formula, logic.QuantifiedFormula)
+        assert formula.quantifier == logic.Quantifier.EXISTENTIAL
 
     def test_extract_predicate_variables_single(self, reasoner: GavelFOLReasoner):
         """Test extracting a single variable from predicate definition."""
         formula_str = "new_predicate(X1) <=> ?[X2]: (has_bond(X1, X2) & o(X2))"
-        variables = reasoner._extract_predicate_variables(formula_str)
+        left_side = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).").left
+        variables = reasoner._extract_predicate_variables(left_side)
 
         assert len(variables) == 1
         assert isinstance(variables[0], logic.Variable)
@@ -42,7 +55,8 @@ class TestGavelFOLReasoner:
     def test_extract_predicate_variables_multiple(self, reasoner: GavelFOLReasoner):
         """Test extracting multiple variables from predicate definition."""
         formula_str = "multi_pred(X1, X2, X3) <=> (p(X1) & q(X2, X3))"
-        variables = reasoner._extract_predicate_variables(formula_str)
+        left_side = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).").left
+        variables = reasoner._extract_predicate_variables(left_side)
 
         assert len(variables) == 3
         assert all(isinstance(v, logic.Variable) for v in variables)
@@ -51,7 +65,8 @@ class TestGavelFOLReasoner:
     def test_extract_predicate_variables_none(self, reasoner: GavelFOLReasoner):
         """Test extracting variables from a predicate with no arguments."""
         formula_str = "nullary_pred <=> (p & q)"
-        variables = reasoner._extract_predicate_variables(formula_str)
+        left_side = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).").left
+        variables = reasoner._extract_predicate_variables(left_side)
 
         assert len(variables) == 0
 
@@ -82,7 +97,7 @@ class TestGavelFOLReasoner:
     def test_extract_predicates_from_formula(self, reasoner: GavelFOLReasoner):
         """Test extracting all predicates from a formula."""
         formula_str = "test_pred(X) <=> (p(X) & q(X) & r(X))"
-        parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        pred_vars, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
 
         predicates = reasoner._extract_predicates(parsed_formula)
 
@@ -93,9 +108,9 @@ class TestGavelFOLReasoner:
     def test_add_background_definition(self, reasoner: GavelFOLReasoner):
         """Test adding a background definition."""
         formula_str = "test_pred(X) <=> (p(X) & q(X))"
-        parsed = reasoner.get_tptp_fol_definition(formula_str)
+        pred_vars, parsed = reasoner.get_tptp_fol_definition(formula_str)
 
-        reasoner.add_background_definition("test_pred", parsed)
+        reasoner.add_background_definition("test_pred", pred_vars, parsed)
 
         assert "test_pred" in reasoner.background_definitions
         assert reasoner.background_definitions["test_pred"][1] == parsed

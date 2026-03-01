@@ -227,7 +227,9 @@ class LearnDefinitions:
         Raises an exception if parsing or validation fails, otherwise returns None.
         """
 
-        tptp_def = self._gavel.get_tptp_fol_definition(result.FOL_formula)
+        pred_variables, tptp_def = self._gavel.get_tptp_fol_definition(
+            result.FOL_formula
+        )
 
         pos_samples, neg_samples = self._get_positive_and_negative_samples(
             chemical_class
@@ -259,16 +261,24 @@ class LearnDefinitions:
         # TODO: What if the additonal defintions are changed in next attempt
         # and both are valid which to use? rn the earliest
         if add_background_defs:
-            for def_name, (_, background_def) in add_background_defs.items():
+            for def_name, (pred_vars, background_def) in add_background_defs.items():
                 if def_name not in self.definitions.additional_definitions:
-                    self.definitions.additional_definitions[def_name] = background_def
+                    self.definitions.additional_definitions[def_name] = (
+                        def_model.FOLFormula(
+                            formula=background_def, pred_variables=pred_vars
+                        )
+                    )
                     self.chebi_prompt_obj.generated_predicates_names.add(def_name)
-                    self._gavel.add_background_definition(def_name, background_def)
+                    self._gavel.add_background_definition(
+                        def_name, pred_vars, background_def
+                    )
 
         self.definitions.learned_definitions[chemical_class.id] = (
             def_model.LearnedDefinition(
                 metrics=metrics,
-                learned_FOL=tptp_def,
+                learned_FOL=def_model.FOLFormula(
+                    formula=tptp_def, pred_variables=pred_variables
+                ),
                 name=chemical_class.name,
                 definition=chemical_class.definition
                 if chemical_class.definition
@@ -276,7 +286,9 @@ class LearnDefinitions:
                 prompts_history=self._prompts_history,
             )
         )
-        self._gavel.add_background_definition(chemical_class.name, tptp_def)
+        self._gavel.add_background_definition(
+            chemical_class.name, pred_variables, tptp_def
+        )
         self.chebi_prompt_obj.generated_predicates_names.add(chemical_class.name)
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
@@ -444,7 +456,9 @@ class LearnDefinitions:
         loaded_def_names = []
         for _, learned_def in new_definitions.learned_definitions.items():
             self._gavel.add_background_definition(
-                learned_def.name, learned_def.learned_FOL
+                learned_def.name,
+                learned_def.learned_FOL.pred_variables,
+                learned_def.learned_FOL.formula,
             )
             self.chebi_prompt_obj.generated_predicates_names.add(learned_def.name)
             loaded_def_names.append(learned_def.name)
@@ -452,7 +466,9 @@ class LearnDefinitions:
 
         loaded_additional_def_names = []
         for name, add_def in new_definitions.additional_definitions.items():
-            self._gavel.add_background_definition(name, add_def)
+            self._gavel.add_background_definition(
+                name, add_def.pred_variables, add_def.formula
+            )
             self.chebi_prompt_obj.generated_predicates_names.add(name)
             loaded_additional_def_names.append(name)
         print(
