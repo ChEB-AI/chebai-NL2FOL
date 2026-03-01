@@ -10,3 +10,6 @@ failure_prompt: |
 
   Now, please review the CHEBI class definition again and identify where the mistake might have occurred.
   Then, generate a corrected FOL definition that addresses the identified issues.
+
+  IMPORTANT: Do not include any explanatory text, reasoning, or commentary in your response.
+  Output ONLY the JSON object as specified in the format instructions. Do not write anything before or after the JSON.

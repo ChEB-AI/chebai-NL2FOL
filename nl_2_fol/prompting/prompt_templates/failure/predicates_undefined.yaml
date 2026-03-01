@@ -8,5 +8,10 @@ failure_prompt: |
   In the above FOL definition, the following predicates have no FOL formulas defined:
   {undefined_predicates_details}
 
-  Please provide FOL formulas for all undefined predicates. Follow the format exactly:
+  Please provide FOL formulas for all undefined predicates.
+
+  IMPORTANT: Do not include any explanatory text, reasoning, or commentary in your response.
+  Output ONLY the JSON object as specified in the format instructions. Do not write anything before or after the JSON.
+
+  Follow the format exactly:
   {undef_predicates_format_instructions}
