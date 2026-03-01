@@ -86,8 +86,9 @@ class ChebiPrompt:
         # context window, other models handles 200,000 and 1,000,000 tokens
         if len(self.generated_predicates_names) > 0:
             return (
-                "\nAlso, here is the list of predicates that were already "
+                "\nAlso, here is the list of predicates along with their arguments that were already "
                 "defined in previous iterations for other CHEBI classes.\n"
+                "If any predicate has no arguments, then just the predicate name is shown without parentheses. "
                 "You can reuse these predicates if they are applicable to the "
                 "current class definition.\n"
                 f"Predicate List: {', '.join(sorted(self.generated_predicates_names))}"

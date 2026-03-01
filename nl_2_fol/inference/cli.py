@@ -18,8 +18,8 @@ PROMPT_TEMPLATES_DIR = os.path.join(PROJECT_DIR, "prompting", "prompt_templates"
 class Main:
     @staticmethod
     def learn(
-        api_platform: API_PLATFORM,
-        model_name: str,
+        api_platform: API_PLATFORM = "anthropic",
+        model_name: str = "claude-opus-4-6",
         system_prompt_fp: str = os.path.join(
             PROMPT_TEMPLATES_DIR, "system_prompts", "with_predicates_list.yaml"
         ),
@@ -61,4 +61,5 @@ class Main:
 
 
 if __name__ == "__main__":
+    # python nl_2_fol/inference/cli.py learn --help
     CLI(Main)

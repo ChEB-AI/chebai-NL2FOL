@@ -40,39 +40,31 @@ class GavelFOLReasoner:
             tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula
         except Exception as e:
             raise Exception(
-                f"PARSING STEP 1/3 FAILED - Error parsing FOL formula to TPTP format.\n"
+                f"Error parsing FOL formula to TPTP format.\n"
                 f"Process: The formula is wrapped in TPTP annotated format and parsed.\n"
-                f"More specifics: {e}"
+                f"More specifics on the error: {e}"
             )
 
         pred_variables = self._extract_predicate_variables(tptp_parsed.left)
         tptp_right_side = tptp_parsed.right
 
-        # the model checker expects the matrix (the part after the quantifiers) to be in CNF (with N-ary conjunctions and disjunctions)
-        try:
-            # Eg. `oligopeptide(x) <=> (peptide(x) & has_few_amino_acid_residues(x))`
-            # The above fol formula will be parsed and will have no formula attribute
-            if not isinstance(tptp_right_side, logic.QuantifiedFormula):
-                tptp_right_side = logic.QuantifiedFormula(
-                    logic.Quantifier.EXISTENTIAL, [], tptp_right_side
-                )
-        except AssertionError as e:
-            raise Exception(
-                f"PARSING STEP 2/3 FAILED - Error wrapping parsed formula in QuantifiedFormula.\n"
-                f"Parsed result: `{tptp_right_side}`\n"
-                f"Process: If the parsed formula is not already quantified, it's wrapped in an existential quantifier.\n"
-                f"More specifics: {e}"
+        # Eg. `oligopeptide(x) <=> (peptide(x) & has_few_amino_acid_residues(x))`
+        # The above fol formula will be parsed and will have no formula attribute
+        if not isinstance(tptp_right_side, logic.QuantifiedFormula):
+            tptp_right_side = logic.QuantifiedFormula(
+                logic.Quantifier.EXISTENTIAL, [], tptp_right_side
             )
 
         try:
             tptp_right_side = normalize_fol_formula(tptp_right_side)
         except Exception as e:
             raise Exception(
-                "PARSING STEP 3/3 FAILED - Error normalizing formula to PNF (Prenex Normal Form).\n"
-                f"Formula before normalization: `{tptp_right_side}`\n"
-                f"Process: The formula is converted to PNF (all quantifiers moved to the front)"
-                "with the matrix in CNF (Conjunctive Normal Form with N-ary conjunctions and disjunctions).\n"
-                f"More specifics: {e}"
+                "Error normalizing formula to PNF (Prenex Normal Form).\n"
+                f"TPTP Parsed Formula before normalization: `{tptp_right_side}`\n"
+                "Process: The formula is converted to PNF (all quantifiers moved to"
+                "the front) with the matrix in CNF (Conjunctive Normal Form with N-ary"
+                "conjunctions and disjunctions).\n"
+                f"More specifics on the error: {e}"
             )
         print(f"Input formula: {formula}\n\t Parsed as: {tptp_right_side}")
         return pred_variables, tptp_right_side
@@ -119,7 +111,7 @@ class GavelFOLReasoner:
                 f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
                 f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
                 f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
-                f"More specifics: {e}"
+                f"More specifics on the error: {e}"
             )
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 

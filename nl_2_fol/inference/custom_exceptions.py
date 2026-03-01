@@ -74,7 +74,11 @@ class RetryException(Exception):
 
 
 class MissingPredicateException(Exception):
+    @stop_program_upon_failure
     def __init__(self, missing_predicates: set[str]) -> None:
+        assert len(missing_predicates) > 0, (
+            "Expected at least one missing predicate but got an empty set."
+        )
         self.missing_predicates: set[str] = missing_predicates
         message = (
             f"Definition contains unknown predicates not in base predicates "
@@ -84,9 +88,12 @@ class MissingPredicateException(Exception):
 
 
 class LearnOutOfBoxPredicateException(Exception):
+    @stop_program_upon_failure
     def __init__(self, predicates_to_learn: dict[str, str | None]) -> None:
+        assert len(predicates_to_learn) > 0, (
+            "Expected at least one predicate to learn but got an empty dictionary."
+        )
         self.predicates_to_learn: dict[str, str | None] = predicates_to_learn
-
         predicates_details = "\n".join(
             f"  - Predicate: {name}"
             + (f"\n    Chemical Definition: {definition}" if definition else "")
@@ -112,6 +119,7 @@ class LowF1ScoreException(Exception):
         chebi_id_to_data_mapping: Mapping of chemical IDs to their data including definitions.
     """
 
+    @stop_program_upon_failure
     def __init__(
         self,
         pos_samples: list[ChemicalStructure],
@@ -159,6 +167,10 @@ class LowF1ScoreException(Exception):
                 chemicals=set(neg_samples),
                 matched_smiles=matched_neg_samples,
             )
+            assert len(fp_mol_names) > 0, (
+                "Expected at least one false positive sample to show details for "
+                "but found none. Please check the input data and mappings."
+            )
             fp_details = "\n".join(
                 f"\t- Chemical Name: {name}"
                 + (f", Chemical Definition: {chem_def}" if chem_def else "")
@@ -169,6 +181,10 @@ class LowF1ScoreException(Exception):
             fn_mol_names = get_chemical_details(
                 chemicals=set(pos_samples),
                 matched_smiles=unmatched_pos_samples,
+            )
+            assert len(fn_mol_names) > 0, (
+                "Expected at least one false negative sample to show details for "
+                "but found none. Please check the input data and mappings."
             )
             fn_details = "\n".join(
                 f"\t- Chemical Name: {name}"

@@ -37,16 +37,15 @@ class TestGavelFOLReasoner:
         formula_str = "simple_pred(x) <=> (p(x) & q(x))"
         pred_vars, formula = reasoner.get_tptp_fol_definition(formula_str)
 
-        assert len(pred_vars) == 1
-        assert str(pred_vars[0]) == "x0"
+        assert len(pred_vars) == 0
         assert isinstance(formula, logic.QuantifiedFormula)
         assert formula.quantifier == logic.Quantifier.EXISTENTIAL
 
     def test_extract_predicate_variables_single(self, reasoner: GavelFOLReasoner):
         """Test extracting a single variable from predicate definition."""
         formula_str = "new_predicate(X1) <=> ?[X2]: (has_bond(X1, X2) & o(X2))"
-        left_side = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).").left
-        variables = reasoner._extract_predicate_variables(left_side)
+        tptp = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).")[0].formula
+        variables = reasoner._extract_predicate_variables(tptp.left)
 
         assert len(variables) == 1
         assert isinstance(variables[0], logic.Variable)
@@ -55,8 +54,8 @@ class TestGavelFOLReasoner:
     def test_extract_predicate_variables_multiple(self, reasoner: GavelFOLReasoner):
         """Test extracting multiple variables from predicate definition."""
         formula_str = "multi_pred(X1, X2, X3) <=> (p(X1) & q(X2, X3))"
-        left_side = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).").left
-        variables = reasoner._extract_predicate_variables(left_side)
+        tptp = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).")[0].formula
+        variables = reasoner._extract_predicate_variables(tptp.left)
 
         assert len(variables) == 3
         assert all(isinstance(v, logic.Variable) for v in variables)
@@ -65,8 +64,8 @@ class TestGavelFOLReasoner:
     def test_extract_predicate_variables_none(self, reasoner: GavelFOLReasoner):
         """Test extracting variables from a predicate with no arguments."""
         formula_str = "nullary_pred <=> (p & q)"
-        left_side = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).").left
-        variables = reasoner._extract_predicate_variables(left_side)
+        tptp = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).")[0].formula
+        variables = reasoner._extract_predicate_variables(tptp.left)
 
         assert len(variables) == 0
 
@@ -118,19 +117,7 @@ class TestGavelFOLReasoner:
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
-    def test_parsing_step_2_quantified_formula_error(self, reasoner: GavelFOLReasoner):
-        formula_str = "test_pred(X) <=> X"  # Bare variable (may or may not work)
-
-        with pytest.raises(Exception) as exc_info:
-            reasoner.get_tptp_fol_definition(formula_str)
-
-        error_message = str(exc_info.value)
-        assert "PARSING STEP 2/3 FAILED" in error_message, (
-            f"Expected PARSING STEP 2/3 error, but got: {error_message[:200]}"
-        )
-        assert "Error wrapping parsed formula in QuantifiedFormula" in error_message
-
-    def test_parsing_step_3_normalization_error(self, reasoner: GavelFOLReasoner):
+    def test_parsing_normalization_error(self, reasoner: GavelFOLReasoner):
         formula_str = (
             "test_pred(X) <=> ?[Y]: ![Z]: ?[W]: ![V]: (p(Y) & q(Z) & r(W) & s(V))"
         )

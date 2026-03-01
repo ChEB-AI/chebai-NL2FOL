@@ -237,6 +237,7 @@ class LearnDefinitions:
 
         unmatched_pos_samples, matched_neg_samples = (
             self._check_if_definition_matches_samples(
+                chemical_class,
                 tptp_def,
                 pos_samples,
                 neg_samples,
@@ -268,7 +269,7 @@ class LearnDefinitions:
                             formula=background_def, pred_variables=pred_vars
                         )
                     )
-                    self.chebi_prompt_obj.generated_predicates_names.add(def_name)
+                    self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
                     self._gavel.add_background_definition(
                         def_name, pred_vars, background_def
                     )
@@ -289,10 +290,31 @@ class LearnDefinitions:
         self._gavel.add_background_definition(
             chemical_class.name, pred_variables, tptp_def
         )
-        self.chebi_prompt_obj.generated_predicates_names.add(chemical_class.name)
+        self._add_generated_predicates_to_prompt_obj(
+            chemical_class.name, pred_variables
+        )
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
+
+    def _add_generated_predicates_to_prompt_obj(
+        self,
+        pred_name: str,
+        vars: list[logic.Variable],
+    ) -> None:
+        """Add a predicate with its variables to the prompt object.
+
+        Example: if pred_name='oligopeptide' and vars=[x0, x1],
+                 this will add 'oligopeptide(x0, x1)' to generated_predicates_names
+
+        If no variables, only the predicate name is added.
+        """
+        if len(vars) > 0:
+            variables_str = ", ".join(str(var) for var in vars)
+            predicate_with_vars = f"{pred_name}({variables_str})"
+        else:
+            predicate_with_vars = pred_name
+        self.chebi_prompt_obj.generated_predicates_names.add(predicate_with_vars)
 
     @ce.stop_program_upon_failure
     def _get_closest_negatives(
@@ -328,7 +350,7 @@ class LearnDefinitions:
 
     @ce.stop_program_upon_failure
     def _get_positive_and_negative_samples(
-        self, chemical_class: dm.ChemicalClass, max_neg_samples: int = 1000
+        self, chemical_class: dm.ChemicalClass, max_neg_samples: int = 5000
     ) -> tuple[set[dm.ChemicalStructure], set[dm.ChemicalStructure]]:
         # validation examples already substracted during from positive examples
         positive_examples = chemical_class.all_positive_examples
@@ -360,6 +382,7 @@ class LearnDefinitions:
 
     def _check_if_definition_matches_samples(
         self,
+        chemical_class: dm.ChemicalClass,
         tptp_def: QuantifiedFormula,
         pos_samples: set[dm.ChemicalStructure],
         neg_samples: set[dm.ChemicalStructure],
@@ -377,24 +400,26 @@ class LearnDefinitions:
 
         unmatched_pos_samples = set()
         for chemical in tqdm.tqdm(
-            pos_samples, desc="Checking definition for positive samples..."
+            pos_samples,
+            desc=f"Checking definition of {chemical_class.name} for positive samples...",
         ):
             matches = is_matched(chemical)
             if not matches:
                 unmatched_pos_samples.add(chemical.smiles)
         print(
-            f"Unmatched positive samples: {len(unmatched_pos_samples)}/{len(pos_samples)}"
+            f"\nUnmatched positive samples for {chemical_class.name}: {len(unmatched_pos_samples)}/{len(pos_samples)}"
         )
 
         matched_neg_samples = set()
         for chemical in tqdm.tqdm(
-            neg_samples, desc="Checking definition against negative samples..."
+            neg_samples,
+            desc=f"Checking definition of {chemical_class.name} against negative samples...",
         ):
             matches = is_matched(chemical)
             if matches:
                 matched_neg_samples.add(chemical.smiles)
         print(
-            f"Matched negative samples: {len(matched_neg_samples)}/{len(neg_samples)}"
+            f"\nMatched negative samples for {chemical_class.name}: {len(matched_neg_samples)}/{len(neg_samples)}"
         )
         return unmatched_pos_samples, matched_neg_samples
 
@@ -460,7 +485,9 @@ class LearnDefinitions:
                 learned_def.learned_FOL.pred_variables,
                 learned_def.learned_FOL.formula,
             )
-            self.chebi_prompt_obj.generated_predicates_names.add(learned_def.name)
+            self._add_generated_predicates_to_prompt_obj(
+                learned_def.name, learned_def.learned_FOL.pred_variables
+            )
             loaded_def_names.append(learned_def.name)
         print(f"Loaded definitions for the following classes: {loaded_def_names}")
 
@@ -469,7 +496,7 @@ class LearnDefinitions:
             self._gavel.add_background_definition(
                 name, add_def.pred_variables, add_def.formula
             )
-            self.chebi_prompt_obj.generated_predicates_names.add(name)
+            self._add_generated_predicates_to_prompt_obj(name, add_def.pred_variables)
             loaded_additional_def_names.append(name)
         print(
             f"Loaded the following additional definitions for out-of-box predicates: {loaded_additional_def_names}"
