@@ -1,3 +1,4 @@
+import traceback
 from functools import wraps
 
 from nl_2_fol.inference.data_model import SMILES_STRING, ChemicalStructure
@@ -10,6 +11,7 @@ def tptp_parse_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
+            traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -24,6 +26,7 @@ def mol_to_fol_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
+            traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -38,6 +41,7 @@ def model_check_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
+            traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -50,12 +54,31 @@ class StopProgramException(Exception):
         super().__init__(message)
 
 
+def stop_program_upon_failure(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"{func.__name__} failed: {e}")
+            traceback.print_exc()
+            # Error can be customized here for LLMs feedback,
+            # for now we just print the error and return it
+            raise StopProgramException(str(e)) from e
+
+    return wrapper
+
+
 class RetryException(Exception):
     pass
 
 
 class MissingPredicateException(Exception):
+    @stop_program_upon_failure
     def __init__(self, missing_predicates: set[str]) -> None:
+        assert len(missing_predicates) > 0, (
+            "Expected at least one missing predicate but got an empty set."
+        )
         self.missing_predicates: set[str] = missing_predicates
         message = (
             f"Definition contains unknown predicates not in base predicates "
@@ -65,9 +88,12 @@ class MissingPredicateException(Exception):
 
 
 class LearnOutOfBoxPredicateException(Exception):
+    @stop_program_upon_failure
     def __init__(self, predicates_to_learn: dict[str, str | None]) -> None:
+        assert len(predicates_to_learn) > 0, (
+            "Expected at least one predicate to learn but got an empty dictionary."
+        )
         self.predicates_to_learn: dict[str, str | None] = predicates_to_learn
-
         predicates_details = "\n".join(
             f"  - Predicate: {name}"
             + (f"\n    Chemical Definition: {definition}" if definition else "")
@@ -85,66 +111,112 @@ class LowF1ScoreException(Exception):
     Exception raised when a generated FOL definition fails F1-score validation.
 
     Args:
-        pos_samples: List of positive ChemicalStructure samples used in validation.
-        neg_samples: List of negative ChemicalStructure samples used in validation.
+        pos_samples: List of positive ChemicalStructure samples.
+        neg_samples: List of negative ChemicalStructure samples.
         matched_neg_samples: List of SMILES strings for negative samples incorrectly matched (false positives).
         unmatched_pos_samples: List of SMILES strings for positive samples not matched (false negatives).
         max_examples: Maximum number of misclassified examples to include in error message.
         chebi_id_to_data_mapping: Mapping of chemical IDs to their data including definitions.
     """
 
+    @stop_program_upon_failure
     def __init__(
         self,
-        pos_samples: list[ChemicalStructure],
-        neg_samples: list[ChemicalStructure],
-        matched_neg_samples: list[SMILES_STRING],
-        unmatched_pos_samples: list[SMILES_STRING],
+        pos_samples: set[ChemicalStructure],
+        neg_samples: set[ChemicalStructure],
+        matched_neg_samples: set[SMILES_STRING],
+        unmatched_pos_samples: set[SMILES_STRING],
         max_examples: int,
-        chebi_id_to_data_mapping: dict[str, dict],
+        chebi_name_to_data_mapping: dict[str, dict],
     ) -> None:
         def get_chemical_details(
-            chemicals: list[ChemicalStructure],
-            matched_smiles: list[SMILES_STRING],
+            chemicals: set[ChemicalStructure],
+            matched_smiles: set[SMILES_STRING],
         ) -> list[tuple[str, str | None]]:
             chemical_details: list[tuple[str, str | None]] = []
+            chemicals_without_def: list[tuple[str, str | None]] = []
+
+            # First pass: collect chemicals with definitions
             for chemical in chemicals:
                 if chemical.smiles in matched_smiles:
-                    chemical_data = chebi_id_to_data_mapping.get(
-                        str(chemical.name).lower().strip(), None
+                    chemical_data = chebi_name_to_data_mapping.get(
+                        chemical.name.lower().strip(), None
                     )
                     chemical_def = None
                     if chemical_data:
                         chemical_def = chemical_data.get("definition", "")
-                    chemical_details.append((chemical.name, chemical_def))
+
+                    if chemical_def:
+                        chemical_details.append((chemical.name, chemical_def))
+                        if len(chemical_details) >= max_examples:
+                            return chemical_details
+                    else:
+                        chemicals_without_def.append((chemical.name, chemical_def))
+
+            # Second pass: fill remaining slots with chemicals without definitions
+            remaining_slots = max_examples - len(chemical_details)
+            chemical_details.extend(chemicals_without_def[:remaining_slots])
+
             return chemical_details
 
-        fp_mol_names = get_chemical_details(
-            chemicals=neg_samples,
-            matched_smiles=matched_neg_samples,
-        )[:max_examples]
+        fp_percentage = (
+            len(matched_neg_samples) / len(neg_samples) if neg_samples else 0
+        )
+        fn_percentage = (
+            len(unmatched_pos_samples) / len(pos_samples) if pos_samples else 0
+        )
+        if fn_percentage < 0.1 and fp_percentage > 0.1:
+            # When FN is less than 10% but FP is more than 10%,
+            # we prioritize showing FP examples as they are more prevalent
+            error_priority = "FP"
+        elif fn_percentage > 0.1 and fp_percentage < 0.1:
+            error_priority = "FN"
+        else:
+            error_priority = "both"
 
-        fn_mol_names = get_chemical_details(
-            chemicals=pos_samples,
-            matched_smiles=unmatched_pos_samples,
-        )[:max_examples]
+        fp_details, fn_details = None, None
+        fn_mol_names: list[tuple[str, str | None]] = []
+        if error_priority == "FP" or error_priority == "both":
+            fp_mol_names = get_chemical_details(
+                chemicals=set(neg_samples),
+                matched_smiles=matched_neg_samples,
+            )
+            assert len(fp_mol_names) > 0, (
+                "Expected at least one false positive sample to show details for "
+                "but found none. Please check the input data and mappings."
+            )
+            fp_details = "\n".join(
+                f"\t- Chemical Name: {name}"
+                + (f", Chemical Definition: {chem_def}" if chem_def else "")
+                for name, chem_def in fp_mol_names
+            )
 
-        fp_details = "\n".join(
-            f"\t- Chemical Name: {name}"
-            + (f", Chemical Definition: {chem_def}" if chem_def else "")
-            for name, chem_def in fp_mol_names
-        )
-        fn_details = "\n".join(
-            f"\t- Chemical Name: {name}"
-            + (f", Chemical Definition: {chem_def}" if chem_def else "")
-            for name, chem_def in fn_mol_names
-        )
-        message = (
-            f"The generated FOL definition did not meet the required F1 score threshold:\n"
-            f"Please find below the names of molecules and optionally their definitions"
-            f" that were misclassified:\n"
-            f"False Positives (FP): \n{fp_details}\n"
-            f"False Negatives (FN): \n{fn_details}"
-        )
+        if error_priority == "FN" or error_priority == "both":
+            fn_mol_names = get_chemical_details(
+                chemicals=set(pos_samples),
+                matched_smiles=unmatched_pos_samples,
+            )
+            assert len(fn_mol_names) > 0, (
+                "Expected at least one false negative sample to show details for "
+                "but found none. Please check the input data and mappings."
+            )
+            fn_details = "\n".join(
+                f"\t- Chemical Name: {name}"
+                + (f", Chemical Definition: {chem_def}" if chem_def else "")
+                for name, chem_def in fn_mol_names
+            )
+
+        message_parts = [
+            "The generated FOL definition did not meet the required F1 score threshold:\n"
+            "Please find below the names of molecules and optionally their definitions"
+            " that were misclassified:\n"
+        ]
+        if fp_details is not None:
+            message_parts.append(f"False Positives (FP): \n{fp_details}\n")
+        if fn_details is not None:
+            message_parts.append(f"False Negatives (FN): \n{fn_details}\n")
+
+        message = "".join(message_parts)
 
         super().__init__(message)
 
@@ -159,7 +231,7 @@ if __name__ == "__main__":
         print(f"Caught an exception: {e}")
 
     try:
-        pos_samples = [
+        pos_samples = {
             ChemicalStructure(
                 name="MoleculeA",
                 smiles="C1=CC=CC=C1",
@@ -170,8 +242,8 @@ if __name__ == "__main__":
                 smiles="C1=CC=CC=C1O",
                 mol=Chem.MolFromSmiles("C1=CC=CC=C1O"),
             ),
-        ]
-        neg_samples = [
+        }
+        neg_samples = {
             ChemicalStructure(
                 name="MoleculeC",
                 smiles="C1=CC=CC=C1N",
@@ -182,9 +254,9 @@ if __name__ == "__main__":
                 smiles="C1=CC=CC=C1F",
                 mol=Chem.MolFromSmiles("C1=CC=CC=C1F"),
             ),
-        ]
-        matched_neg_samples = ["C1=CC=CC=C1N"]  # False positive
-        unmatched_pos_samples = ["C1=CC=CC=C1O", "C1=CC=CC=C1"]  # False negative
+        }
+        matched_neg_samples = {"C1=CC=CC=C1N"}  # False positive
+        unmatched_pos_samples = {"C1=CC=CC=C1O", "C1=CC=CC=C1"}  # False negative
 
         raise LowF1ScoreException(
             pos_samples,
@@ -192,7 +264,7 @@ if __name__ == "__main__":
             matched_neg_samples,
             unmatched_pos_samples,
             max_examples=2,
-            chebi_id_to_data_mapping={
+            chebi_name_to_data_mapping={
                 "moleculec": {"definition": "Definition of MoleculeC"},
                 "moleculed": {"definition": "Definition of MoleculeD"},
                 "moleculea": {"definition": "Definition of MoleculeA"},

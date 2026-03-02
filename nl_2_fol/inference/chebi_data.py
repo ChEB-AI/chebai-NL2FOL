@@ -1,4 +1,5 @@
 import os
+import pickle
 
 import networkx as nx
 import pandas as pd
@@ -73,6 +74,28 @@ class ChEBIDataWrapper(ChEBIData):
         )
         return sorted_nodes
 
+    def get_trans_hierarchy(self):
+        if not os.path.exists(self.trans_hierarchy_path):
+            g = self.build_hierarchy_graph()
+            if not os.path.exists(self.undirected_hierarchy_path):
+                with open(self.undirected_hierarchy_path, "wb") as f:
+                    pickle.dump(g.to_undirected(), f)
+            with open(self.trans_hierarchy_path, "wb") as f:
+                pickle.dump(nx.transitive_closure(g), f)
+            return g
+        with open(self.trans_hierarchy_path, "rb") as f:
+            return pickle.load(f)
+
+    def get_undirected_hierarchy_graph(self) -> nx.Graph:
+        if not os.path.exists(self.undirected_hierarchy_path):
+            g = self.build_hierarchy_graph()
+            undirected_g = g.to_undirected()
+            with open(self.undirected_hierarchy_path, "wb") as f:
+                pickle.dump(undirected_g, f)
+            return undirected_g
+        with open(self.undirected_hierarchy_path, "rb") as f:
+            return pickle.load(f)
+
     @staticmethod
     def chebi_to_int(s: str) -> int:
         """
@@ -85,6 +108,12 @@ class ChEBIDataWrapper(ChEBIData):
         - int: The integer ID extracted from the ChEBI term string.
         """
         return int(s[s.index(":") + 1 :])
+
+    @property
+    def undirected_hierarchy_path(self):
+        return os.path.join(
+            self.base_dir, f"chebi_v{self.chebi_version}", "undirected_hierarchy.pkl"
+        )
 
 
 if __name__ == "__main__":

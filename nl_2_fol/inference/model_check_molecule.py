@@ -1,8 +1,8 @@
+from chemlog.fol_classification.fol_utils import normalize_fol_formula
 from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
 from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
-from gavel.logic.logic_utils import convert_to_cnf
 from rdkit import Chem
 
 from nl_2_fol.inference.base_predicates import GAVEL_PREDICATES
@@ -18,47 +18,56 @@ class GavelFOLReasoner:
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
-        self._background_definitions: dict[
+        self.background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ] = {}
 
     @tptp_parse_exception
-    def get_tptp_fol_definition(self, formula: str) -> logic.QuantifiedFormula:
-        """Parses a formula in TPTP format (as obtained from an LLM) into gavel's internal representation."""
+    def get_tptp_fol_definition(
+        self, formula: str
+    ) -> tuple[list[logic.Variable], logic.QuantifiedFormula]:
+        """Parses a formula in TPTP format into gavel's internal representation.
+
+        Parsing Process:
+        1. Wrap the input formula into TPTP annotated format: fof(temp, axiom, <formula>).
+        2. Parse using TPTP parser and extract the right-hand side of the biimplication.
+        3. Ensure the result is a QuantifiedFormula (wrap in existential quantifier if not).
+        4. Normalize the formula to PNF (Prenex Normal Form) with matrix in CNF for model checking.
+        """
         # wrap formula into an *annotated formula* for parsing
         formula_wrapped = f"fof(temp, axiom, {formula})."
-        # unwrap the annotated formula after parsing, only take the right-hand side of the biimplication
         try:
-            tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula.right
+            tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula
         except Exception as e:
             raise Exception(
-                f"Error parsing FOL formula `{formula}` to TPTP formula: \n"
-                f"More specifics on above error: {e}"
+                f"Error parsing FOL formula to TPTP format.\n"
+                f"Process: The formula is wrapped in TPTP annotated format and parsed.\n"
+                f"More specifics on the error: {e}"
             )
-        # the model checker expects the matrix (the part after the quantifiers) to be in CNF (with N-ary conjunctions and disjunctions)
-        try:
-            # Eg. `oligopeptide(x) <=> (peptide(x) & has_few_amino_acid_residues(x))`
-            # The above fol formula will be parsed and will have no formula attribute
-            if not isinstance(tptp_parsed, logic.QuantifiedFormula):
-                tptp_parsed = logic.QuantifiedFormula(
-                    logic.Quantifier.EXISTENTIAL, [], tptp_parsed
-                )
-        except AssertionError as e:
-            raise Exception(
-                f"The parsed TPTP formula `{tptp_parsed}` does not have the\n"
-                f" expected structure (missing `.formula` attribute after parsing).\n"
-                f"More specifics on above error: {e}"
+
+        pred_variables = self._extract_predicate_variables(tptp_parsed.left)
+        tptp_right_side = tptp_parsed.right
+
+        # Eg. `oligopeptide(x) <=> (peptide(x) & has_few_amino_acid_residues(x))`
+        # The above fol formula will be parsed and will have no formula attribute
+        if not isinstance(tptp_right_side, logic.QuantifiedFormula):
+            tptp_right_side = logic.QuantifiedFormula(
+                logic.Quantifier.EXISTENTIAL, [], tptp_right_side
             )
 
         try:
-            tptp_parsed.formula = convert_to_cnf(tptp_parsed.formula)
+            tptp_right_side = normalize_fol_formula(tptp_right_side)
         except Exception as e:
             raise Exception(
-                f"Error converting the parsed TPTP formula `{tptp_parsed.formula}` to CNF format\n"
-                f"More specifics on above error: {e}"
+                "Error normalizing formula to PNF (Prenex Normal Form).\n"
+                f"TPTP Parsed Formula before normalization: `{tptp_right_side}`\n"
+                "Process: The formula is converted to PNF (all quantifiers moved to"
+                "the front) with the matrix in CNF (Conjunctive Normal Form with N-ary"
+                "conjunctions and disjunctions).\n"
+                f"More specifics on the error: {e}"
             )
-        print(f"Input formula: {formula}\n\t Parsed as: {tptp_parsed}")
-        return tptp_parsed
+        print(f"Input formula: {formula}\n\t Parsed as: {tptp_right_side}")
+        return pred_variables, tptp_right_side
 
     @model_check_exception
     def does_mol_match_tptp_definition(
@@ -74,8 +83,8 @@ class GavelFOLReasoner:
         predicates = self._extract_predicates(definition_to_match)
         missing_predicates = predicates - self._base_predicates.keys()
         missing_predicates = (
-            missing_predicates - self._background_definitions.keys()
-            if self._background_definitions
+            missing_predicates - self.background_definitions.keys()
+            if self.background_definitions
             else missing_predicates
         )
         if additional_background_definitions:
@@ -87,13 +96,23 @@ class GavelFOLReasoner:
 
         universe, extensions = self._mol_to_fol(molecule)
         bck_def = {
-            **self._background_definitions,
+            **self.background_definitions,
             **(additional_background_definitions or {}),
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
-
-        # Can fail for definitions like: `∃[]: ((peptide(x)))`
-        outcome, _ = model_checker.find_model(definition_to_match)
+        try:
+            # Can fail for definitions like: `∃[]: ((peptide(x)))`
+            outcome, _ = model_checker.find_model(definition_to_match)
+        except Exception as e:
+            raise Exception(
+                f"MODEL CHECKING FAILED - Error during model checking for the formula.\n"
+                f"Formula being checked: `{definition_to_match}`\n\n"
+                f"Background: The formula was parsed through these steps:\n"
+                f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
+                f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
+                f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
+                f"More specifics on the error: {e}"
+            )
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 
     @mol_to_fol_exception
@@ -125,11 +144,33 @@ class GavelFOLReasoner:
         traverse(formula.formula)
         return predicates
 
-    def update_background_definition(
-        self, name: str, definition: logic.QuantifiedFormula
+    def _extract_predicate_variables(
+        self, formula_left_side: logic.PredicateExpression
+    ) -> list[logic.Variable]:
+        """Extract the variables from a predicate definition string.
+
+        For a definition like `new_predicate(X1, X2) <=> ?[X3]: (...)`
+        This extracts [X1, X2] from the predicate call on the left side of the biimplication.
+        """
+        # Extract variables from the predicate expression
+        variables = []
+        if isinstance(formula_left_side, logic.PredicateExpression):
+            # The arguments should be Variable objects
+            if hasattr(formula_left_side, "arguments") and formula_left_side.arguments:
+                for arg in formula_left_side.arguments:
+                    if isinstance(arg, logic.Variable):
+                        variables.append(arg)
+
+        return variables
+
+    def add_background_definition(
+        self,
+        name: str,
+        variables: list[logic.Variable],
+        definition: logic.QuantifiedFormula,
     ):
-        """Add a single background definition."""
-        self._background_definitions[name] = ([], definition)
+        """Add a single background definition with extracted free variables."""
+        self.background_definitions[name] = (variables, definition)
 
     def convert_to_background_definitions(
         self,
@@ -138,16 +179,43 @@ class GavelFOLReasoner:
         """Convert a dictionary of predicate definitions (as strings) to the internal format."""
         converted = {}
         for name, def_str in predicates.items():
-            converted[name] = (
-                [],
-                self.get_tptp_fol_definition(def_str),
-            )
+            pred_vars, fol_formula = self.get_tptp_fol_definition(def_str)
+            converted[name] = (pred_vars, fol_formula)
         return converted
 
 
 if __name__ == "__main__":
     # Example usage
+
     fol_parser = GavelFOLReasoner()
+    # with open("nl_2_fol/inference/learned/learned_definitions.pkl", "rb") as f:
+    #     new_definitions = pickle.load(f)
+    # for _, learned_def in new_definitions.learned_definitions.items():
+    #     print(
+    #         f"Adding background definition for `{learned_def.name}`: {learned_def.learned_FOL}"
+    #     )
+    #     fol_parser.add_background_definition(
+    #         learned_def.name,
+    #         learned_def.learned_FOL.pred_variables,
+    #         learned_def.learned_FOL.formula,
+    #     )
+
+    # for name, add_def in new_definitions.additional_definitions.items():
+    #     print(f"Adding background definition for `{name}`: {add_def}")
+    #     fol_parser.add_background_definition(
+    #         name, add_def.pred_variables, add_def.formula
+    #     )
+
+    llm_for = "tripeptide <=> (oligopeptide & ?[C1, O1, N1, C2, O2, N2]: (c(C1) & o(O1) & bDOUBLE(C1, O1) & n(N1) & bSINGLE(C1, N1) & has_1_hs(N1) & c(C2) & o(O2) & bDOUBLE(C2, O2) & n(N2) & bSINGLE(C2, N2) & has_1_hs(N2) & C1 != C2 & O1 != O2 & N1 != N2 & ![C3, O3, N3]: ((c(C3) & o(O3) & bDOUBLE(C3, O3) & n(N3) & bSINGLE(C3, N3) & has_1_hs(N3) & peptide(C3, O3, N3)) => ((C3 = C1 & O3 = O1 & N3 = N1) | (C3 = C2 & O3 = O2 & N3 = N2)))))"
+    fol_parser.get_tptp_fol_definition(llm_for)
+    mol = Chem.MolFromSmiles(
+        "C(=O)([C@@H](NC(=O)OCC=1C=CC=CC1)C(C)C)N[C@H](C(=O)N[C@H](C(=O)CF)CC(=O)OC)C"
+    )
+    matches = fol_parser.does_mol_match_tptp_definition(
+        mol, fol_parser.get_tptp_fol_definition(llm_for)[1]
+    )
+    print(f"Tripeptide matches definition: {matches}")
+    exit()
 
     carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
     ethanol = Chem.MolFromSmiles("CCO")
@@ -157,7 +225,7 @@ if __name__ == "__main__":
     definition_str = (
         "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
     )
-    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
+    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)[1]
 
     # Background definitions (none needed here)
     background_definitions = {}
@@ -176,9 +244,9 @@ if __name__ == "__main__":
 
     # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
     definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
-    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)
+    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)[1]
     assert not isinstance(definition_to_match, Exception)
-    fol_parser._background_definitions = {
+    fol_parser.background_definitions = {
         "oneCarbonCompound": (
             [],
             fol_parser.get_tptp_fol_definition(

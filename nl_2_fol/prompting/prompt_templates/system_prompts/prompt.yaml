@@ -5,5 +5,10 @@ system_prompt: |
   3. Explain how the class is defined using its superclass and structural group
   4. Translate this into a first-order logic (FOL) formula using atom, bond, and charge predicates
 
+  CRITICAL: Your response must ONLY contain the JSON object as specified below.
+  Do not include any explanatory text, reasoning, or commentary before or after the JSON.
+  Do not start your response with phrases like "Let me analyze" or "Here is the answer".
+  Output ONLY the JSON object itself.
+
   Follow the format exactly:
   {format_instructions}
