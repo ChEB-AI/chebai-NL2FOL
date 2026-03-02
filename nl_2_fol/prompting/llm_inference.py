@@ -1,12 +1,14 @@
 import os
 from typing import Literal
 
+from langchain_core.language_models import BaseChatModel
+
 from nl_2_fol.prompting import ANTHROPIC_API_KEY, GROQ_API_KEY_NAME, OPENAI_API_KEY_NAME
 
 API_PLATFORM = Literal["groq", "anthropic", "openai", "custom"]
 
 
-def get_llm_for_inference(platform: API_PLATFORM, model_name):
+def get_llm_for_inference(platform: API_PLATFORM, model_name: str) -> BaseChatModel:
     def _test_api_with_a_prompt(llm):
         result = llm.invoke("Hello LLM").content
         if result:
@@ -74,28 +76,33 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
         _test_api_with_a_prompt(llm)
         return llm
 
-    elif model_name == "t5-3b-nl-to-fol":
-        """
-        Inference need to be run on a GPU-enabled machine.
-        You can use the below command to access one such machine on the cluster:
+    elif platform == "custom":
+        if model_name == "t5-3b-nl-to-fol":
+            """
+            Inference need to be run on a GPU-enabled machine.
+            You can use the below command to access one such machine on the cluster:
 
-            srun --partition=gpu --constraint="A100|H100.80gb" --ntasks=1
-            --cpus-per-task=8 --threads-per-core=1 --mem=64G
-            --time=02:00:00 --gres=gpu:1 --pty bash
-        """
-        from nl_2_fol.prompting.custom_api import T5_3B_NL2FOL
+                srun --partition=gpu --constraint="A100|H100.80gb" --ntasks=1
+                --cpus-per-task=8 --threads-per-core=1 --mem=64G
+                --time=02:00:00 --gres=gpu:1 --pty bash
+            """
+            from nl_2_fol.prompting.custom_api import T5_3B_NL2FOL
 
-        platform = "custom"
-        llm = T5_3B_NL2FOL()
+            llm = T5_3B_NL2FOL()
 
-        result = llm.invoke("All dogs are animals.")
-        if result is None:
-            raise Exception(
-                f"Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
-            )
-        return llm
+            result = llm.invoke("All dogs are animals.")
+            if result is None:
+                raise Exception(
+                    f"Didn't receive any response from Model `{model_name}` from platform `{platform}`"
+                )
+            return llm
 
-    raise ValueError("Unknown platform")
+        raise ValueError(
+            f"Unknown custom model: `{model_name}`. "
+            "Supported custom models: ['t5-3b-nl-to-fol']"
+        )
+
+    raise ValueError(f"Unknown platform: `{platform}`")
 
 
 if __name__ == "__main__":

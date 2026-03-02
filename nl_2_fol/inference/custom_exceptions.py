@@ -4,7 +4,9 @@ from functools import wraps
 from nl_2_fol.inference.data_model import SMILES_STRING, ChemicalStructure
 
 
-def tptp_parse_exception(func):
+def _make_reraise_decorator(func):
+    """Re-raises exceptions with traceback printing, preserving the original exception."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -12,41 +14,15 @@ def tptp_parse_exception(func):
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
             traceback.print_exc()
-            # Error can be customized here for LLMs feedback,
-            # for now we just print the error and return it
             raise e
 
     return wrapper
 
 
-def mol_to_fol_exception(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
-            # Error can be customized here for LLMs feedback,
-            # for now we just print the error and return it
-            raise e
-
-    return wrapper
-
-
-def model_check_exception(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
-            # Error can be customized here for LLMs feedback,
-            # for now we just print the error and return it
-            raise e
-
-    return wrapper
+# Named aliases for semantic clarity at call sites
+tptp_parse_exception = _make_reraise_decorator
+mol_to_fol_exception = _make_reraise_decorator
+model_check_exception = _make_reraise_decorator
 
 
 class StopProgramException(Exception):

@@ -1,7 +1,7 @@
 from gavel.logic.logic import QuantifiedFormula
 from rdkit import Chem
 
-from nl_2_fol.inference.model_check_molecule import molecule_matches_definition
+from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
 
 
 # TODO: rectify
@@ -10,6 +10,7 @@ class NL2FOLChebiClassifier:
         self.definitions_path = definitions_path
         self.definitions_to_match: list[dict[str, QuantifiedFormula]] = []
         self.background_definitions: dict[str, tuple[list, QuantifiedFormula]] = {}
+        self._reasoner = GavelFOLReasoner()
         # TODO: cache mechanism needs to be included here or can be
         # handled by chebifier (as it does currently)
 
@@ -26,7 +27,9 @@ class NL2FOLChebiClassifier:
         # definitions_to_match = [{<name>: <formula>}, ...]
         for def_dict in self.definitions_to_match:
             definition_name, formula = list(def_dict.items())[0]
-            if molecule_matches_definition(mol, formula, self.background_definitions):
+            if self._reasoner.does_mol_match_tptp_definition(
+                mol, formula, self.background_definitions if self.background_definitions else None
+            ):
                 classification.append({"name": definition_name})
 
         return {smiles: classification}

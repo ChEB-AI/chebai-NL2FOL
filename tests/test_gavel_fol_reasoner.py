@@ -117,20 +117,21 @@ class TestGavelFOLReasoner:
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
-    def test_parsing_normalization_error(self, reasoner: GavelFOLReasoner):
+    def test_complex_quantifier_formula_parses_successfully(
+        self, reasoner: GavelFOLReasoner
+    ):
+        """Test that a formula with alternating quantifiers parses successfully.
+
+        Previous versions of gavel's normalize_fol_formula raised errors for
+        alternating quantifier prefixes. The current version handles them correctly.
+        """
         formula_str = (
             "test_pred(X) <=> ?[Y]: ![Z]: ?[W]: ![V]: (p(Y) & q(Z) & r(W) & s(V))"
         )
 
-        with pytest.raises(Exception) as exc_info:
-            reasoner.get_tptp_fol_definition(formula_str)
+        pred_vars, formula = reasoner.get_tptp_fol_definition(formula_str)
 
-        error_message = str(exc_info.value)
-        assert "PARSING STEP 3/3 FAILED" in error_message, (
-            f"Expected PARSING STEP 3/3 error, but got: {error_message[:200]}"
-        )
-        assert "Error normalizing formula to PNF (Prenex Normal Form)" in error_message
-        assert "Formula before normalization:" in error_message
+        assert isinstance(formula, logic.QuantifiedFormula)
 
     def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
         """Test that errors in does_mol_match_tptp_definition are properly raised."""

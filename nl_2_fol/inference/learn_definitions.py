@@ -15,7 +15,14 @@ from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
-# TODO: can langchain-graph be used here? or will it be an overkill?
+# NOTE: LangGraph was evaluated for this retry/correction loop but is not needed
+# at the current complexity level. Consider adopting LangGraph if:
+#   1. Human-in-the-loop corrections are required during learning.
+#   2. The number of distinct states/nodes grows significantly.
+#   3. Streaming intermediate results or real-time observability is needed.
+#   4. The branching logic becomes too complex to follow in plain Python.
+# The current exception-based control flow maps to a simple graph and is easy
+# to follow, so the added dependency and abstraction are not justified yet.
 class LearnDefinitions:
     _DEFINITION_FILE_NAME = "learned_definitions.pkl"
 

@@ -51,28 +51,29 @@ class ChebiPrompt:
         self._llm = get_llm_for_inference(self.platform, self.model_name)
 
         # Create the execution chain once
-        # This pipes the Few shot prompt -> LLM -> Parser automatically
+        # This pipes the Few shot prompt -> LLM (with retry) -> Parser automatically
+        _llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
         self._few_shots_chain = (
-            self._fs_entire_prompt | self._llm | self._few_shot_parser
+            self._fs_entire_prompt | _llm_with_retry | self._few_shot_parser
         )
         self._err_failure_chain = (
-            self._err_failure_prompt | self._llm | self._few_shot_parser
+            self._err_failure_prompt | _llm_with_retry | self._few_shot_parser
         )
         self._undef_failure_chain = (
-            self._undef_failure_prompt | self._llm | self._undef_parser
+            self._undef_failure_prompt | _llm_with_retry | self._undef_parser
         )
 
     ## ---------------- Few-Shot Prompt Construction ---------------- ##
     def _get_entire_few_shot_prompt(self) -> ChatPromptTemplate:
-        self._sys_promt = self._get_system_prompt_for_fs(self.system_prompt_fp)
-        self._few_shot_promt = self._get_few_shot_prompts_examples(
+        self._sys_prompt = self._get_system_prompt_for_fs(self.system_prompt_fp)
+        self._few_shot_prompt = self._get_few_shot_prompts_examples(
             self.few_shot_prompt_fp
         )
 
         return ChatPromptTemplate.from_messages(
             [
-                self._sys_promt,
-                self._few_shot_promt,
+                self._sys_prompt,
+                self._few_shot_prompt,
                 ("human", "{input}"),
             ]
         )
@@ -340,13 +341,13 @@ class ChebiPrompt:
         return prompt_text
 
     def __repr__(self) -> str:
-        return f"""
-        ChebiPrompt(platform={self.platform},\n
-        model_name={self.model_name},\n
-        few_shot_prompt={self._fs_entire_prompt}),\n
-        failure_prompt={self._err_failure_prompt})\n
-        undef_failure_prompt={self._undef_failure_prompt})
-        """
+        return (
+            f"ChebiPrompt(platform={self.platform}, "
+            f"model_name={self.model_name}, "
+            f"few_shot_prompt={self._fs_entire_prompt}, "
+            f"failure_prompt={self._err_failure_prompt}, "
+            f"undef_failure_prompt={self._undef_failure_prompt})"
+        )
 
 
 if __name__ == "__main__":
