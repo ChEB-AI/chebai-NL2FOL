@@ -111,8 +111,8 @@ class LowF1ScoreException(Exception):
     Exception raised when a generated FOL definition fails F1-score validation.
 
     Args:
-        pos_samples: List of positive ChemicalStructure samples used in validation.
-        neg_samples: List of negative ChemicalStructure samples used in validation.
+        pos_samples: List of positive ChemicalStructure samples.
+        neg_samples: List of negative ChemicalStructure samples.
         matched_neg_samples: List of SMILES strings for negative samples incorrectly matched (false positives).
         unmatched_pos_samples: List of SMILES strings for positive samples not matched (false negatives).
         max_examples: Maximum number of misclassified examples to include in error message.
@@ -122,27 +122,41 @@ class LowF1ScoreException(Exception):
     @stop_program_upon_failure
     def __init__(
         self,
-        pos_samples: list[ChemicalStructure],
-        neg_samples: list[ChemicalStructure],
-        matched_neg_samples: list[SMILES_STRING],
-        unmatched_pos_samples: list[SMILES_STRING],
+        pos_samples: set[ChemicalStructure],
+        neg_samples: set[ChemicalStructure],
+        matched_neg_samples: set[SMILES_STRING],
+        unmatched_pos_samples: set[SMILES_STRING],
         max_examples: int,
-        chebi_id_to_data_mapping: dict[str, dict],
+        chebi_name_to_data_mapping: dict[str, dict],
     ) -> None:
         def get_chemical_details(
             chemicals: set[ChemicalStructure],
-            matched_smiles: list[SMILES_STRING],
+            matched_smiles: set[SMILES_STRING],
         ) -> list[tuple[str, str | None]]:
             chemical_details: list[tuple[str, str | None]] = []
-            for smiles in matched_smiles[:max_examples]:
-                if smiles in chemicals:
-                    chemical_data = chebi_id_to_data_mapping.get(
-                        str(smiles).lower().strip(), None
+            chemicals_without_def: list[tuple[str, str | None]] = []
+
+            # First pass: collect chemicals with definitions
+            for chemical in chemicals:
+                if chemical.smiles in matched_smiles:
+                    chemical_data = chebi_name_to_data_mapping.get(
+                        chemical.name.lower().strip(), None
                     )
                     chemical_def = None
                     if chemical_data:
                         chemical_def = chemical_data.get("definition", "")
-                    chemical_details.append((smiles, chemical_def))
+
+                    if chemical_def:
+                        chemical_details.append((chemical.name, chemical_def))
+                        if len(chemical_details) >= max_examples:
+                            return chemical_details
+                    else:
+                        chemicals_without_def.append((chemical.name, chemical_def))
+
+            # Second pass: fill remaining slots with chemicals without definitions
+            remaining_slots = max_examples - len(chemical_details)
+            chemical_details.extend(chemicals_without_def[:remaining_slots])
+
             return chemical_details
 
         fp_percentage = (
@@ -217,7 +231,7 @@ if __name__ == "__main__":
         print(f"Caught an exception: {e}")
 
     try:
-        pos_samples = [
+        pos_samples = {
             ChemicalStructure(
                 name="MoleculeA",
                 smiles="C1=CC=CC=C1",
@@ -228,8 +242,8 @@ if __name__ == "__main__":
                 smiles="C1=CC=CC=C1O",
                 mol=Chem.MolFromSmiles("C1=CC=CC=C1O"),
             ),
-        ]
-        neg_samples = [
+        }
+        neg_samples = {
             ChemicalStructure(
                 name="MoleculeC",
                 smiles="C1=CC=CC=C1N",
@@ -240,9 +254,9 @@ if __name__ == "__main__":
                 smiles="C1=CC=CC=C1F",
                 mol=Chem.MolFromSmiles("C1=CC=CC=C1F"),
             ),
-        ]
-        matched_neg_samples = ["C1=CC=CC=C1N"]  # False positive
-        unmatched_pos_samples = ["C1=CC=CC=C1O", "C1=CC=CC=C1"]  # False negative
+        }
+        matched_neg_samples = {"C1=CC=CC=C1N"}  # False positive
+        unmatched_pos_samples = {"C1=CC=CC=C1O", "C1=CC=CC=C1"}  # False negative
 
         raise LowF1ScoreException(
             pos_samples,
@@ -250,7 +264,7 @@ if __name__ == "__main__":
             matched_neg_samples,
             unmatched_pos_samples,
             max_examples=2,
-            chebi_id_to_data_mapping={
+            chebi_name_to_data_mapping={
                 "moleculec": {"definition": "Definition of MoleculeC"},
                 "moleculed": {"definition": "Definition of MoleculeD"},
                 "moleculea": {"definition": "Definition of MoleculeA"},

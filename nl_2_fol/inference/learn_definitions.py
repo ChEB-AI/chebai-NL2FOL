@@ -252,12 +252,12 @@ class LearnDefinitions:
         # TODO:  adjust threshold wrt how many def meet it
         if metrics.F1 < self.f1_threshold:
             raise ce.LowF1ScoreException(
-                list(pos_samples),
-                list(neg_samples),
-                list(matched_neg_samples),
-                list(unmatched_pos_samples),
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=10,
-                chebi_id_to_data_mapping=self._chebi_name_to_data_mapping,
+                chebi_name_to_data_mapping=self._chebi_name_to_data_mapping,
             )
         # TODO: What if the additonal defintions are changed in next attempt
         # and both are valid which to use? rn the earliest
