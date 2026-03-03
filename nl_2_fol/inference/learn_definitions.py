@@ -36,11 +36,6 @@ class LearnDefinitions:
         self.f1_threshold = f1_threshold
         # load definitions from the path and store them in a suitable data structure
         # this will be used to learn new definitions based on the classified chemical classes
-        self._default_def_save_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "learned",
-            self.chebi_prompt_obj.model_name,
-        )
 
         self._gavel = GavelFOLReasoner()
 
@@ -462,7 +457,7 @@ class LearnDefinitions:
                 definitions = pickle.load(f)
         elif os.path.exists(
             default_path := os.path.join(
-                self._default_def_save_path, self._DEFINITION_FILE_NAME
+                self.definitions_save_path, self._DEFINITION_FILE_NAME
             )
         ):
             with open(default_path, "rb") as f:
@@ -506,7 +501,7 @@ class LearnDefinitions:
     def _save_definitions(self, path: str | None = None) -> None:
         # save the learned definitions to the given path
         if path is None:
-            path = self._default_def_save_path
+            path = self.definitions_save_path
             os.makedirs(path, exist_ok=True)
 
         file_path = os.path.join(path, self._DEFINITION_FILE_NAME)
@@ -532,3 +527,11 @@ class LearnDefinitions:
             f"{self.chebi_prompt_obj.model_name}(LLM) output:\n{output}\n"
         )
         self._prompts_history.append(history_entry)
+
+    @property
+    def definitions_save_path(self) -> str:
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "learned",
+            self.chebi_prompt_obj.model_name,
+        )
