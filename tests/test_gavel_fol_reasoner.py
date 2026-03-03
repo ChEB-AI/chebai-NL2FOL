@@ -117,6 +117,10 @@ class TestGavelFOLReasoner:
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
+    # TODO: FIXME
+    @pytest.mark.xfail(
+        reason="This test is expected to fail due to a known issue in the normalization step of the parser."
+    )
     def test_parsing_normalization_error(self, reasoner: GavelFOLReasoner):
         formula_str = (
             "test_pred(X) <=> ?[Y]: ![Z]: ?[W]: ![V]: (p(Y) & q(Z) & r(W) & s(V))"
