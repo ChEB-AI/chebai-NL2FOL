@@ -174,3 +174,33 @@ class TestGavelFOLReasoner:
             "Predicate `ptest` is defined with arity 0 but called with 1 arguments"
             in error_message
         )
+
+    def test_ambiguous_formula_without_brackets(self, reasoner: GavelFOLReasoner):
+        """Test that ambiguous formulas without proper brackets raise an error."""
+        # Formula without brackets: A <=> B & C is parsed as (A <=> B) & C, not A <=> (B & C)
+        ambiguous_formula = "glycerolipid(x) <=> lipid(x) & ?[C1, C2]: (c(C1) & c(C2))"
+
+        with pytest.raises(Exception) as exc_info:
+            reasoner.get_tptp_fol_definition(ambiguous_formula)
+
+        error_message = str(exc_info.value)
+        assert "Invalid FOL formula structure" in error_message
+        assert (
+            "left-hand side of biimplication must be a predicate expression"
+            in error_message
+        )
+        assert "ambiguous" in error_message.lower()
+
+    def test_properly_bracketed_formula(self, reasoner: GavelFOLReasoner):
+        """Test that properly bracketed formulas parse successfully."""
+        # Formula with proper brackets: A <=> (B & C)
+        properly_bracketed_formula = (
+            "glycerolipid(x) <=> (lipid(x) & ?[C1, C2]: (c(C1) & c(C2)))"
+        )
+
+        pred_vars, parsed_formula = reasoner.get_tptp_fol_definition(
+            properly_bracketed_formula
+        )
+
+        assert isinstance(parsed_formula, logic.QuantifiedFormula)
+        assert len(pred_vars) == 0
