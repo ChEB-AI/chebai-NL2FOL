@@ -34,7 +34,7 @@ custom_host = [
 ]
 
 linters = ["ruff", "isort", "pre-commit"]
-test = ["pytest>=7.0", "pytest-cov"]
+test = ["pytest>=7.0"]
 
 
 [tool.setuptools]
