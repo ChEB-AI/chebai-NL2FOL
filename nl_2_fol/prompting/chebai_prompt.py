@@ -1,13 +1,17 @@
 import json
+from typing import cast
 
+from langchain.memory import ConversationBufferMemory
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import (
     ChatPromptTemplate,
     FewShotChatMessagePromptTemplate,
     HumanMessagePromptTemplate,
+    MessagesPlaceholder,
     PromptTemplate,
     SystemMessagePromptTemplate,
 )
+from langchain_core.runnables import Runnable, RunnableWithMessageHistory
 
 from nl_2_fol.inference import custom_exceptions as ce
 from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
@@ -18,6 +22,7 @@ from nl_2_fol.prompting.prompt_models import (
 from nl_2_fol.prompting.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
 
 # TODO: Use memory in case of failure prompts
+# TODO: llm with structured output
 
 
 # --- Main Class ---
@@ -39,43 +44,61 @@ class ChebiPrompt:
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
         # To keep track of predicates generated across iterations, for prompting
         self.generated_predicates_names: set[str] = set()
+        self._memory_store = {}
 
-        self._few_shot_parser = PydanticOutputParser(pydantic_object=CHEBIFOLOutput)
         self._undef_parser = PydanticOutputParser(
             pydantic_object=OutOfBoxPredicateDefinitions
         )
-        self._fs_entire_prompt: ChatPromptTemplate = self._get_entire_few_shot_prompt()
-        self._err_failure_prompt = self._get_err_failure_prompt()
-        self._undef_failure_prompt = self._get_undef_failure_prompt()
 
-        self._llm = get_llm_for_inference(self.platform, self.model_name)
+        self._conversation_chain = self._get_conversation_chain()
 
-        # Create the execution chain once
-        # This pipes the Few shot prompt -> LLM -> Parser automatically
-        self._few_shots_chain = (
-            self._fs_entire_prompt | self._llm | self._few_shot_parser
-        )
-        self._err_failure_chain = (
-            self._err_failure_prompt | self._llm | self._few_shot_parser
-        )
-        self._undef_failure_chain = (
-            self._undef_failure_prompt | self._llm | self._undef_parser
-        )
+    def _get_conversation_chain(self):
+        system_prompt = self._get_system_prompt()
+        few_shot_prompt = self._get_few_shot_prompt()
 
-    ## ---------------- Few-Shot Prompt Construction ---------------- ##
-    def _get_entire_few_shot_prompt(self) -> ChatPromptTemplate:
-        self._sys_promt = self._get_system_prompt_for_fs(self.system_prompt_fp)
-        self._few_shot_promt = self._get_few_shot_prompts_examples(
-            self.few_shot_prompt_fp
-        )
-
-        return ChatPromptTemplate.from_messages(
+        prompt = ChatPromptTemplate.from_messages(
             [
-                self._sys_promt,
-                self._few_shot_promt,
+                # System and few shots promots are static, they dont change or
+                # are overwrittenm. They serve as context and behaviour guidance
+                system_prompt,
+                few_shot_prompt,
+                # Memory inserted here and is dynamic, stores user previous conversations
+                # Changes over time, can be summarized or truncated to fit in context window if needed
+                MessagesPlaceholder(variable_name="history"),
                 ("human", "{input}"),
             ]
         )
+
+        llm = get_llm_for_inference(self.platform, self.model_name)
+        strutured_llm = llm.with_structured_output(CHEBIFOLOutput)
+
+        chain = prompt | strutured_llm
+
+        def get_session_history(session_id):
+            if session_id not in self._memory_store:
+                self._memory_store[session_id] = ConversationBufferMemory(
+                    memory_key="history",
+                    human_prefix="human",
+                    ai_prefix="ai",
+                    return_messages=True,
+                )
+            return self._memory_store[session_id]
+
+        chain_with_memory = RunnableWithMessageHistory(
+            cast(Runnable, chain),
+            lambda session_id: get_session_history(session_id),
+            input_messages_key="input",
+            history_messages_key="history",
+        )
+
+        return chain_with_memory
+
+    # --------------------- System Prompt and Predicates List Management --------------------- #
+    def _get_system_prompt(self) -> SystemMessagePromptTemplate:
+        system_prompt_text = load_yaml_sys_prompt(self.system_prompt_fp)
+        predicates_list_text = self._get_predicates_section()
+        full_system_prompt_text = system_prompt_text + predicates_list_text
+        return SystemMessagePromptTemplate.from_template(full_system_prompt_text)
 
     def _get_predicates_section(self) -> str:
         """Generate the predicates list section dynamically."""
@@ -86,51 +109,18 @@ class ChebiPrompt:
         # context window, other models handles 200,000 and 1,000,000 tokens
         if len(self.generated_predicates_names) > 0:
             return (
-                "\nAlso, here is the list of predicates along with their arguments that were already "
-                "defined in previous iterations for other CHEBI classes.\n"
-                "If any predicate has no arguments, then just the predicate name is shown without parentheses. "
-                "You can reuse these predicates if they are applicable to the "
-                "current class definition.\n"
+                "\nAlso, here is the list of predicates along with their arguments that "
+                "were already defined in previous iterations for other CHEBI classes.\n"
+                "If any predicate has no arguments, then just the predicate name is shown "
+                "without parentheses. You can reuse these predicates if they are "
+                "applicable to the current class definition.\n"
                 f"Predicate List: {', '.join(sorted(self.generated_predicates_names))}"
             )
         return ""
 
-    @staticmethod
-    def _normalize_input_text(input_text: str) -> str:
-        """
-        Normalize the input text by stripping leading/trailing whitespace
-        and collapsing multiple spaces into a single space.
-        """
-        return " ".join(str(input_text).split())
-
-    def _get_system_prompt_for_fs(
-        self, system_prompt_fp: str
-    ) -> SystemMessagePromptTemplate:
-        system_prompt_text = load_yaml_sys_prompt(system_prompt_fp)
-
-        # Escape curly braces that are not template variables
-        # We need to double curly braces except for {format_instructions} and {learned_predicates_list}
-        # Replace all { and } with {{ and }}, then restore template variables
-        escaped_text = system_prompt_text.replace("{", "{{").replace("}", "}}")
-        escaped_text = escaped_text.replace(
-            "{{format_instructions}}", "{format_instructions}"
-        )
-        escaped_text = escaped_text.replace(
-            "{{learned_predicates_list}}", "{learned_predicates_list}"
-        )
-
-        format_instructions = self._few_shot_parser.get_format_instructions()
-
-        # Create inner template and bind instructions
-        prompt = PromptTemplate.from_template(escaped_text)
-        partial_prompt = prompt.partial(format_instructions=format_instructions)
-
-        return SystemMessagePromptTemplate(prompt=partial_prompt)  # pyright: ignore[reportArgumentType]
-
-    def _get_few_shot_prompts_examples(
-        self, few_shot_prompt_fp: str
-    ) -> FewShotChatMessagePromptTemplate:
-        raw_examples = json_to_pyObj(few_shot_prompt_fp)
+    ## ---------------- Few-Shot Prompt Construction ---------------- ##
+    def _get_few_shot_prompt(self) -> FewShotChatMessagePromptTemplate:
+        raw_examples = json_to_pyObj(self.few_shot_prompt_fp)
 
         def _normalize_fol_formula(ai_payload: dict) -> dict:
             fol_formula = ai_payload.get("FOL_formula")
@@ -166,18 +156,26 @@ class ChebiPrompt:
             example_prompt=example_prompt,
         )
 
+    ## ----------------- LLM Invocation ------------------ ##
     @ce.stop_program_upon_failure
-    def invoke_llm_with_fs_prompt(self, input_text: str) -> tuple[CHEBIFOLOutput, str]:
+    def invoke_llm_with_fs_prompt(
+        self, input_text: str, session_id: str = "default"
+    ) -> tuple[CHEBIFOLOutput, str]:
         try:
             input_text = self._normalize_input_text(input_text)
             # Get the formatted prompt messages
             prompt_text = self.get_fs_prompt_with_given_input(input_text)
+            session_system_prompt = self._get_or_create_session_system_prompt(
+                session_id
+            )
             # Invoke the chain with dynamic predicates list
-            output = self._few_shots_chain.invoke(
+            output = self._conversation_chain.invoke(
                 {
                     "input": input_text,
+                    "session_system_prompt": session_system_prompt,
                     "learned_predicates_list": self._get_predicates_section(),
-                }
+                },
+                config={"configurable": {"session_id": session_id}},
             )
             return output, prompt_text
         except Exception as e:
@@ -347,6 +345,14 @@ class ChebiPrompt:
         failure_prompt={self._err_failure_prompt})\n
         undef_failure_prompt={self._undef_failure_prompt})
         """
+
+    @staticmethod
+    def _normalize_input_text(input_text: str) -> str:
+        """
+        Normalize the input text by stripping leading/trailing whitespace
+        and collapsing multiple spaces into a single space.
+        """
+        return " ".join(str(input_text).split())
 
 
 if __name__ == "__main__":
