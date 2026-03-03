@@ -6,9 +6,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import (
     ChatPromptTemplate,
     FewShotChatMessagePromptTemplate,
-    HumanMessagePromptTemplate,
     MessagesPlaceholder,
-    PromptTemplate,
     SystemMessagePromptTemplate,
 )
 from langchain_core.runnables import Runnable, RunnableWithMessageHistory
@@ -51,6 +49,19 @@ class ChebiPrompt:
         )
 
         self._conversation_chain = self._get_conversation_chain()
+        self._undef_failure_prompt = self._get_undef_failure_prompt()
+        self._undef_failure_chain = self._get_undef_failure_chain()
+
+    def _get_session_history(self, session_id: str):
+        """Shared session history for all chains to maintain conversation context."""
+        if session_id not in self._memory_store:
+            self._memory_store[session_id] = ConversationBufferMemory(
+                memory_key="history",
+                human_prefix="human",
+                ai_prefix="ai",
+                return_messages=True,
+            )
+        return self._memory_store[session_id]
 
     def _get_conversation_chain(self):
         system_prompt = self._get_system_prompt()
@@ -70,23 +81,13 @@ class ChebiPrompt:
         )
 
         llm = get_llm_for_inference(self.platform, self.model_name)
-        strutured_llm = llm.with_structured_output(CHEBIFOLOutput)
+        structured_llm = llm.with_structured_output(CHEBIFOLOutput)
 
-        chain = prompt | strutured_llm
-
-        def get_session_history(session_id):
-            if session_id not in self._memory_store:
-                self._memory_store[session_id] = ConversationBufferMemory(
-                    memory_key="history",
-                    human_prefix="human",
-                    ai_prefix="ai",
-                    return_messages=True,
-                )
-            return self._memory_store[session_id]
+        chain = prompt | structured_llm
 
         chain_with_memory = RunnableWithMessageHistory(
             cast(Runnable, chain),
-            lambda session_id: get_session_history(session_id),
+            self._get_session_history,
             input_messages_key="input",
             history_messages_key="history",
         )
@@ -158,133 +159,89 @@ class ChebiPrompt:
 
     ## ----------------- LLM Invocation ------------------ ##
     @ce.stop_program_upon_failure
-    def invoke_llm_with_fs_prompt(
+    def invoke_llm_first_call(
         self, input_text: str, session_id: str = "default"
-    ) -> tuple[CHEBIFOLOutput, str]:
+    ) -> CHEBIFOLOutput:
         try:
             input_text = self._normalize_input_text(input_text)
-            # Get the formatted prompt messages
-            prompt_text = self.get_fs_prompt_with_given_input(input_text)
-            session_system_prompt = self._get_or_create_session_system_prompt(
-                session_id
-            )
-            # Invoke the chain with dynamic predicates list
+
             output = self._conversation_chain.invoke(
                 {
                     "input": input_text,
-                    "session_system_prompt": session_system_prompt,
-                    "learned_predicates_list": self._get_predicates_section(),
                 },
                 config={"configurable": {"session_id": session_id}},
             )
-            return output, prompt_text
+            return output
         except Exception as e:
             print(f"Error during inference: {e}")
             raise e
 
-    def get_fs_prompt_with_given_input(self, input_text) -> str:
-        input_text = self._normalize_input_text(input_text)
-        prompt_messages = self._fs_entire_prompt.format_messages(
-            input=input_text, learned_predicates_list=self._get_predicates_section()
-        )
-        prompt_text = "\n".join(
-            [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
-        )
-        return prompt_text
-
     ## ----------------- FOL Definition Error Failure Prompt ----------------- ##
+    @ce.stop_program_upon_failure
+    def invoke_llm_with_error_failure_prompt(
+        self, error_message: str, session_id: str = "default"
+    ) -> CHEBIFOLOutput:
+        try:
+            error_text = self._normalize_input_text(error_message)
+            error_prompt = self._get_err_failure_prompt(error_text)
+            output = self._conversation_chain.invoke(
+                {
+                    "input": error_prompt,
+                },
+                config={"configurable": {"session_id": session_id}},
+            )
+            return output
+        except Exception as e:
+            print(f"Error during inference: {e}")
+            raise e
 
-    def _get_err_failure_prompt(self) -> ChatPromptTemplate:
-        # 1. Get the basic text template for the failure message
-        # Load the raw string from YAML using the specific key
+    def _get_err_failure_prompt(self, error_message: str) -> str:
         prompt_text = load_yaml_sys_prompt(
             self.err_failure_prompt_fp, key="failure_prompt"
         )
-
-        # Return a PromptTemplate that manages the variables {previous_fol_definition} and {error_message}
-        failure_template = PromptTemplate.from_template(prompt_text)
-
-        # 2. Wrap it as a Human Message.
-        # This tells the LLM: "The user is saying this text."
-        failure_message = HumanMessagePromptTemplate(prompt=failure_template)
-
-        # 3. Combine: [Original Context] + [Failure Instruction]
-        # The resulting chain expects variables: {input}, {previous_fol_definition}, {error_message}
-        return ChatPromptTemplate.from_messages(
-            [
-                self._fs_entire_prompt,  # Contains: System -> FewShot -> Human: {input}
-                failure_message,  # Appends: Human: Your last attempt...
-            ]
-        )
-
-    @ce.stop_program_upon_failure
-    def invoke_llm_with_err_failure_prompt(
-        self, input_text: str, previous_fol_definition: str, error_message: str
-    ) -> tuple[CHEBIFOLOutput, str]:
-        try:
-            input_text = self._normalize_input_text(input_text)
-            previous_fol_definition = self._normalize_input_text(
-                previous_fol_definition
-            )
-            prompt_text = self.get_err_failure_with_given_inputs(
-                input_text, previous_fol_definition, error_message
-            )
-            # Invoke the chain with dynamic predicates list
-            output = self._err_failure_chain.invoke(
-                {
-                    "input": input_text,
-                    "previous_fol_definition": previous_fol_definition,
-                    "error_message": error_message,
-                    "learned_predicates_list": self._get_predicates_section(),
-                }
-            )
-            return output, prompt_text
-        except Exception as e:
-            print(f"Error during failure prompt inference: {e}")
-            raise e
-
-    def get_err_failure_with_given_inputs(
-        self, input_text: str, previous_fol_definition: str, error_message: str
-    ) -> str:
-        prompt_messages = self._err_failure_prompt.format_messages(
-            input=input_text,
-            previous_fol_definition=previous_fol_definition,
-            error_message=error_message,
-            learned_predicates_list=self._get_predicates_section(),
-        )
-        prompt_text = "\n".join(
-            [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
-        )
+        prompt_text = prompt_text.format(error_message=error_message)
         return prompt_text
 
     ## ----------------- FOL Definition Undefined Predicates Failure Prompt ----------------- ##
 
     def _get_undef_failure_prompt(self) -> ChatPromptTemplate:
-        # 1. Get the basic text template for the failure message
         # Load the raw string from YAML using the specific key
         prompt_text = load_yaml_sys_prompt(
             self.undef_failure_prompt_fp, key="failure_prompt"
         )
 
+        # Create a template that includes format instructions
         format_instructions = self._undef_parser.get_format_instructions()
-        prompt = PromptTemplate.from_template(prompt_text)
-        failure_template = prompt.partial(
-            undef_predicates_format_instructions=format_instructions
+        full_prompt_text = prompt_text.replace(
+            "{undef_predicates_format_instructions}", format_instructions
         )
 
-        # 2. Wrap it as a Human Message.
-        # This tells the LLM: "The user is saying this text."
-        failure_message = HumanMessagePromptTemplate(prompt=failure_template)  # pyright: ignore[reportArgumentType]
-
-        # 3. Combine: [Original Context] + [Failure Instruction]
-        # The resulting chain expects variables: {input}, {previous_fol_definition},
-        #  {undefined_predicates_details}
+        # Create the complete prompt template with history support
+        # Expected variables: {input}, {previous_fol_definition},
+        #  {undefined_predicates_details}, {learned_predicates_list}, {history}
         return ChatPromptTemplate.from_messages(
             [
-                self._fs_entire_prompt,  # Contains: System -> FewShot -> Human: {input}
-                failure_message,  # Appends: Human: Undefined Predicates Failure
+                MessagesPlaceholder(variable_name="history"),
+                ("human", full_prompt_text),
             ]
         )
+
+    def _get_undef_failure_chain(self) -> RunnableWithMessageHistory:
+        """Create a chain specifically for handling undefined predicates with shared memory."""
+        llm = get_llm_for_inference(self.platform, self.model_name)
+        structured_llm = llm.with_structured_output(OutOfBoxPredicateDefinitions)
+
+        chain = self._undef_failure_prompt | structured_llm
+
+        # Wrap with same memory as main conversation chain
+        chain_with_memory = RunnableWithMessageHistory(
+            cast(Runnable, chain),
+            self._get_session_history,
+            input_messages_key="input",
+            history_messages_key="history",
+        )
+
+        return chain_with_memory
 
     @ce.stop_program_upon_failure
     def invoke_llm_with_undef_failure_prompt(
@@ -292,6 +249,7 @@ class ChebiPrompt:
         input_text: str,
         previous_fol_definition: str,
         undefined_predicates: dict[str, str | None],
+        session_id: str = "default",
     ) -> tuple[OutOfBoxPredicateDefinitions, str]:
         try:
             input_text = self._normalize_input_text(input_text)
@@ -306,14 +264,15 @@ class ChebiPrompt:
             prompt_text = self.get_undef_failure_with_given_inputs(
                 input_text, previous_fol_definition, undefined_predicates_details
             )
-            # Invoke the chain with dynamic predicates list
+            # Invoke the chain with dynamic predicates list and shared session history
             output = self._undef_failure_chain.invoke(
                 {
                     "input": input_text,
                     "previous_fol_definition": previous_fol_definition,
                     "undefined_predicates_details": undefined_predicates_details,
                     "learned_predicates_list": self._get_predicates_section(),
-                }
+                },
+                config={"configurable": {"session_id": session_id}},
             )
             return output, prompt_text
         except Exception as e:
@@ -339,11 +298,12 @@ class ChebiPrompt:
 
     def __repr__(self) -> str:
         return f"""
-        ChebiPrompt(platform={self.platform},\n
-        model_name={self.model_name},\n
-        few_shot_prompt={self._fs_entire_prompt}),\n
-        failure_prompt={self._err_failure_prompt})\n
-        undef_failure_prompt={self._undef_failure_prompt})
+        ChebiPrompt(platform={self.platform},
+        model_name={self.model_name},
+        system_prompt_fp={self.system_prompt_fp},
+        few_shot_prompt_fp={self.few_shot_prompt_fp},
+        err_failure_prompt_fp={self.err_failure_prompt_fp},
+        undef_failure_prompt_fp={self.undef_failure_prompt_fp})
         """
 
     @staticmethod
@@ -381,10 +341,12 @@ if __name__ == "__main__":
     chebai_prompt.generated_predicates_names.add("primary_alcohol")
     chebai_prompt.generated_predicates_names.add("hydroxy_group")
 
+    # Use the same session_id across all invocations to maintain conversation history
+    test_session_id = "test_session"
+
     print("---" * 50, "FEW-SHOT PROMPT TEST", "---" * 50)
     # Test the few-shot prompt
-    result, prompt_text = chebai_prompt.invoke_llm_with_fs_prompt(chebi_def)
-    print(f"Few-shot prompt text: \n {prompt_text} \n\n\n")
+    result = chebai_prompt.invoke_llm_first_call(chebi_def, session_id=test_session_id)
     print(f"Few-shot result:\n {result}")
     print("\n\n\n")
 
@@ -395,15 +357,10 @@ if __name__ == "__main__":
     """
 
     print("---" * 50, "FOL DEFINITION ERROR FAILURE PROMPT TEST", "---" * 50)
-    # Test the failure prompt
-    failure_result, failure_prompt_text = (
-        chebai_prompt.invoke_llm_with_err_failure_prompt(
-            input_text=chebi_def,
-            previous_fol_definition=previous_fol_definition,
-            error_message=error_message,
-        )
+    # Test the failure prompt - uses same session to maintain context
+    failure_result = chebai_prompt.invoke_llm_with_error_failure_prompt(
+        error_message=error_message, session_id=test_session_id
     )
-    print(f"Failure prompt text: \n {failure_prompt_text} \n\n\n")
     print(f"Failure result:\n {failure_result}")
 
     print(
@@ -417,11 +374,13 @@ if __name__ == "__main__":
         "has_part": "A predicate indicating that a chemical entity has a certain part or component.",
         "SOME": None,
     }
+    # This invocation now shares the same conversation history as the previous calls
     failure_result, failure_prompt_text = (
         chebai_prompt.invoke_llm_with_undef_failure_prompt(
             input_text=chebi_def,
             previous_fol_definition=previous_fol_definition,
             undefined_predicates=undefined_predicates,
+            session_id=test_session_id,  # Same session = shared memory
         )
     )
     print(f"Undefined predicates failure prompt text: \n {failure_prompt_text} \n\n\n")
