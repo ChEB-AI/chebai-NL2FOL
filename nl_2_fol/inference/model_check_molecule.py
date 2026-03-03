@@ -45,6 +45,17 @@ class GavelFOLReasoner:
                 f"More specifics on the error: {e}"
             )
 
+        # Ensure the left-hand side is a predicate expression (not ambiguous)
+        if not isinstance(tptp_parsed.left, logic.PredicateExpression):
+            raise Exception(
+                f"Invalid FOL formula structure: left-hand side of biimplication must be a predicate expression.\n"
+                f"Issue: The formula is ambiguous due to missing brackets. Operators like '&' and '|' should be "
+                f"explicitly bracketed, e.g., 'predicate(x) <=> (condition1 & condition2)' instead of "
+                f"'predicate(x) <=> condition1 & condition2'.\n"
+                f"Parsed left side: {tptp_parsed.left}\n"
+                f"Expected: A predicate expression like 'predicate', 'predicate(x)', 'predicate(x, y)', etc."
+            )
+
         pred_variables = self._extract_predicate_variables(tptp_parsed.left)
         tptp_right_side = tptp_parsed.right
 
