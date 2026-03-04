@@ -61,6 +61,11 @@ class ChebiPrompt:
             self._memory_store[session_id] = InMemoryChatMessageHistory()
         return self._memory_store[session_id]
 
+    def delete_session_history(self, session_id: str):
+        """Utility method to clear conversation history for a session."""
+        if session_id in self._memory_store:
+            del self._memory_store[session_id]
+
     def _get_prompt_template(self) -> ChatPromptTemplate:
         system_prompt = self._get_system_prompt()
         few_shot_prompt = self._get_few_shot_prompt()
@@ -264,6 +269,92 @@ class ChebiPrompt:
         undef_failure_prompt_fp={self.undef_failure_prompt_fp})
         """
 
+    def get_full_conversation_context(self, session_id: str = "default") -> dict:
+        """
+        Get the complete conversation context including system prompt, few-shots, and history.
+
+        Returns:
+            dict with keys:
+                - 'system_prompt': str - The system prompt content
+                - 'few_shot_examples': list[dict] - List of few-shot examples
+                - 'conversation_history': list[dict] - List of conversation messages
+        """
+        # System Prompt
+        system_prompt = self._get_system_prompt()
+
+        # Few-Shot Examples
+        few_shot_template = self._get_few_shot_prompt()
+        few_shot_examples = []
+        if few_shot_template.examples:
+            few_shot_examples = [
+                {"human": example["human"], "ai": example["ai"]}
+                for example in few_shot_template.examples
+            ]
+
+        # Conversation History
+        history = self.get_session_history(session_id)
+        conversation_history = []
+        if history.messages:
+            conversation_history = [
+                {"type": msg.__class__.__name__, "content": msg.content}
+                for msg in history.messages
+            ]
+
+        return {
+            "system_prompt": system_prompt.content,
+            "few_shot_examples": few_shot_examples,
+            "conversation_history": conversation_history,
+        }
+
+    def print_full_conversation_context(self, session_id: str = "default") -> None:
+        """Print the complete conversation context including system prompt, few-shots, and history."""
+        context = self.get_full_conversation_context(session_id)
+
+        print("\n" + "=" * 80)
+        print("COMPLETE CONVERSATION CONTEXT")
+        print("=" * 80)
+
+        # System Prompt
+        print("\n[SYSTEM PROMPT]")
+        print("-" * 80)
+        print(context["system_prompt"])
+
+        # Few-Shot Examples
+        print("\n[FEW-SHOT EXAMPLES]")
+        print("-" * 80)
+        if context["few_shot_examples"]:
+            for i, example in enumerate(context["few_shot_examples"], 1):
+                print(f"\nExample {i}:")
+                print(
+                    f"  Human: {example['human'][:200]}..."
+                    if len(example["human"]) > 200
+                    else f"  Human: {example['human']}"
+                )
+                print(
+                    f"  AI: {example['ai'][:200]}..."
+                    if len(example["ai"]) > 200
+                    else f"  AI: {example['ai']}"
+                )
+        else:
+            print("(No few-shot examples)")
+
+        # Conversation History
+        print("\n[CONVERSATION HISTORY]")
+        print("-" * 80)
+        if context["conversation_history"]:
+            for i, msg in enumerate(context["conversation_history"], 1):
+                content_preview = (
+                    msg["content"][:200] + "..."
+                    if len(msg["content"]) > 200
+                    else msg["content"]
+                )
+                print(f"\n{i}. {msg['type']}:")
+                print(f"   {content_preview}")
+        else:
+            print("(No conversation history yet)")
+
+        print("\n" + "=" * 80)
+
     @staticmethod
     def _normalize_input_text(input_text: str) -> str:
         """
@@ -336,3 +427,24 @@ if __name__ == "__main__":
     )
     print(f"Undefined predicates failure prompt text: \n {failure_prompt_text} \n\n\n")
     print(f"Undefined predicates failure result:\n {failure_result}")
+
+    print("\n" + "=" * 80)
+    print("GET COMPLETE MEMORY (Returns structured data)")
+    print("=" * 80)
+    # Get the conversation context as a dictionary
+    full_context = chebai_prompt.get_full_conversation_context("test_session")
+    print(f"System prompt length: {len(full_context['system_prompt'])} characters")
+    print(f"Number of few-shot examples: {len(full_context['few_shot_examples'])}")
+    print(
+        f"Number of conversation messages: {len(full_context['conversation_history'])}"
+    )
+
+    # You can also access individual parts:
+    # print("\nFull system prompt:", full_context['system_prompt'])
+    # print("\nFew-shot examples:", full_context['few_shot_examples'])
+    # print("\nConversation history:", full_context['conversation_history'])
+
+    print("\n" + "=" * 80)
+    print("PRINT COMPLETE MEMORY (Pretty-printed view)")
+    print("=" * 80)
+    chebai_prompt.print_full_conversation_context("test_session")
