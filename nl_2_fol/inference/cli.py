@@ -30,7 +30,7 @@ class Main:
             PROMPT_TEMPLATES_DIR, "failure", "error_prompt.yaml"
         ),
         undef_failure_prompt_fp: str = os.path.join(
-            PROMPT_TEMPLATES_DIR, "failure", "predicates_undefined.yaml"
+            PROMPT_TEMPLATES_DIR, "failure", "predicates_undef_with_eg.yaml"
         ),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),

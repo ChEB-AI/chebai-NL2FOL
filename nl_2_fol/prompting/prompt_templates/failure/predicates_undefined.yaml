@@ -1,17 +1,8 @@
 failure_prompt: |
-  Your last attempt to convert the CHEBI class definition into first-order logic (FOL) was unsuccessful.
+  Your previous attempt to convert the CHEBI class definition into first-order logic (FOL) was unsuccessful.
   Let's analyze the failure and try again.
 
-  This was the CHEBI class FOL definition you generated:
-  {previous_fol_definition}
-
-  In the above FOL definition, the following predicates have no FOL formulas defined:
+  In the previous FOL definition, the following predicates have no FOL formulas defined:
   {undefined_predicates_details}
 
   Please provide FOL formulas for all undefined predicates.
-
-  IMPORTANT: Do not include any explanatory text, reasoning, or commentary in your response.
-  Output ONLY the JSON object as specified in the format instructions. Do not write anything before or after the JSON.
-
-  Follow the format exactly:
-  {undef_predicates_format_instructions}

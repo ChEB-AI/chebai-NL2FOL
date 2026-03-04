@@ -1,3 +1,5 @@
+from typing import Any
+
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,7 +37,7 @@ class LearnedDefinition(BaseModel):
     learned_FOL: FOLFormula = Field(
         ..., description="Learned FOL formula for the chemical class"
     )
-    prompts_history: list[str] = Field(
+    prompts_history: dict[str, Any] = Field(
         ..., description="History of prompts used to learn this definition"
     )
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
@@ -78,10 +80,10 @@ if __name__ == "__main__":
                 learned_FOL=FOLFormula(
                     formula=fol_formula, pred_variables=pred_variables
                 ),
-                prompts_history=[
-                    "What is the definition of CHEBI:12345?",
-                    "List the properties of CHEBI:12345.",
-                ],
+                prompts_history={
+                    "What is the definition of CHEBI:12345?": "A chemical class used for demonstration purposes.",
+                    "List the properties of CHEBI:12345.": "Properties of CHEBI:12345.",
+                },
                 name="Example Chemical Class",
                 definition="A chemical class used for demonstration purposes.",
             ),
@@ -92,10 +94,10 @@ if __name__ == "__main__":
                 learned_FOL=FOLFormula(
                     formula=fol_formula_2, pred_variables=pred_variables_2
                 ),
-                prompts_history=[
-                    "What is the definition of CHEBI:56645?",
-                    "List the properties of CHEBI:56645.",
-                ],
+                prompts_history={
+                    "What is the definition of CHEBI:56645?": "A chemical class used for demonstration purposes.",
+                    "List the properties of CHEBI:56645.": "Properties of CHEBI:56645.",
+                },
                 name="Another Example Chemical Class",
                 definition="Another chemical class used for demonstration purposes.",
             ),
