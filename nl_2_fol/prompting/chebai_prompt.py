@@ -148,9 +148,7 @@ class ChebiPrompt:
 
     ## ------- LLM Invocation for first call ------------------------ ##
     @ce.stop_program_upon_failure
-    def invoke_llm_first_call(
-        self, input_text: str, session_id: str = "default"
-    ) -> CHEBIFOLOutput:
+    def invoke_llm_first_call(self, input_text: str, session_id: str) -> CHEBIFOLOutput:
         try:
             input_text = self._normalize_input_text(input_text)
 
@@ -177,7 +175,7 @@ class ChebiPrompt:
     ## ------- LLM Invocation for error failure --------------------- ##
     @ce.stop_program_upon_failure
     def invoke_llm_with_error_failure_prompt(
-        self, error_message: str, session_id: str = "default"
+        self, error_message: str, session_id: str
     ) -> CHEBIFOLOutput:
         try:
             error_text = self._normalize_input_text(error_message)
@@ -215,7 +213,7 @@ class ChebiPrompt:
     def invoke_llm_with_undef_failure_prompt(
         self,
         undefined_predicates: dict[str, str | None],
-        session_id: str = "default",
+        session_id: str,
     ) -> OutOfBoxPredicateDefinitions:
         try:
             undefined_predicates_text = self._get_undef_failure_prompt(
