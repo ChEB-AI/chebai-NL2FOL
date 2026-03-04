@@ -281,8 +281,8 @@ if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
     prompt_dir = os.path.join(base_dir, "prompt_templates")
     chebai_prompt = ChebiPrompt(
-        platform="groq",
-        model_name="openai/gpt-oss-120b",
+        platform="anthropic",
+        model_name="claude-opus-4-6",
         system_prompt_fp=os.path.join(
             prompt_dir, "system_prompts", "with_predicates_list.yaml"
         ),
