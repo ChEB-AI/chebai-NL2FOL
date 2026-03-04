@@ -37,6 +37,7 @@ class ChebiPrompt:
         # To keep track of predicates generated across iterations, for prompting
         self.generated_predicates_names: set[str] = set()
         self._memory_store = {}
+        self._current_session_id: str | None = None  # Track current session
 
         self._llm = get_llm_for_inference(self.platform, self.model_name)
 
@@ -55,9 +56,19 @@ class ChebiPrompt:
         structured_llm = self._llm.with_structured_output(OutOfBoxPredicateDefinitions)
         return prompt | structured_llm
 
+    def _rebuild_chains(self) -> None:
+        """Rebuild conversation chains with updated system prompt (including latest predicates)."""
+        self._conversation_chain = self._get_conversation_chain()
+        self._undef_failure_chain = self._get_undef_failure_chain()
+
     @ce.stop_program_upon_failure
     def get_session_history(self, session_id: str):
         """Shared session history for all chains to maintain conversation context."""
+        # If this is a new session (different from current), rebuild chains with updated predicates
+        if session_id != self._current_session_id:
+            self._current_session_id = session_id
+            self._rebuild_chains()
+
         if session_id not in self._memory_store:
             self._memory_store[session_id] = InMemoryChatMessageHistory()
         return self._memory_store[session_id]
@@ -399,7 +410,9 @@ if __name__ == "__main__":
 
     print("---" * 10, "FEW-SHOT PROMPT TEST", "---" * 10)
     # Test the few-shot prompt
-    result = chebai_prompt.invoke_llm_first_call(chebi_def, session_id=test_session_id)
+    result = chebai_prompt.invoke_llm_first_call(
+        input_text=chebi_def, session_id=test_session_id
+    )
     print(f"Few-shot result:\n {result}")
     print("\n\n\n")
 
