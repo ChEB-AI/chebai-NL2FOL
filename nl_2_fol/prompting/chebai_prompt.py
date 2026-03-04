@@ -55,12 +55,14 @@ class ChebiPrompt:
         structured_llm = self._llm.with_structured_output(OutOfBoxPredicateDefinitions)
         return prompt | structured_llm
 
+    @ce.stop_program_upon_failure
     def get_session_history(self, session_id: str):
         """Shared session history for all chains to maintain conversation context."""
         if session_id not in self._memory_store:
             self._memory_store[session_id] = InMemoryChatMessageHistory()
         return self._memory_store[session_id]
 
+    @ce.stop_program_upon_failure
     def delete_session_history(self, session_id: str):
         """Utility method to clear conversation history for a session."""
         if session_id in self._memory_store:
@@ -148,7 +150,9 @@ class ChebiPrompt:
 
     ## ------- LLM Invocation for first call ------------------------ ##
     @ce.stop_program_upon_failure
-    def invoke_llm_first_call(self, input_text: str, session_id: str) -> CHEBIFOLOutput:
+    def invoke_llm_first_call(
+        self, *, input_text: str, session_id: str
+    ) -> CHEBIFOLOutput:
         try:
             input_text = self._normalize_input_text(input_text)
 
@@ -175,7 +179,7 @@ class ChebiPrompt:
     ## ------- LLM Invocation for error failure --------------------- ##
     @ce.stop_program_upon_failure
     def invoke_llm_with_error_failure_prompt(
-        self, error_message: str, session_id: str
+        self, *, error_message: str, session_id: str
     ) -> CHEBIFOLOutput:
         try:
             error_text = self._normalize_input_text(error_message)
@@ -267,6 +271,7 @@ class ChebiPrompt:
         undef_failure_prompt_fp={self.undef_failure_prompt_fp})
         """
 
+    @ce.stop_program_upon_failure
     def get_full_conversation_context(self, session_id: str = "default") -> dict:
         """
         Get the complete conversation context including system prompt, few-shots, and history.
@@ -304,6 +309,7 @@ class ChebiPrompt:
             "conversation_history": conversation_history,
         }
 
+    @ce.stop_program_upon_failure
     def print_full_conversation_context(self, session_id: str = "default") -> None:
         """Print the complete conversation context including system prompt, few-shots, and history."""
         context = self.get_full_conversation_context(session_id)

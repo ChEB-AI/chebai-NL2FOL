@@ -52,7 +52,6 @@ class LearnDefinitions:
         )
         self.undirected_chebi_graph = entire_chebi_data.get_undirected_hierarchy_graph()
         self._attempts: int = 0
-        self._prompts_history: list[str] = []
 
         # Do Not use this, classes are popped from the dataset during learning,
         # this is only used to check if a predicate is in the dataset during missing predicate exception handling
@@ -73,23 +72,21 @@ class LearnDefinitions:
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
         self._attempts = 0
-        self._prompts_history = []
 
         raised_exception = None
-        result, prompt_text = None, ""
+        result = None
         try:
             # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
             # of the hydrogens is substituted by a hydroxy group."""
             input_text = f"CHEBI:{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
-            result, prompt_text = self.chebi_prompt_obj.invoke_llm_with_fs_prompt(
-                input_text
+            result = self.chebi_prompt_obj.invoke_llm_first_call(
+                input_text=input_text, session_id=chemical_class.name
             )
             print(
                 f"Initial attempt for CHEBI:{chemical_class.id}: {chemical_class.name}",
                 f"\nInput text to LLM: {input_text}\n",
                 f"Generated FOL definition: {result.FOL_formula}\n",
             )
-            self._add_prompt_to_history(prompt_text, result)
             self._parse_and_validate_generated_definition(result, chemical_class)
             self.__iter_classes.remove(chemical_class.name)
             self._save_definitions()
@@ -112,15 +109,13 @@ class LearnDefinitions:
             )
             add_bck_def = None
             if isinstance(raised_exception, ce.LearnOutOfBoxPredicateException):
-                learned_predicates, prompt_to_learn_predicates = (
+                learned_predicates = (
                     self.chebi_prompt_obj.invoke_llm_with_undef_failure_prompt(
-                        input_text,
-                        previous_fol_def,
                         raised_exception.predicates_to_learn,
+                        session_id=chemical_class.name,
                     )
                 )
-                prompt_text += "\n" + prompt_to_learn_predicates
-                self._add_prompt_to_history(prompt_text, result)
+
                 additional_def = learned_predicates.predicate_definitions
                 print(
                     f"Learned additional definitions for out-of-box predicates: {additional_def}\n"
@@ -144,15 +139,9 @@ class LearnDefinitions:
                 # This is because certain undefined predicated might be known by now
                 pass
             else:
-                result, prompt_text = (
-                    self.chebi_prompt_obj.invoke_llm_with_err_failure_prompt(
-                        input_text,
-                        previous_fol_def,
-                        str(raised_exception),
-                    )
+                result = self.chebi_prompt_obj.invoke_llm_with_error_failure_prompt(
+                    error_message=str(raised_exception), session_id=chemical_class.name
                 )
-
-                self._add_prompt_to_history(prompt_text, result)
                 print(f"\tGenerated FOL definition: {result.FOL_formula}\n")
 
             try:
@@ -269,6 +258,9 @@ class LearnDefinitions:
                         def_name, pred_vars, background_def
                     )
 
+        prompts_history = self.chebi_prompt_obj.get_full_conversation_context(
+            chemical_class.name
+        )
         self.definitions.learned_definitions[chemical_class.id] = (
             def_model.LearnedDefinition(
                 metrics=metrics,
@@ -279,7 +271,7 @@ class LearnDefinitions:
                 definition=chemical_class.definition
                 if chemical_class.definition
                 else "",
-                prompts_history=self._prompts_history,
+                prompts_history=prompts_history,
             )
         )
         self._gavel.add_background_definition(
@@ -288,6 +280,8 @@ class LearnDefinitions:
         self._add_generated_predicates_to_prompt_obj(
             chemical_class.name, pred_variables
         )
+        self.chebi_prompt_obj.delete_session_history(chemical_class.name)
+
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
@@ -516,17 +510,6 @@ class LearnDefinitions:
 
         with open(meta_data_path, "w") as f:
             f.write(str(self.chebi_prompt_obj))
-
-    @ce.stop_program_upon_failure
-    def _add_prompt_to_history(
-        self, prompt: str, result: CHEBIFOLOutput | None
-    ) -> None:
-        output = result.FOL_formula if result is not None else ""
-        history_entry: str = (
-            f"Prompt:\n{prompt}\n"
-            f"{self.chebi_prompt_obj.model_name}(LLM) output:\n{output}\n"
-        )
-        self._prompts_history.append(history_entry)
 
     @property
     def definitions_save_path(self) -> str:

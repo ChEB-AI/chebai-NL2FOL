@@ -35,7 +35,7 @@ class LearnedDefinition(BaseModel):
     learned_FOL: FOLFormula = Field(
         ..., description="Learned FOL formula for the chemical class"
     )
-    prompts_history: list[str] = Field(
+    prompts_history: dict[str, str] = Field(
         ..., description="History of prompts used to learn this definition"
     )
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
