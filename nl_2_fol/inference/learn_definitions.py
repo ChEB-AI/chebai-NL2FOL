@@ -244,6 +244,11 @@ class LearnDefinitions:
         # Validate against the threshold
         # TODO:  adjust threshold wrt how many def meet it
         if metrics.F1 < self.f1_threshold:
+            print(
+                f"F1 score {metrics.F1:.2f} is below the threshold of "
+                f"{self.f1_threshold:.2f} for CHEBI:{chemical_class.id}: "
+                f"{chemical_class.name}"
+            )
             raise ce.LowF1ScoreException(
                 pos_samples=pos_samples,
                 neg_samples=neg_samples,
