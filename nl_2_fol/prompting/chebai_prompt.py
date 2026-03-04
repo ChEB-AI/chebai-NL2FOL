@@ -1,15 +1,13 @@
 import json
-from typing import cast
 
-from langchain.memory import ConversationBufferMemory
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
     FewShotChatMessagePromptTemplate,
     MessagesPlaceholder,
-    SystemMessagePromptTemplate,
 )
-from langchain_core.runnables import Runnable, RunnableWithMessageHistory
+from langchain_core.runnables import Runnable
 
 from nl_2_fol.inference import custom_exceptions as ce
 from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
@@ -19,11 +17,7 @@ from nl_2_fol.prompting.prompt_models import (
 )
 from nl_2_fol.prompting.utils.read_configs import json_to_pyObj, load_yaml_sys_prompt
 
-# TODO: Use memory in case of failure prompts
-# TODO: llm with structured output
 
-
-# --- Main Class ---
 class ChebiPrompt:
     def __init__(
         self,
@@ -44,30 +38,34 @@ class ChebiPrompt:
         self.generated_predicates_names: set[str] = set()
         self._memory_store = {}
 
-        self._undef_parser = PydanticOutputParser(
-            pydantic_object=OutOfBoxPredicateDefinitions
-        )
+        self._llm = get_llm_for_inference(self.platform, self.model_name)
 
         self._conversation_chain = self._get_conversation_chain()
-        self._undef_failure_prompt = self._get_undef_failure_prompt()
         self._undef_failure_chain = self._get_undef_failure_chain()
 
-    def _get_session_history(self, session_id: str):
+    # -------- Conversation Chain Construction --------------------- ##
+    def _get_conversation_chain(self) -> Runnable:
+        prompt = self._get_prompt_template()
+        structured_llm = self._llm.with_structured_output(CHEBIFOLOutput)
+        return prompt | structured_llm
+
+    def _get_undef_failure_chain(self) -> Runnable:
+        """Create a chain specifically for handling undefined predicates with shared memory."""
+        prompt = self._get_prompt_template()
+        structured_llm = self._llm.with_structured_output(OutOfBoxPredicateDefinitions)
+        return prompt | structured_llm
+
+    def get_session_history(self, session_id: str):
         """Shared session history for all chains to maintain conversation context."""
         if session_id not in self._memory_store:
-            self._memory_store[session_id] = ConversationBufferMemory(
-                memory_key="history",
-                human_prefix="human",
-                ai_prefix="ai",
-                return_messages=True,
-            )
+            self._memory_store[session_id] = InMemoryChatMessageHistory()
         return self._memory_store[session_id]
 
-    def _get_conversation_chain(self):
+    def _get_prompt_template(self) -> ChatPromptTemplate:
         system_prompt = self._get_system_prompt()
         few_shot_prompt = self._get_few_shot_prompt()
 
-        prompt = ChatPromptTemplate.from_messages(
+        return ChatPromptTemplate.from_messages(
             [
                 # System and few shots promots are static, they dont change or
                 # are overwrittenm. They serve as context and behaviour guidance
@@ -80,26 +78,12 @@ class ChebiPrompt:
             ]
         )
 
-        llm = get_llm_for_inference(self.platform, self.model_name)
-        structured_llm = llm.with_structured_output(CHEBIFOLOutput)
-
-        chain = prompt | structured_llm
-
-        chain_with_memory = RunnableWithMessageHistory(
-            cast(Runnable, chain),
-            self._get_session_history,
-            input_messages_key="input",
-            history_messages_key="history",
-        )
-
-        return chain_with_memory
-
-    # --------------------- System Prompt and Predicates List Management --------------------- #
-    def _get_system_prompt(self) -> SystemMessagePromptTemplate:
+    # -------- System Prompt and Predicates List Management --------- ##
+    def _get_system_prompt(self) -> SystemMessage:
         system_prompt_text = load_yaml_sys_prompt(self.system_prompt_fp)
         predicates_list_text = self._get_predicates_section()
         full_system_prompt_text = system_prompt_text + predicates_list_text
-        return SystemMessagePromptTemplate.from_template(full_system_prompt_text)
+        return SystemMessage(content=full_system_prompt_text)
 
     def _get_predicates_section(self) -> str:
         """Generate the predicates list section dynamically."""
@@ -119,7 +103,7 @@ class ChebiPrompt:
             )
         return ""
 
-    ## ---------------- Few-Shot Prompt Construction ---------------- ##
+    ## ------- Few-Shot Prompt Construction ------------------------- ##
     def _get_few_shot_prompt(self) -> FewShotChatMessagePromptTemplate:
         raw_examples = json_to_pyObj(self.few_shot_prompt_fp)
 
@@ -157,7 +141,7 @@ class ChebiPrompt:
             example_prompt=example_prompt,
         )
 
-    ## ----------------- LLM Invocation ------------------ ##
+    ## ------- LLM Invocation for first call ------------------------ ##
     @ce.stop_program_upon_failure
     def invoke_llm_first_call(
         self, input_text: str, session_id: str = "default"
@@ -165,18 +149,27 @@ class ChebiPrompt:
         try:
             input_text = self._normalize_input_text(input_text)
 
+            # Get session history
+            history = self.get_session_history(session_id)
+
+            # Invoke chain with current history
             output = self._conversation_chain.invoke(
                 {
                     "input": input_text,
-                },
-                config={"configurable": {"session_id": session_id}},
+                    "history": history.messages,
+                }
             )
+
+            # Manually add messages to history
+            history.add_message(HumanMessage(content=input_text))
+            history.add_message(AIMessage(content=output.model_dump_json(indent=2)))
+
             return output
         except Exception as e:
             print(f"Error during inference: {e}")
             raise e
 
-    ## ----------------- FOL Definition Error Failure Prompt ----------------- ##
+    ## ------- LLM Invocation for error failure --------------------- ##
     @ce.stop_program_upon_failure
     def invoke_llm_with_error_failure_prompt(
         self, error_message: str, session_id: str = "default"
@@ -184,12 +177,22 @@ class ChebiPrompt:
         try:
             error_text = self._normalize_input_text(error_message)
             error_prompt = self._get_err_failure_prompt(error_text)
+
+            # Get session history
+            history = self.get_session_history(session_id)
+
+            # Invoke chain with current history
             output = self._conversation_chain.invoke(
                 {
                     "input": error_prompt,
-                },
-                config={"configurable": {"session_id": session_id}},
+                    "history": history.messages,
+                }
             )
+
+            # Manually add messages to history
+            history.add_message(HumanMessage(content=error_prompt))
+            history.add_message(AIMessage(content=output.model_dump_json(indent=2)))
+
             return output
         except Exception as e:
             print(f"Error during inference: {e}")
@@ -202,97 +205,52 @@ class ChebiPrompt:
         prompt_text = prompt_text.format(error_message=error_message)
         return prompt_text
 
-    ## ----------------- FOL Definition Undefined Predicates Failure Prompt ----------------- ##
-
-    def _get_undef_failure_prompt(self) -> ChatPromptTemplate:
-        # Load the raw string from YAML using the specific key
-        prompt_text = load_yaml_sys_prompt(
-            self.undef_failure_prompt_fp, key="failure_prompt"
-        )
-
-        # Create a template that includes format instructions
-        format_instructions = self._undef_parser.get_format_instructions()
-        full_prompt_text = prompt_text.replace(
-            "{undef_predicates_format_instructions}", format_instructions
-        )
-
-        # Create the complete prompt template with history support
-        # Expected variables: {input}, {previous_fol_definition},
-        #  {undefined_predicates_details}, {learned_predicates_list}, {history}
-        return ChatPromptTemplate.from_messages(
-            [
-                MessagesPlaceholder(variable_name="history"),
-                ("human", full_prompt_text),
-            ]
-        )
-
-    def _get_undef_failure_chain(self) -> RunnableWithMessageHistory:
-        """Create a chain specifically for handling undefined predicates with shared memory."""
-        llm = get_llm_for_inference(self.platform, self.model_name)
-        structured_llm = llm.with_structured_output(OutOfBoxPredicateDefinitions)
-
-        chain = self._undef_failure_prompt | structured_llm
-
-        # Wrap with same memory as main conversation chain
-        chain_with_memory = RunnableWithMessageHistory(
-            cast(Runnable, chain),
-            self._get_session_history,
-            input_messages_key="input",
-            history_messages_key="history",
-        )
-
-        return chain_with_memory
-
+    ## ------- LLM Invocation for undefined additional predicates --- ##
     @ce.stop_program_upon_failure
     def invoke_llm_with_undef_failure_prompt(
         self,
-        input_text: str,
-        previous_fol_definition: str,
         undefined_predicates: dict[str, str | None],
         session_id: str = "default",
-    ) -> tuple[OutOfBoxPredicateDefinitions, str]:
+    ) -> OutOfBoxPredicateDefinitions:
         try:
-            input_text = self._normalize_input_text(input_text)
-            previous_fol_definition = self._normalize_input_text(
-                previous_fol_definition
+            undefined_predicates_text = self._get_undef_failure_prompt(
+                undefined_predicates
             )
-            undefined_predicates_details = "\n".join(
-                f"  - Predicate: {name}"
-                + (f"\n    Chemical Definition: {definition}" if definition else "")
-                for name, definition in undefined_predicates.items()
-            )
-            prompt_text = self.get_undef_failure_with_given_inputs(
-                input_text, previous_fol_definition, undefined_predicates_details
-            )
-            # Invoke the chain with dynamic predicates list and shared session history
+
+            # Get session history
+            history = self.get_session_history(session_id)
+
+            # Invoke chain with current history
             output = self._undef_failure_chain.invoke(
                 {
-                    "input": input_text,
-                    "previous_fol_definition": previous_fol_definition,
-                    "undefined_predicates_details": undefined_predicates_details,
-                    "learned_predicates_list": self._get_predicates_section(),
-                },
-                config={"configurable": {"session_id": session_id}},
+                    "input": undefined_predicates_text,
+                    "history": history.messages,
+                }
             )
-            return output, prompt_text
+
+            # Manually add messages to history
+            history.add_message(HumanMessage(content=undefined_predicates_text))
+            history.add_message(AIMessage(content=output.model_dump_json(indent=2)))
+
+            return output
         except Exception as e:
             print(f"Error during failure prompt inference: {e}")
             raise e
 
-    def get_undef_failure_with_given_inputs(
+    def _get_undef_failure_prompt(
         self,
-        input_text: str,
-        previous_fol_definition: str,
-        undefined_predicates_details: str,
+        undefined_predicates_details: dict[str, str | None],
     ) -> str:
-        prompt_messages = self._undef_failure_prompt.format_messages(
-            input=input_text,
-            previous_fol_definition=previous_fol_definition,
-            undefined_predicates_details=undefined_predicates_details,
-            learned_predicates_list=self._get_predicates_section(),
+        prompt_text = load_yaml_sys_prompt(
+            self.undef_failure_prompt_fp, key="failure_prompt"
         )
-        prompt_text = "\n".join(
-            [f"--- {m.type.upper()} MESSAGE ---\n{m.content}" for m in prompt_messages]
+        undefined_predicates_txt = "\n".join(
+            f"  - Predicate: {name}"
+            + (f"\n    Chemical Definition: {definition}" if definition else "")
+            for name, definition in undefined_predicates_details.items()
+        )
+        prompt_text = prompt_text.format(
+            undefined_predicates_details=undefined_predicates_txt
         )
         return prompt_text
 
@@ -331,7 +289,7 @@ if __name__ == "__main__":
         few_shot_prompt_fp=os.path.join(prompt_dir, "few_shots", "with_DL_style.json"),
         err_failure_prompt_fp=os.path.join(prompt_dir, "failure", "error_prompt.yaml"),
         undef_failure_prompt_fp=os.path.join(
-            prompt_dir, "failure", "predicates_undefined.yaml"
+            prompt_dir, "failure", "predicates_undef_with_eg.yaml"
         ),
     )
 
@@ -344,19 +302,16 @@ if __name__ == "__main__":
     # Use the same session_id across all invocations to maintain conversation history
     test_session_id = "test_session"
 
-    print("---" * 50, "FEW-SHOT PROMPT TEST", "---" * 50)
+    print("---" * 10, "FEW-SHOT PROMPT TEST", "---" * 10)
     # Test the few-shot prompt
     result = chebai_prompt.invoke_llm_first_call(chebi_def, session_id=test_session_id)
     print(f"Few-shot result:\n {result}")
     print("\n\n\n")
 
-    previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
-    AND (has_part SOME HydroxyGroup))"""
+    print("---" * 10, "FOL DEFINITION ERROR FAILURE PROMPT TEST", "---" * 10)
     error_message = """ Unknow predicate 'has_part' used in the FOL formula,
     which is not defined in the system prompt.",
     """
-
-    print("---" * 50, "FOL DEFINITION ERROR FAILURE PROMPT TEST", "---" * 50)
     # Test the failure prompt - uses same session to maintain context
     failure_result = chebai_prompt.invoke_llm_with_error_failure_prompt(
         error_message=error_message, session_id=test_session_id
@@ -364,24 +319,20 @@ if __name__ == "__main__":
     print(f"Failure result:\n {failure_result}")
 
     print(
-        "---" * 50,
+        "---" * 10,
         "FOL DEFINITION UNDEFINED PREDICATES FAILURE PROMPT TEST",
-        "---" * 50,
+        "---" * 10,
     )
-    previous_fol_definition = """ethanol <=> (PrimaryAlcohol AND (is_a Ethane)
-    AND (has_part SOME HydroxyGroup))"""
+
     undefined_predicates = {
         "has_part": "A predicate indicating that a chemical entity has a certain part or component.",
         "SOME": None,
     }
     # This invocation now shares the same conversation history as the previous calls
-    failure_result, failure_prompt_text = (
-        chebai_prompt.invoke_llm_with_undef_failure_prompt(
-            input_text=chebi_def,
-            previous_fol_definition=previous_fol_definition,
-            undefined_predicates=undefined_predicates,
-            session_id=test_session_id,  # Same session = shared memory
-        )
+    failure_prompt_text = chebai_prompt._get_undef_failure_prompt(undefined_predicates)
+    failure_result = chebai_prompt.invoke_llm_with_undef_failure_prompt(
+        undefined_predicates=undefined_predicates,
+        session_id=test_session_id,  # Same session = shared memory
     )
     print(f"Undefined predicates failure prompt text: \n {failure_prompt_text} \n\n\n")
     print(f"Undefined predicates failure result:\n {failure_result}")
