@@ -165,8 +165,6 @@ class ChebiPrompt:
         self, *, input_text: str, session_id: str
     ) -> CHEBIFOLOutput:
         try:
-            input_text = self._normalize_input_text(input_text)
-
             # Get session history
             history = self.get_session_history(session_id)
 
@@ -193,8 +191,7 @@ class ChebiPrompt:
         self, *, error_message: str, session_id: str
     ) -> CHEBIFOLOutput:
         try:
-            error_text = self._normalize_input_text(error_message)
-            error_prompt = self._get_err_failure_prompt(error_text)
+            error_prompt = self._get_err_failure_prompt(error_message)
 
             # Get session history
             history = self.get_session_history(session_id)
@@ -369,14 +366,6 @@ class ChebiPrompt:
             print("(No conversation history yet)")
 
         print("\n" + "=" * 80)
-
-    @staticmethod
-    def _normalize_input_text(input_text: str) -> str:
-        """
-        Normalize the input text by stripping leading/trailing whitespace
-        and collapsing multiple spaces into a single space.
-        """
-        return " ".join(str(input_text).split())
 
 
 if __name__ == "__main__":
