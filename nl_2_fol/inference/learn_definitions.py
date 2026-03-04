@@ -90,6 +90,7 @@ class LearnDefinitions:
             self._parse_and_validate_generated_definition(result, chemical_class)
             self.__iter_classes.remove(chemical_class.name)
             self._save_definitions()
+            self._post_cleanup(session_id=chemical_class.name)
             return
         except Exception as e:
             raised_exception = e
@@ -152,6 +153,7 @@ class LearnDefinitions:
                 )
                 self.__iter_classes.remove(chemical_class.name)
                 self._save_definitions()
+                self._post_cleanup(session_id=chemical_class.name)
                 return
             except Exception as e:
                 raised_exception = e
@@ -165,6 +167,13 @@ class LearnDefinitions:
                 )
                 self._attempts += 1
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
+
+        self._post_cleanup(session_id=chemical_class.name)
+
+    def _post_cleanup(self, session_id: str):
+        # This is to clean up the session history after learning a definition for a chemical
+        # class or attempts are exhausted, so avoid uncessary runtime memory usage
+        self.chebi_prompt_obj.delete_session_history(session_id=session_id)
 
     def _handle_missing_predicates_exception(
         self, e: ce.MissingPredicateException
@@ -280,8 +289,6 @@ class LearnDefinitions:
         self._add_generated_predicates_to_prompt_obj(
             chemical_class.name, pred_variables
         )
-        self.chebi_prompt_obj.delete_session_history(chemical_class.name)
-
         print(
             f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
         )
