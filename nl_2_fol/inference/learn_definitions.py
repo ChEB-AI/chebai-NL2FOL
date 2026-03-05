@@ -18,6 +18,8 @@ from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 # TODO: can langchain-graph be used here? or will it be an overkill?
 class LearnDefinitions:
     _DEFINITION_FILE_NAME = "learned_definitions.pkl"
+    _MAX_NEGATIVE_SAMPLES = 5000
+    _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
 
     def __init__(
         self,
@@ -225,7 +227,8 @@ class LearnDefinitions:
         )
 
         pos_samples, neg_samples = self._get_positive_and_negative_samples(
-            chemical_class
+            chemical_class,
+            self._MAX_NEGATIVE_SAMPLES,
         )
 
         unmatched_pos_samples, matched_neg_samples = (
@@ -254,7 +257,7 @@ class LearnDefinitions:
                 neg_samples=neg_samples,
                 matched_neg_samples=matched_neg_samples,
                 unmatched_pos_samples=unmatched_pos_samples,
-                max_examples=5,
+                max_examples=self._MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION,
                 chebi_name_to_data_mapping=self._chebi_name_to_data_mapping,
             )
         # TODO: What if the additonal defintions are changed in next attempt
