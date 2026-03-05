@@ -36,9 +36,8 @@ class Main:
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
-        max_attempts: int = 4,
+        max_attempts: int = 3,
         f1_threshold: float = 0.8,
-        load_definitions_path: str | None = None,
     ):
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
@@ -55,7 +54,6 @@ class Main:
             structures_path=structures_data_path,
             max_attempts=max_attempts,
             f1_threshold=f1_threshold,
-            definitions_path=load_definitions_path,
         )
         learner.learn_fol_definitions()
 

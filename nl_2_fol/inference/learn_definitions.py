@@ -28,11 +28,9 @@ class LearnDefinitions:
         structures_path: str,
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
-        definitions_path: str | None = None,
     ):
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
-        self.definitions_path = definitions_path
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
         self.f1_threshold = f1_threshold
@@ -41,9 +39,7 @@ class LearnDefinitions:
 
         self._gavel = GavelFOLReasoner()
 
-        self.definitions: def_model.DefinitionLearningResults = self._load_definitions(
-            definitions_path
-        )
+        self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
         # Load Entire Chebi data
         entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
@@ -59,8 +55,14 @@ class LearnDefinitions:
         # this is only used to check if a predicate is in the dataset during missing predicate exception handling
         self.__iter_classes: set[str] = set(self._c3po_slim_dataset.classes.keys())
 
+        # Stores chemical classes not learned in previous programs calls,
+        # so we can skip them in the main loop and avoid unnecessary attempts
+        self._not_learned_classes: set[str] = set()
+
     def learn_fol_definitions(self):
         for chemical_class_name in tqdm.tqdm(self._c3po_slim_dataset.classes.keys()):
+            if chemical_class_name in self._not_learned_classes:
+                continue
             if chemical_class_name not in self.__iter_classes:
                 # This class could have been learned duing recursive learning
                 # when handling missing predicate exception, so we skip it in the main loop
@@ -170,6 +172,8 @@ class LearnDefinitions:
                 self._attempts += 1
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
+        self._not_learned_classes.add(chemical_class.name)
+        self._save_not_learned_classes_list()
         self._post_cleanup(session_id=chemical_class.name)
 
     def _post_cleanup(self, session_id: str):
@@ -457,14 +461,11 @@ class LearnDefinitions:
         )
 
     def _load_definitions(
-        self, path: str | None
+        self,
     ) -> def_model.DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
-        if path is not None:
-            with open(path, "rb") as f:
-                definitions = pickle.load(f)
-        elif os.path.exists(
+        if os.path.exists(
             default_path := os.path.join(
                 self.definitions_save_path, self._DEFINITION_FILE_NAME
             )
@@ -475,8 +476,33 @@ class LearnDefinitions:
             definitions = def_model.DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
             )
+        self._load_not_learned_classes_list()
         self._load_background_defs_from_pmodel(definitions)
         return definitions
+
+    def _load_not_learned_classes_list(self):
+        # This is to load the list of not learned classes from previous runs of the program, so we can skip them in the main loop and avoid unnecessary attempts
+        unlearned_classes_path = os.path.join(
+            self.definitions_save_path, "unlearned_classes.txt"
+        )
+        if os.path.exists(unlearned_classes_path):
+            with open(unlearned_classes_path, "r") as f:
+                self._not_learned_classes = set(line.strip() for line in f)
+                print(
+                    "Loaded not learned classes from previous runs:"
+                    f"{self._not_learned_classes}.\n"
+                    "Hence this run will skip learning definitions for these classes and "
+                    "avoid unnecessary attempts."
+                )
+
+    def _save_not_learned_classes_list(self):
+        # This is to save the list of not learned classes to a file, so we can load it in the next runs and skip them in the main loop and avoid unnecessary attempts
+        unlearned_classes_path = os.path.join(
+            self.definitions_save_path, "unlearned_classes.txt"
+        )
+        with open(unlearned_classes_path, "w") as f:
+            for class_name in self._not_learned_classes:
+                f.write(f"{class_name}\n")
 
     def _load_background_defs_from_pmodel(
         self, new_definitions: def_model.DefinitionLearningResults
