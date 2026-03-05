@@ -118,11 +118,11 @@ class GavelFOLReasoner:
 
         exception_prefix = (
             "MODEL CHECKING FAILED - Error during model checking for the formula.\n"
-            f"Formula being checked: `{definition_to_match}`\n\n"
-            f"Background: The formula was parsed through these steps:\n"
+            f"Background: The given formula was parsed through these steps:\n"
             f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
             f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
             f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
+            f"Parsed Formula being checked: `{definition_to_match}`\n\n"
             "[IMPORTANT] Critical error details for analysis: \n"
         )
         try:
