@@ -1,3 +1,5 @@
+import time
+
 from chemlog.fol_classification.fol_utils import normalize_fol_formula
 from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
@@ -15,6 +17,8 @@ from nl_2_fol.inference.custom_exceptions import (
 
 
 class GavelFOLReasoner:
+    _MODEL_CHECK_TIMEOUT_SECONDS = 30
+
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
@@ -113,7 +117,16 @@ class GavelFOLReasoner:
         model_checker = ModelChecker(universe, extensions, bck_def)
         try:
             # Can fail for definitions like: `∃[]: ((peptide(x)))`
+            model_check_start_time = time.monotonic()
             outcome, _ = model_checker.find_model(definition_to_match)
+            elapsed_seconds = time.monotonic() - model_check_start_time
+            if elapsed_seconds > self._MODEL_CHECK_TIMEOUT_SECONDS:
+                raise TimeoutError(
+                    "Generated FOL formula took more than 30 seconds during model checking. "
+                    f"Elapsed: {elapsed_seconds:.2f}s. "
+                    f"Formula being checked: `{definition_to_match}`"
+                    "Reduce the complexity of the formula"
+                )
         except Exception as e:
             raise Exception(
                 f"MODEL CHECKING FAILED - Error during model checking for the formula.\n"
