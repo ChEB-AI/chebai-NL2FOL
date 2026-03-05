@@ -46,7 +46,7 @@ class GavelFOLReasoner:
             raise Exception(
                 f"Error parsing FOL formula to TPTP format.\n"
                 f"Process: The formula is wrapped in TPTP annotated format and parsed.\n"
-                f"More specifics on the error: {e}"
+                f"[IMPORTANT] Critical error details for analysis:\n{e}"
             )
 
         # Ensure the left-hand side is a predicate expression (not ambiguous)
@@ -79,9 +79,9 @@ class GavelFOLReasoner:
                 "Process: The formula is converted to PNF (all quantifiers moved to"
                 "the front) with the matrix in CNF (Conjunctive Normal Form with N-ary"
                 "conjunctions and disjunctions).\n"
-                f"More specifics on the error: {e}"
+                f"[IMPORTANT] Critical error details for analysis:\n{e}"
             )
-        print(f"Input formula: {formula}\n\t Parsed as: {tptp_right_side}")
+        print(f"Input formula: {formula}\n\t Parsed Right Side as: {tptp_right_side}")
         return pred_variables, tptp_right_side
 
     @model_check_exception
@@ -135,7 +135,7 @@ class GavelFOLReasoner:
                 f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
                 f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
                 f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
-                f"More specifics on the error: {e}"
+                f"[IMPORTANT] Critical error details for analysis:\n{e}"
             )
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 
