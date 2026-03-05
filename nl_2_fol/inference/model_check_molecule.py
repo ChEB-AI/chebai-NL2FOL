@@ -115,6 +115,16 @@ class GavelFOLReasoner:
             **(additional_background_definitions or {}),
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
+
+        exception_prefix = (
+            "MODEL CHECKING FAILED - Error during model checking for the formula.\n"
+            f"Formula being checked: `{definition_to_match}`\n\n"
+            f"Background: The formula was parsed through these steps:\n"
+            f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
+            f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
+            f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
+            "[IMPORTANT] Critical error details for analysis: \n"
+        )
         try:
             # Can fail for definitions like: `∃[]: ((peptide(x)))`
             model_check_start_time = time.monotonic()
@@ -127,16 +137,25 @@ class GavelFOLReasoner:
                     f"Formula being checked: `{definition_to_match}`"
                     "Reduce the complexity of the formula"
                 )
+        except ValueError as ve:
+            if "Predicate" in str(ve) and "is defined with arity" in str(ve):
+                # If the raised error is https://github.com/sfluegel05/chemlog-peptides/pull/9/files
+                # Extract predicate info from error message for better guidance
+                error_msg = str(ve)
+                logging_msg = (
+                    f"Predicate arity mismatch detected: {error_msg}\n"
+                    f"Example usage guidance:\n"
+                    f"  - Predicate with arity 0 (no arguments): use as 'predicate' in formula\n"
+                    f"  - Predicate with arity 1 (1 argument): use as 'predicate(x)'\n"
+                    f"  - Predicate with arity 2 (2 arguments): use as 'predicate(x, y)'\n"
+                    f"Ensure all predicate calls match their defined arity."
+                )
+                print(f"[WARNING] {logging_msg}")
+                raise Exception(logging_msg)
+            else:
+                raise Exception(f"{exception_prefix}{ve}")
         except Exception as e:
-            raise Exception(
-                f"MODEL CHECKING FAILED - Error during model checking for the formula.\n"
-                f"Formula being checked: `{definition_to_match}`\n\n"
-                f"Background: The formula was parsed through these steps:\n"
-                f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
-                f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
-                f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
-                f"[IMPORTANT] Critical error details for analysis:\n{e}"
-            )
+            raise Exception(f"{exception_prefix}{e}")
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 
     @mol_to_fol_exception
