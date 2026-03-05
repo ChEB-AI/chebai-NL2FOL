@@ -132,10 +132,9 @@ class GavelFOLReasoner:
             elapsed_seconds = time.monotonic() - model_check_start_time
             if elapsed_seconds > self._MODEL_CHECK_TIMEOUT_SECONDS:
                 raise TimeoutError(
-                    "Generated FOL formula took more than 30 seconds during model checking. "
-                    f"Elapsed: {elapsed_seconds:.2f}s. "
-                    f"Formula being checked: `{definition_to_match}`"
-                    "Reduce the complexity of the formula"
+                    "Generated FOL formula took more than 30 seconds during model checking.\n "
+                    f"Elapsed: {elapsed_seconds:.2f}s. \n"
+                    "Try reducing the complexity of the formula"
                 )
         except ValueError as ve:
             if "Predicate" in str(ve) and "is defined with arity" in str(ve):
