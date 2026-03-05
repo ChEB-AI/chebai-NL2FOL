@@ -254,7 +254,7 @@ class LearnDefinitions:
                 neg_samples=neg_samples,
                 matched_neg_samples=matched_neg_samples,
                 unmatched_pos_samples=unmatched_pos_samples,
-                max_examples=10,
+                max_examples=5,
                 chebi_name_to_data_mapping=self._chebi_name_to_data_mapping,
             )
         # TODO: What if the additonal defintions are changed in next attempt
