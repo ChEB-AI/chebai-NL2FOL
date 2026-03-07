@@ -18,6 +18,7 @@ PROMPT_TEMPLATES_DIR = os.path.join(PROJECT_DIR, "prompting", "prompt_templates"
 class Main:
     @staticmethod
     def learn(
+        class_name: str = "all",
         api_platform: API_PLATFORM = "anthropic",
         model_name: str = "claude-opus-4-6",
         system_prompt_fp: str = os.path.join(
@@ -55,7 +56,15 @@ class Main:
             max_attempts=max_attempts,
             f1_threshold=f1_threshold,
         )
-        learner.learn_fol_definitions()
+        if class_name == "all":
+            learner.learn_fol_definitions()
+
+        elif class_name in learner._c3po_slim_dataset.classes:
+            learner._learn(
+                chemical_class=learner._c3po_slim_dataset.classes[class_name]
+            )
+        else:
+            print(f"{class_name} not found in the dataset.")
 
 
 if __name__ == "__main__":
