@@ -15,7 +15,6 @@ from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
-# TODO: can langchain-graph be used here? or will it be an overkill?
 class LearnDefinitions:
     _DEFINITION_FILE_NAME = "learned_definitions.pkl"
     _MAX_NEGATIVE_SAMPLES = 5000
@@ -38,6 +37,9 @@ class LearnDefinitions:
         # this will be used to learn new definitions based on the classified chemical classes
 
         self._gavel = GavelFOLReasoner()
+        # Stores chemical classes not learned in previous programs calls,
+        # so we can skip them in the main loop and avoid unnecessary attempts
+        self._not_learned_classes: set[str] = set()
 
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
@@ -54,10 +56,6 @@ class LearnDefinitions:
         # Do Not use this, classes are popped from the dataset during learning,
         # this is only used to check if a predicate is in the dataset during missing predicate exception handling
         self.__iter_classes: set[str] = set(self._c3po_slim_dataset.classes.keys())
-
-        # Stores chemical classes not learned in previous programs calls,
-        # so we can skip them in the main loop and avoid unnecessary attempts
-        self._not_learned_classes: set[str] = set()
 
     def learn_fol_definitions(self):
         for chemical_class_name in tqdm.tqdm(self._c3po_slim_dataset.classes.keys()):
