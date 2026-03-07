@@ -161,7 +161,7 @@ class TestGavelFOLReasoner:
         assert "ptest" in error_message
         assert "qtest" in error_message
 
-    def test_does_mol_match_tptp_definition_exception(self, reasoner: GavelFOLReasoner):
+    def predicate_arity_exception(self, reasoner: GavelFOLReasoner):
         """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
         cdef = reasoner.convert_to_background_definitions(
             {"ptest": "ptest <=> has_bond(X, Y)"}  # ptest has no variables
@@ -186,6 +186,18 @@ class TestGavelFOLReasoner:
             "Predicate `ptest` is defined with arity 0 but called with 1 arguments"
             in error_message
         )
+
+    def test_model_checking(self, reasoner: GavelFOLReasoner):
+        """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
+        formula_str = "cation <=> net_charge_positive"
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+
+        mol = Chem.MolFromSmiles(
+            "C(=O)(C1=CC=C(C=C1F)OCCCCCC[NH+](CC=C)C)C=2C=CC(=CC2)Br"
+        )
+
+        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
     def test_timeout_returns_false_before_threshold(
         self, reasoner: GavelFOLReasoner, monkeypatch
