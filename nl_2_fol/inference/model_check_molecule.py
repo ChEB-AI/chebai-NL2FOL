@@ -134,12 +134,6 @@ class GavelFOLReasoner:
                 # TODO: discuss
                 # Might the molecule be too complex, or the formula be too complex?
                 # Let's log this for analysis instead of raising an error immediately
-                print(
-                    "[WARNING] Model checking timed out after 30 seconds.\n"
-                    "This could be due to the complexity of the formula or the molecule.\n"
-                    f"Molecule: {Chem.MolToSmiles(molecule)}\n"
-                    "Consider simplifying the formula or using a less complex molecule for testing."
-                )
                 formula_key = str(definition_to_match)
 
                 if formula_key not in self._timout_tracking:
@@ -147,8 +141,16 @@ class GavelFOLReasoner:
                     # Helpful to avoid storing timeout counts for formulas that are already processed.
                     self._timout_tracking = {}
 
-                self._timout_tracking[formula_key] = (
-                    self._timout_tracking.get(formula_key, 0) + 1
+                timeout_count = self._timout_tracking.get(formula_key, 0) + 1
+                self._timout_tracking[formula_key] = timeout_count
+
+                print(
+                    f"[WARNING] Model checking timed out after {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds"
+                    f"(Timeout Count for this formula: #{timeout_count}).\n"
+                    f"MAX allowed timeouts per formula before raising error: {self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA}).\n"
+                    "This could be due to the complexity of the formula or the molecule.\n"
+                    f"Molecule: {Chem.MolToSmiles(molecule)}\n"
+                    "Consider simplifying the formula or using a less complex molecule for testing."
                 )
                 # If the same formula has timed out 10 times, we deem the formula is too
                 # complex for model checking rather than the molecule
@@ -157,7 +159,7 @@ class GavelFOLReasoner:
                     >= self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA
                 ):
                     raise TimeoutError(
-                        "Generated FOL formula took more than 30 seconds during model checking.\n "
+                        f"Generated FOL formula took more than {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds during model checking.\n "
                         "Try reducing the complexity of the formula"
                     )
 

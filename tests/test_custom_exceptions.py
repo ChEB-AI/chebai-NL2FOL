@@ -114,10 +114,11 @@ class TestLowF1ScoreException:
 
         with pytest.raises(LowF1ScoreException) as exc_info:
             raise LowF1ScoreException(
-                pos_samples,
-                neg_samples,
-                matched_neg_samples,
-                unmatched_pos_samples,
+                current_f1_score=0.75,
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=2,
                 chebi_name_to_data_mapping=mapping,
             )
@@ -138,10 +139,11 @@ class TestLowF1ScoreException:
 
         with pytest.raises(LowF1ScoreException) as exc_info:
             raise LowF1ScoreException(
-                pos_samples,
-                neg_samples,
-                matched_neg_samples,
-                unmatched_pos_samples,
+                current_f1_score=0.75,
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=2,
                 chebi_name_to_data_mapping=mapping,
             )
@@ -162,10 +164,11 @@ class TestLowF1ScoreException:
 
         with pytest.raises(LowF1ScoreException) as exc_info:
             raise LowF1ScoreException(
-                pos_samples,
-                neg_samples,
-                matched_neg_samples,
-                unmatched_pos_samples,
+                current_f1_score=0.75,
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=2,
                 chebi_name_to_data_mapping=mapping,
             )
@@ -184,10 +187,11 @@ class TestLowF1ScoreException:
 
         with pytest.raises(LowF1ScoreException) as exc_info:
             raise LowF1ScoreException(
-                pos_samples,
-                neg_samples,
-                matched_neg_samples,
-                unmatched_pos_samples,
+                current_f1_score=0.75,
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=2,
                 chebi_name_to_data_mapping=mapping,
             )
@@ -208,10 +212,11 @@ class TestLowF1ScoreException:
 
         with pytest.raises(LowF1ScoreException) as exc_info:
             raise LowF1ScoreException(
-                pos_samples,
-                neg_samples,
-                matched_neg_samples,
-                unmatched_pos_samples,
+                current_f1_score=0.75,
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=1,
                 chebi_name_to_data_mapping=mapping,
             )
@@ -254,10 +259,11 @@ class TestLowF1ScoreException:
 
         with pytest.raises(LowF1ScoreException) as exc_info:
             raise LowF1ScoreException(
-                pos_samples,
-                neg_samples,
-                matched_neg_samples,
-                unmatched_pos_samples,
+                current_f1_score=0.75,
+                pos_samples=pos_samples,
+                neg_samples=neg_samples,
+                matched_neg_samples=matched_neg_samples,
+                unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=3,
                 chebi_name_to_data_mapping=mapping,
             )

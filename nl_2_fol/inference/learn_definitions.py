@@ -1,6 +1,8 @@
+import json
 import os
 import pickle
 import queue
+import traceback
 
 import tqdm
 from gavel.logic import logic
@@ -39,7 +41,7 @@ class LearnDefinitions:
         self._gavel = GavelFOLReasoner()
         # Stores chemical classes not learned in previous programs calls,
         # so we can skip them in the main loop and avoid unnecessary attempts
-        self._not_learned_classes: set[str] = set()
+        self._not_learned_classes: dict[str, list[str]] = {}
 
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
@@ -74,6 +76,7 @@ class LearnDefinitions:
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
         self._attempts = 0
+        attempt_failure_summary = []
 
         raised_exception = None
         result = None
@@ -95,11 +98,15 @@ class LearnDefinitions:
             self._post_cleanup(session_id=chemical_class.name)
             return
         except Exception as e:
+            error_trace = traceback.format_exc()
             raised_exception = e
             if isinstance(e, ce.MissingPredicateException):
                 raised_exception = self._handle_missing_predicates_exception(e)
             elif isinstance(e, ce.StopProgramException):
                 raise e
+            attempt_failure_summary.append(
+                f"Attempt {self._attempts} failed with exception: {raised_exception}\nStacktrace:\n{error_trace}"
+            )
 
         print(
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
@@ -108,7 +115,7 @@ class LearnDefinitions:
         previous_fol_def = result.FOL_formula if result else ""
         while self._attempts < self.max_attempts:
             print(
-                f"Attempt {self._attempts + 1} for CHEBI:{chemical_class.id}: {chemical_class.name}"
+                f"Attempt {self._attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
             )
             add_bck_def = None
             if isinstance(raised_exception, ce.LearnOutOfBoxPredicateException):
@@ -128,6 +135,7 @@ class LearnDefinitions:
                         additional_def
                     )
                 except Exception as e:
+                    error_trace = traceback.format_exc()
                     # If additional generated definitions for the missing predicates
                     # are not parseable, we return the error to llm.
                     # This will lead generating new FOL formula input chemical class
@@ -135,6 +143,10 @@ class LearnDefinitions:
                     raised_exception = Exception(
                         f"Failed to parse FOL definition for the following predicate:"
                         f"{additional_def}. Error: {e}"
+                    )
+                    attempt_failure_summary.append(
+                        f"Attempt {self._attempts + 2} failed with unparseable additional"
+                        f"definition for out-of-box predicate: {additional_def}. Error: {e}\nStacktrace:\n{error_trace}"
                     )
                     continue
             elif isinstance(raised_exception, ce.RetryException):
@@ -158,6 +170,7 @@ class LearnDefinitions:
                 self._post_cleanup(session_id=chemical_class.name)
                 return
             except Exception as e:
+                error_trace = traceback.format_exc()
                 raised_exception = e
                 if isinstance(e, ce.MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
@@ -168,9 +181,12 @@ class LearnDefinitions:
                     f"\tRaised exception: {raised_exception}]\n",
                 )
                 self._attempts += 1
+                attempt_failure_summary.append(
+                    f"Attempt {self._attempts} failed with exception: {raised_exception}\nStacktrace:\n{error_trace}"
+                )
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
-        self._not_learned_classes.add(chemical_class.name)
+        self._not_learned_classes[chemical_class.name] = attempt_failure_summary
         self._save_not_learned_classes_list()
         self._post_cleanup(session_id=chemical_class.name)
 
@@ -255,6 +271,7 @@ class LearnDefinitions:
                 f"{chemical_class.name}"
             )
             raise ce.LowF1ScoreException(
+                current_f1_score=metrics.F1,
                 pos_samples=pos_samples,
                 neg_samples=neg_samples,
                 matched_neg_samples=matched_neg_samples,
@@ -481,14 +498,19 @@ class LearnDefinitions:
     def _load_not_learned_classes_list(self):
         # This is to load the list of not learned classes from previous runs of the program, so we can skip them in the main loop and avoid unnecessary attempts
         unlearned_classes_path = os.path.join(
-            self.definitions_save_path, "unlearned_classes.txt"
+            self.definitions_save_path, "unlearned_classes.json"
         )
         if os.path.exists(unlearned_classes_path):
             with open(unlearned_classes_path, "r") as f:
-                self._not_learned_classes = set(line.strip() for line in f)
+                # Load class names from JSON file
+                saved_classes_data = json.load(f)
+                # Initialize the dict with loaded class names but empty failure lists for this run
+                self._not_learned_classes = {
+                    class_name: [] for class_name in saved_classes_data.keys()
+                }
                 print(
                     "Loaded not learned classes from previous runs:"
-                    f"{self._not_learned_classes}.\n"
+                    f"{set(saved_classes_data.keys())}.\n"
                     "Hence this run will skip learning definitions for these classes and "
                     "avoid unnecessary attempts."
                 )
@@ -496,11 +518,24 @@ class LearnDefinitions:
     def _save_not_learned_classes_list(self):
         # This is to save the list of not learned classes to a file, so we can load it in the next runs and skip them in the main loop and avoid unnecessary attempts
         unlearned_classes_path = os.path.join(
-            self.definitions_save_path, "unlearned_classes.txt"
+            self.definitions_save_path, "unlearned_classes.json"
         )
+
+        # Load existing saved classes
+        saved_classes_data = {}
+        if os.path.exists(unlearned_classes_path):
+            with open(unlearned_classes_path, "r") as f:
+                saved_classes_data = json.load(f)
+
+        # Update with new classes and their failures (only append new ones)
+        for class_name, failure_list in self._not_learned_classes.items():
+            if class_name not in saved_classes_data:
+                # Only save if new class
+                saved_classes_data[class_name] = failure_list if failure_list else []
+
+        # Write the entire updated data to JSON file
         with open(unlearned_classes_path, "w") as f:
-            for class_name in self._not_learned_classes:
-                f.write(f"{class_name}\n")
+            json.dump(saved_classes_data, f, indent=2)
 
     def _load_background_defs_from_pmodel(
         self, new_definitions: def_model.DefinitionLearningResults
