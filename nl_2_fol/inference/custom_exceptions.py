@@ -111,6 +111,7 @@ class LowF1ScoreException(Exception):
     Exception raised when a generated FOL definition fails F1-score validation.
 
     Args:
+        current_f1_score: The F1 score achieved by the generated definition.
         pos_samples: List of positive ChemicalStructure samples.
         neg_samples: List of negative ChemicalStructure samples.
         matched_neg_samples: List of SMILES strings for negative samples incorrectly matched (false positives).

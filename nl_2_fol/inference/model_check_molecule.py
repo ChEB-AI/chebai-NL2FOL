@@ -24,7 +24,7 @@ class GavelFOLReasoner:
         self.background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ] = {}
-        self._timout_tracking: dict[str, int] = {}
+        self._timeout_tracking: dict[str, int] = {}
 
     @tptp_parse_exception
     def get_tptp_fol_definition(
@@ -136,18 +136,18 @@ class GavelFOLReasoner:
                 # Let's log this for analysis instead of raising an error immediately
                 formula_key = str(definition_to_match)
 
-                if formula_key not in self._timout_tracking:
+                if formula_key not in self._timeout_tracking:
                     # reset tracking if we encounter a new formula that we haven't seen before
                     # Helpful to avoid storing timeout counts for formulas that are already processed.
-                    self._timout_tracking = {}
+                    self._timeout_tracking = {}
 
-                timeout_count = self._timout_tracking.get(formula_key, 0) + 1
-                self._timout_tracking[formula_key] = timeout_count
+                timeout_count = self._timeout_tracking.get(formula_key, 0) + 1
+                self._timeout_tracking[formula_key] = timeout_count
 
                 print(
-                    f"[WARNING] Model checking timed out after {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds"
+                    f"[WARNING] Model checking timed out after {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds\n"
                     f"(Timeout Count for this formula: #{timeout_count}).\n"
-                    f"MAX allowed timeouts per formula before raising error: {self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA}).\n"
+                    f"MAX allowed timeouts per formula before raising error: {self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA}.\n"
                     "This could be due to the complexity of the formula or the molecule.\n"
                     f"Molecule: {Chem.MolToSmiles(molecule)}\n"
                     "Consider simplifying the formula or using a less complex molecule for testing."
@@ -155,7 +155,7 @@ class GavelFOLReasoner:
                 # If the same formula has timed out 10 times, we deem the formula is too
                 # complex for model checking rather than the molecule
                 if (
-                    self._timout_tracking[formula_key]
+                    self._timeout_tracking[formula_key]
                     >= self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA
                 ):
                     raise TimeoutError(

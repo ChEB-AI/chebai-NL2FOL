@@ -161,7 +161,7 @@ class TestGavelFOLReasoner:
         assert "ptest" in error_message
         assert "qtest" in error_message
 
-    def predicate_arity_exception(self, reasoner: GavelFOLReasoner):
+    def test_predicate_arity_exception(self, reasoner: GavelFOLReasoner):
         """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
         cdef = reasoner.convert_to_background_definitions(
             {"ptest": "ptest <=> has_bond(X, Y)"}  # ptest has no variables
@@ -224,7 +224,7 @@ class TestGavelFOLReasoner:
         for _ in range(calls_before_threshold):
             assert reasoner.does_mol_match_tptp_definition(mol, parsed_formula) is False
 
-        assert reasoner._timout_tracking[str(parsed_formula)] == calls_before_threshold
+        assert reasoner._timeout_tracking[str(parsed_formula)] == calls_before_threshold
 
     def test_timeout_raises_at_threshold(self, reasoner: GavelFOLReasoner, monkeypatch):
         """Test timeout handling raises once max timeout threshold is reached."""
