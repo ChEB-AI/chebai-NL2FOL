@@ -1,5 +1,3 @@
-import time
-
 from chemlog.fol_classification.fol_utils import normalize_fol_formula
 from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
@@ -18,6 +16,7 @@ from nl_2_fol.inference.custom_exceptions import (
 
 class GavelFOLReasoner:
     _MODEL_CHECK_TIMEOUT_SECONDS = 30
+    _MAX_ALLOWED_TIMEOUTS_PER_FORMULA = 10
 
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
@@ -25,6 +24,7 @@ class GavelFOLReasoner:
         self.background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ] = {}
+        self._timout_tracking: dict[str, int] = {}
 
     @tptp_parse_exception
     def get_tptp_fol_definition(
@@ -127,15 +127,40 @@ class GavelFOLReasoner:
         )
         try:
             # Can fail for definitions like: `∃[]: ((peptide(x)))`
-            model_check_start_time = time.monotonic()
-            outcome, _ = model_checker.find_model(definition_to_match)
-            elapsed_seconds = time.monotonic() - model_check_start_time
-            if elapsed_seconds > self._MODEL_CHECK_TIMEOUT_SECONDS:
-                raise TimeoutError(
-                    "Generated FOL formula took more than 30 seconds during model checking.\n "
-                    f"Elapsed: {elapsed_seconds:.2f}s. \n"
-                    "Try reducing the complexity of the formula"
+            outcome, _ = model_checker.find_model(
+                definition_to_match, timeout=self._MODEL_CHECK_TIMEOUT_SECONDS
+            )
+            if outcome == ModelCheckerOutcome.TIMEOUT:
+                # TODO: discuss
+                # Might the molecule be too complex, or the formula be too complex?
+                # Let's log this for analysis instead of raising an error immediately
+                print(
+                    "[WARNING] Model checking timed out after 30 seconds.\n"
+                    "This could be due to the complexity of the formula or the molecule.\n"
+                    f"Molecule: {Chem.MolToSmiles(molecule)}\n"
+                    "Consider simplifying the formula or using a less complex molecule for testing."
                 )
+                formula_key = str(definition_to_match)
+
+                if formula_key not in self._timout_tracking:
+                    # reset tracking if we encounter a new formula that we haven't seen before
+                    # Helpful to avoid storing timeout counts for formulas that are already processed.
+                    self._timout_tracking = {}
+
+                self._timout_tracking[formula_key] = (
+                    self._timout_tracking.get(formula_key, 0) + 1
+                )
+                # If the same formula has timed out 10 times, we deem the formula is too
+                # complex for model checking rather than the molecule
+                if (
+                    self._timout_tracking[formula_key]
+                    >= self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA
+                ):
+                    raise TimeoutError(
+                        "Generated FOL formula took more than 30 seconds during model checking.\n "
+                        "Try reducing the complexity of the formula"
+                    )
+
         except ValueError as ve:
             if "Predicate" in str(ve) and "is defined with arity" in str(ve):
                 # If the raised error is https://github.com/sfluegel05/chemlog-peptides/pull/9/files

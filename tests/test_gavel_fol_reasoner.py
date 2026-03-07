@@ -5,6 +5,7 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
+import nl_2_fol.inference.model_check_molecule as model_check_molecule
 from nl_2_fol.inference.custom_exceptions import MissingPredicateException
 from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
 
@@ -185,6 +186,62 @@ class TestGavelFOLReasoner:
             "Predicate `ptest` is defined with arity 0 but called with 1 arguments"
             in error_message
         )
+
+    def test_timeout_returns_false_before_threshold(
+        self, reasoner: GavelFOLReasoner, monkeypatch
+    ):
+        """Test timeout handling returns False before max timeout threshold is reached."""
+
+        class _TimeoutModelChecker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def find_model(self, *args, **kwargs):
+                return model_check_molecule.ModelCheckerOutcome.TIMEOUT, None
+
+        monkeypatch.setattr(
+            "nl_2_fol.inference.model_check_molecule.ModelChecker",
+            _TimeoutModelChecker,
+        )
+        monkeypatch.setattr(reasoner, "_mol_to_fol", lambda _mol: ([], {}))
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition("test_pred(X) <=> c(X)")
+        mol = Chem.MolFromSmiles("C")
+
+        calls_before_threshold = reasoner._MAX_ALLOWED_TIMEOUTS_PER_FORMULA - 1
+        for _ in range(calls_before_threshold):
+            assert reasoner.does_mol_match_tptp_definition(mol, parsed_formula) is False
+
+        assert reasoner._timout_tracking[str(parsed_formula)] == calls_before_threshold
+
+    def test_timeout_raises_at_threshold(self, reasoner: GavelFOLReasoner, monkeypatch):
+        """Test timeout handling raises once max timeout threshold is reached."""
+
+        class _TimeoutModelChecker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def find_model(self, *args, **kwargs):
+                return model_check_molecule.ModelCheckerOutcome.TIMEOUT, None
+
+        monkeypatch.setattr(
+            "nl_2_fol.inference.model_check_molecule.ModelChecker",
+            _TimeoutModelChecker,
+        )
+        monkeypatch.setattr(reasoner, "_mol_to_fol", lambda _mol: ([], {}))
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition("test_pred(X) <=> c(X)")
+        mol = Chem.MolFromSmiles("C")
+
+        for _ in range(reasoner._MAX_ALLOWED_TIMEOUTS_PER_FORMULA - 1):
+            assert reasoner.does_mol_match_tptp_definition(mol, parsed_formula) is False
+
+        with pytest.raises(Exception) as exc_info:
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        error_message = str(exc_info.value)
+        assert "MODEL CHECKING FAILED" in error_message
+        assert "Generated FOL formula took more than 30 seconds" in error_message
 
     def test_ambiguous_formula_without_brackets(self, reasoner: GavelFOLReasoner):
         """Test that ambiguous formulas without proper brackets raise an error."""
