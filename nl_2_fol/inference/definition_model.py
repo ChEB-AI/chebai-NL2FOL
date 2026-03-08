@@ -4,7 +4,7 @@ from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, ConfigDict, Field
 
-from nl_2_fol.inference.data_model import CHEBI_ID
+from nl_2_fol.inference.preprocessing.c3po_slim_data import CHEBI_ID
 
 
 class DefinitionMetrics(BaseModel):
@@ -59,7 +59,7 @@ class DefinitionLearningResults(BaseModel):
 
 if __name__ == "__main__":
     # Example usage
-    from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
+    from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 
     gavel = GavelFOLReasoner()
     pred_variables, fol_formula = gavel.get_tptp_fol_definition(

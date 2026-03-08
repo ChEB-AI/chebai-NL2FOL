@@ -5,13 +5,13 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
-from nl_2_fol.inference.base_predicates import GAVEL_PREDICATES
 from nl_2_fol.inference.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
     mol_to_fol_exception,
     tptp_parse_exception,
 )
+from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
 
 
 class GavelFOLReasoner:

@@ -9,10 +9,10 @@ from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
 from nl_2_fol.inference import custom_exceptions as ce
-from nl_2_fol.inference import data_model as dm
 from nl_2_fol.inference import definition_model as def_model
-from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
-from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
+from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 

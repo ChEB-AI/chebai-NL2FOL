@@ -5,6 +5,8 @@ import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
+
 
 class ChEBIDataWrapper(ChEBIData):
     def __init__(self, chebi_version: int):
@@ -31,11 +33,13 @@ class ChEBIDataWrapper(ChEBIData):
 
         # Latest chebi version has only 194466, so delete the duplicate entry with 133538
         df = df[df.index != 133538]
+        df["name"] = df["name"].apply(to_camel_case)
 
         return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
         df = self._preprocess_data()
+        df["name"] = df["name"].apply(to_camel_case)
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def _preprocess_data(self) -> pd.DataFrame:

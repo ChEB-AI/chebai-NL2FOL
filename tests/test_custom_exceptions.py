@@ -8,7 +8,7 @@ from nl_2_fol.inference.custom_exceptions import (
     LowF1ScoreException,
     MissingPredicateException,
 )
-from nl_2_fol.inference.data_model import ChemicalStructure
+from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
 
 
 class TestMissingPredicateException:

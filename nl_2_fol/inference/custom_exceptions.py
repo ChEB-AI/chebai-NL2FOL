@@ -1,7 +1,10 @@
 import traceback
 from functools import wraps
 
-from nl_2_fol.inference.data_model import SMILES_STRING, ChemicalStructure
+from nl_2_fol.inference.preprocessing.c3po_slim_data import (
+    SMILES_STRING,
+    ChemicalStructure,
+)
 
 
 def tptp_parse_exception(func):
