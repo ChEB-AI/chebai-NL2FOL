@@ -39,10 +39,13 @@ class LearnDefinitions:
         # this will be used to learn new definitions based on the classified chemical classes
 
         self._gavel = GavelFOLReasoner()
-        # Stores chemical classes not learned in previous programs calls,
+        # Stores chemical classes which failed to learn FOL in previous programs calls,
         # so we can skip them in the main loop and avoid unnecessary attempts
-        self._not_learned_classes: dict[str, list[str]] = {}
+        self._failed_classes: dict[str, list[str]] = {}
 
+        # Tracks the classes for which definitions have been learned,
+        # so we can avoid redundant learning when handling missing predicate exception
+        self._learned_classes: set[str] = set()
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
         # Load Entire Chebi data
@@ -55,15 +58,11 @@ class LearnDefinitions:
         self.undirected_chebi_graph = entire_chebi_data.get_undirected_hierarchy_graph()
         self._attempts: int = 0
 
-        # Do Not use this, classes are popped from the dataset during learning,
-        # this is only used to check if a predicate is in the dataset during missing predicate exception handling
-        self.__iter_classes: set[str] = set(self._c3po_slim_dataset.classes.keys())
-
     def learn_fol_definitions(self):
         for chemical_class_name in tqdm.tqdm(self._c3po_slim_dataset.classes.keys()):
-            if chemical_class_name in self._not_learned_classes:
+            if chemical_class_name in self._failed_classes:
                 continue
-            if chemical_class_name not in self.__iter_classes:
+            if chemical_class_name in self._learned_classes:
                 # This class could have been learned duing recursive learning
                 # when handling missing predicate exception, so we skip it in the main loop
                 continue
@@ -93,7 +92,7 @@ class LearnDefinitions:
                 f"Generated FOL definition: {result.FOL_formula}\n",
             )
             self._parse_and_validate_generated_definition(result, chemical_class)
-            self.__iter_classes.remove(chemical_class.name)
+            self._learned_classes.add(chemical_class.name)
             self._save_definitions()
             self._post_cleanup(session_id=chemical_class.name)
             return
@@ -127,9 +126,42 @@ class LearnDefinitions:
                 )
 
                 additional_def = learned_predicates.predicate_definitions
-                print(
-                    f"Learned additional definitions for out-of-box predicates: {additional_def}\n"
+                formatted_additional_definitions = "\n\t".join(
+                    f"{pred}: {defn}" for pred, defn in additional_def.items()
                 )
+                print(
+                    f"[{chemical_class.name}]Learned additional definitions for out-of-box predicates:"
+                    f"\n\t{formatted_additional_definitions}\n"
+                )
+                for pred, defn in additional_def.items():
+                    if pred in self._failed_classes:
+                        # If learning definition for any of the out-of-box predicate has failed in previous attempts, we skip trying to learn it again and directly return the error to llm, as it is likely to fail again and we want to avoid unnecessary attempts
+                        raised_exception = Exception(
+                            f"Previously failed to learn definition for out-of-box predicate: {pred}. "
+                            f"Error: {self._failed_classes[pred][-1] if self._failed_classes[pred] else 'No details available'}"
+                        )
+                        attempt_failure_summary.append(
+                            f"Attempt {self._attempts + 2} failed because previously failed to learn definition for out-of-box predicate: {pred}. "
+                            f"Error: {self._failed_classes[pred][-1] if self._failed_classes[pred] else 'No details available'}"
+                        )
+                        break
+                    elif pred in self._learned_classes:
+                        # Use definition which is already learned
+                        # TODO
+                        continue
+
+                    elif pred in self._c3po_slim_dataset.classes:
+                        # If the predicate is part of slim dataset but not learned yet, we learn it first before trying to parse the main definition again, as it is likely that the main definition will fail to parse due to missing this predicate definition
+                        self._learn(
+                            self._c3po_slim_dataset.get_chemical_class_by_name(pred)
+                        )
+
+                    else:
+                        pass
+
+                    # extract_predicates(def)
+                    # repeat above
+
                 try:
                     add_bck_def = self._gavel.convert_to_background_definitions(
                         additional_def
@@ -163,9 +195,9 @@ class LearnDefinitions:
                 self._parse_and_validate_generated_definition(
                     result,  # pyright: ignore[reportArgumentType]
                     chemical_class,
-                    add_background_defs=add_bck_def,
+                    temp_additional_defs=add_bck_def,
                 )
-                self.__iter_classes.remove(chemical_class.name)
+                self._learned_classes.add(chemical_class.name)
                 self._save_definitions()
                 self._post_cleanup(session_id=chemical_class.name)
                 return
@@ -186,7 +218,7 @@ class LearnDefinitions:
                 )
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
-        self._not_learned_classes[chemical_class.name] = attempt_failure_summary
+        self._failed_classes[chemical_class.name] = attempt_failure_summary
         self._save_not_learned_classes_list()
         self._post_cleanup(session_id=chemical_class.name)
 
@@ -198,14 +230,17 @@ class LearnDefinitions:
     def _handle_missing_predicates_exception(
         self, e: ce.MissingPredicateException
     ) -> Exception:
+        # Predicates which are part of slim dataset classes and which are
+        # not already learned or failed in previous attempts,
+        # will be recursively learned first before handling other missing predicates
         chemical_class_predicates = {
-            predicate.lower().strip()
+            predicate
             for predicate in e.missing_predicates
-            if predicate.lower().strip() in self._c3po_slim_dataset.classes
+            if predicate in self._c3po_slim_dataset.classes
+            and predicate not in self._learned_classes
+            and predicate not in self._failed_classes
         }
         for predicate in chemical_class_predicates:
-            # NOTE: Recursively learn definition for the predicate if it's
-            # in c3po slim dataset
             self._learn(self._c3po_slim_dataset.get_chemical_class_by_name(predicate))
 
         raised_exception = ce.RetryException()
@@ -228,7 +263,7 @@ class LearnDefinitions:
         self,
         result: CHEBIFOLOutput,
         chemical_class: dm.ChemicalClass,
-        add_background_defs: dict[
+        temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
@@ -255,7 +290,7 @@ class LearnDefinitions:
                 tptp_def,
                 pos_samples,
                 neg_samples,
-                add_background_defs,
+                temp_additional_defs,
             )
         )
         metrics = self._get_metrics(
@@ -281,8 +316,10 @@ class LearnDefinitions:
             )
         # TODO: What if the additonal defintions are changed in next attempt
         # and both are valid which to use? rn the earliest
-        if add_background_defs:
-            for def_name, (pred_vars, background_def) in add_background_defs.items():
+
+        if temp_additional_defs:
+            # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
+            for def_name, (pred_vars, background_def) in temp_additional_defs.items():
                 if def_name not in self.definitions.additional_definitions:
                     self.definitions.additional_definitions[def_name] = (
                         def_model.FOLFormula(
@@ -409,7 +446,7 @@ class LearnDefinitions:
         tptp_def: QuantifiedFormula,
         pos_samples: set[dm.ChemicalStructure],
         neg_samples: set[dm.ChemicalStructure],
-        background_definitions: dict[
+        temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
@@ -418,7 +455,7 @@ class LearnDefinitions:
             return self._gavel.does_mol_match_tptp_definition(
                 chemical.mol,
                 tptp_def,
-                additional_background_definitions=background_definitions,
+                temp_additional_defs=temp_additional_defs,
             )
 
         unmatched_pos_samples = set()
@@ -505,7 +542,7 @@ class LearnDefinitions:
                 # Load class names from JSON file
                 saved_classes_data = json.load(f)
                 # Initialize the dict with loaded class names but empty failure lists for this run
-                self._not_learned_classes = {
+                self._failed_classes = {
                     class_name: [] for class_name in saved_classes_data.keys()
                 }
                 print(
@@ -528,7 +565,7 @@ class LearnDefinitions:
                 saved_classes_data = json.load(f)
 
         # Update with new classes and their failures (only append new ones)
-        for class_name, failure_list in self._not_learned_classes.items():
+        for class_name, failure_list in self._failed_classes.items():
             if class_name not in saved_classes_data:
                 # Only save if new class
                 saved_classes_data[class_name] = failure_list if failure_list else []
@@ -552,6 +589,7 @@ class LearnDefinitions:
                 learned_def.name, learned_def.learned_FOL.pred_variables
             )
             loaded_def_names.append(learned_def.name)
+            self._learned_classes.add(learned_def.name)
         print(f"Loaded definitions for the following classes: {loaded_def_names}")
 
         loaded_additional_def_names = []
@@ -561,6 +599,7 @@ class LearnDefinitions:
             )
             self._add_generated_predicates_to_prompt_obj(name, add_def.pred_variables)
             loaded_additional_def_names.append(name)
+            self._learned_classes.add(name)
         print(
             f"Loaded the following additional definitions for out-of-box predicates: {loaded_additional_def_names}"
         )

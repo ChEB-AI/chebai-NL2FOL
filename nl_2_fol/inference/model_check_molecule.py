@@ -89,12 +89,40 @@ class GavelFOLReasoner:
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-        additional_background_definitions: dict[
+        temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
     ) -> bool:
-        """Checks if a given molecule matches the logical definition."""
+        """Checks if a given molecule matches a logical definition using model checking.
+
+        Converts the molecule to a first-order logic representation and uses a model
+        checker to determine if the molecule satisfies the given FOL formula.
+
+        Args:
+            molecule: RDKit molecule object to be checked.
+            definition_to_match: Quantified FOL formula in TPTP format representing
+                the chemical class definition to match against.
+            temp_additional_defs: Optional temporary background definitions to use
+                during this specific check, in addition to the instance's persistent
+                background definitions. Useful for validating additional predicates
+                before committing them permanently.
+
+        Returns:
+            True if the molecule matches the definition (model found), False otherwise.
+
+        Raises:
+            MissingPredicateException: If the formula contains predicates not defined
+                in base predicates, background definitions, or temporary definitions.
+            TimeoutError: If model checking times out repeatedly (>= MAX_ALLOWED_TIMEOUTS_PER_FORMULA)
+                for the same formula, indicating the formula may be too complex.
+            Exception: For various model checking failures such as predicate arity
+                mismatches or normalization errors.
+
+        Note:
+            Model checking has a timeout of MODEL_CHECK_TIMEOUT_SECONDS per check.
+            Timeouts are tracked per formula, and repeated timeouts trigger an error.
+        """
         predicates = self._extract_predicates(definition_to_match)
         missing_predicates = predicates - self._base_predicates.keys()
         missing_predicates = (
@@ -102,17 +130,15 @@ class GavelFOLReasoner:
             if self.background_definitions
             else missing_predicates
         )
-        if additional_background_definitions:
-            missing_predicates = (
-                missing_predicates - additional_background_definitions.keys()
-            )
+        if temp_additional_defs:
+            missing_predicates = missing_predicates - temp_additional_defs.keys()
         if missing_predicates:
             raise MissingPredicateException(missing_predicates)
 
         universe, extensions = self._mol_to_fol(molecule)
         bck_def = {
             **self.background_definitions,
-            **(additional_background_definitions or {}),
+            **(temp_additional_defs or {}),
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
 
