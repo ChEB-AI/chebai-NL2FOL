@@ -2,7 +2,7 @@ import os
 
 from jsonargparse import CLI
 
-from nl_2_fol.inference.learn_definitions import LearnDefinitions
+from nl_2_fol.inference.learner import LearnDefinitions
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.llm_inference import API_PLATFORM
 

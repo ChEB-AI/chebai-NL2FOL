@@ -6,8 +6,8 @@ from gavel.logic import logic
 from rdkit import Chem
 
 import nl_2_fol.inference.fol_reasoner.model_check_molecule as model_check_molecule
-from nl_2_fol.inference.custom_exceptions import MissingPredicateException
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.learner.custom_exceptions import MissingPredicateException
 
 
 class TestGavelFOLReasoner:

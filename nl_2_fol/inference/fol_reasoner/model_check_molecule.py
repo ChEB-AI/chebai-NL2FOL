@@ -5,13 +5,13 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
-from nl_2_fol.inference.custom_exceptions import (
+from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
+from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
     mol_to_fol_exception,
     tptp_parse_exception,
 )
-from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
 
 
 class GavelFOLReasoner:
@@ -123,15 +123,9 @@ class GavelFOLReasoner:
             Model checking has a timeout of MODEL_CHECK_TIMEOUT_SECONDS per check.
             Timeouts are tracked per formula, and repeated timeouts trigger an error.
         """
-        predicates = self._extract_predicates(definition_to_match)
-        missing_predicates = predicates - self._base_predicates.keys()
-        missing_predicates = (
-            missing_predicates - self.background_definitions.keys()
-            if self.background_definitions
-            else missing_predicates
+        missing_predicates = self.extract_unknown_predicates(
+            definition_to_match, temp_additional_defs
         )
-        if temp_additional_defs:
-            missing_predicates = missing_predicates - temp_additional_defs.keys()
         if missing_predicates:
             raise MissingPredicateException(missing_predicates)
 
@@ -216,6 +210,25 @@ class GavelFOLReasoner:
         universe, extensions = mol_to_fol_atoms(mol)
         # rename / add custom extensions if needed
         return universe, extensions
+
+    def extract_unknown_predicates(
+        self,
+        formula: logic.QuantifiedFormula,
+        temp_additional_defs: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None = None,
+    ) -> set[str]:
+        predicates = self._extract_predicates(formula)
+        missing_predicates = predicates - self._base_predicates.keys()
+        missing_predicates = (
+            missing_predicates - self.background_definitions.keys()
+            if self.background_definitions
+            else missing_predicates
+        )
+        if temp_additional_defs:
+            missing_predicates = missing_predicates - temp_additional_defs.keys()
+        return missing_predicates
 
     def _extract_predicates(self, formula: logic.QuantifiedFormula) -> set[str]:
         """Extract all predicates from a parsed TPTP formula."""

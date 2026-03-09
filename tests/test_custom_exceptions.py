@@ -3,7 +3,7 @@
 import pytest
 from rdkit import Chem
 
-from nl_2_fol.inference.custom_exceptions import (
+from nl_2_fol.inference.learner.custom_exceptions import (
     LearnOutOfBoxPredicateException,
     LowF1ScoreException,
     MissingPredicateException,

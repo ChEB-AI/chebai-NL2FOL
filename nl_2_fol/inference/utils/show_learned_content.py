@@ -1,7 +1,7 @@
 import pickle
 from pathlib import Path
 
-from nl_2_fol.inference.definition_model import DefinitionLearningResults
+from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
 
 
 def print_pickle_contents(pickle_file_path):
