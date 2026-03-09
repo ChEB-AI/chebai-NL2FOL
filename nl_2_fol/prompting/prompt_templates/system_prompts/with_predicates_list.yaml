@@ -16,7 +16,8 @@ system_prompt: |
     - `has_min_{n}_hs` - minimum hydrogens
 
   - Atom charges:
-    - `charge1`, `charge_m2` for specific charges
+    - `charge1`, `charge2`, `charge3` for specific positive charges
+    - `charge_m1`, `charge_m2`, `charge_m3` for specific negative charges
     - `charge_p`, `charge_n` for positive or negative charge of arbitrary magnitude
     - `charge0` for neutral charge
 

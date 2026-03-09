@@ -36,8 +36,8 @@ CHARGE_PREDICATES = {
         "charge_n": "negative charge of arbitrary magnitude",
     },
     # charge-3, charge-2, charge-1, charge1, charge2, charge3
-    **{f"charge{n}": f"charge of {n}" for n in range(-3, 4) if n != 0},
-    **{f"charge_m{-n}": f"charge of {n}" for n in range(1, 4)},
+    **{f"charge{n}": f"positive charge of {n}" for n in range(1, 4)},
+    **{f"charge_m{n}": f"negative charge of {n}" for n in range(1, 4)},
 }
 
 
@@ -80,3 +80,9 @@ GAVEL_PREDICATES = {
 }
 
 __all__ = ["GAVEL_PREDICATES"]
+
+
+if __name__ == "__main__":
+    # Print the generated predicates for verification
+    for predicate, description in GAVEL_PREDICATES.items():
+        print(f"{predicate}: {description}")
