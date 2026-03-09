@@ -19,7 +19,7 @@ from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 class LearnDefinitions:
     _DEFINITION_FILE_NAME = "learned_definitions.pkl"
-    _MAX_NEGATIVE_SAMPLES = 5000
+    _MAX_NEGATIVE_SAMPLES = 1000
     _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
 
     def __init__(
@@ -107,8 +107,8 @@ class LearnDefinitions:
         self._attempts = 0
         attempt_failure_summary = []
 
-        raised_exception = None
         result = None
+        raised_exception = None
         try:
             # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
             # of the hydrogens is substituted by a hydroxy group."""
@@ -140,6 +140,7 @@ class LearnDefinitions:
             f"\tRaised exception: {raised_exception}]\n",
         )
         previous_fol_def = result.FOL_formula if result else ""
+        outofbox_max_attempts, curr_outofbox = 1, 0
         while self._attempts < self.max_attempts:
             print(
                 f"Attempt {self._attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
@@ -173,14 +174,25 @@ class LearnDefinitions:
                     # are not parseable, we return the error to llm.
                     # This will lead generating new FOL formula input chemical class
                     # instead of trying to fix the additional missing predicates definitions
-                    raised_exception = Exception(
-                        f"Failed to parse FOL definition for the following predicate:"
-                        f"{additional_def}. Error: {e}"
-                    )
+
                     attempt_failure_summary.append(
                         f"Attempt {self._attempts + 2} failed with unparseable additional"
                         f"definition for out-of-box predicate: {additional_def}. Error: {e}\nStacktrace:\n{error_trace}"
                     )
+                    if curr_outofbox < outofbox_max_attempts:
+                        curr_outofbox += 1
+                        self._attempts += 1
+                        print(
+                            f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {self._attempts + 3}"
+                        )
+                        message = raised_exception.message
+                        message += (
+                            "\n [IMPORTANT] Previous attempt failed because of the "
+                            f"following reason \n {e}\n"
+                            "Please analyse the error message and retry."
+                        )
+                        continue
+
                     continue
             elif isinstance(raised_exception, ce.RetryException):
                 # Retries the result generated from previous attempt

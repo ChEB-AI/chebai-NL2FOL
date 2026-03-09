@@ -106,7 +106,8 @@ class LearnOutOfBoxPredicateException(Exception):
             "Below is the list of predicates whose FOL formulas are not defined.\n\n"
             f"{predicates_details}\n\n"
         )
-        super().__init__(message)
+        self.message = message
+        super().__init__(self.message)
 
 
 class LowF1ScoreException(Exception):

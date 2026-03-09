@@ -16,4 +16,7 @@ failure_prompt: |
     "twoPlusCarbonCompound": "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
   }}
 
+
+  Refer to the above examples and few-shot examples provided earlier for syntax and style conventions when constructing the FOL formula.
+
   Please provide FOL formulas for all undefined predicates.
