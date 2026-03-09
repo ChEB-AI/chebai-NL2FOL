@@ -3,7 +3,10 @@ import re
 
 def to_camel_case(name: str) -> str:
     raw_name = str(name).strip().strip('"').strip("'")
-    tokens = re.findall(r"\d+(?:,\d+)+|[A-Za-z]\d+:\d+|[A-Za-z0-9]+", raw_name)
+    tokens = re.findall(
+        r"\d+(?:,\d+)+|[A-Za-z]\d+:\d+|\([^()]*\)|\[[^\[\]]*\]|[A-Za-z0-9]+|[()]|[\[\]]|[']|[+_]",
+        raw_name,
+    )
     if not tokens:
         return ""
 

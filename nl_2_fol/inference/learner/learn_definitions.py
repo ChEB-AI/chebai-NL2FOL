@@ -628,11 +628,11 @@ class LearnDefinitions:
     ) -> def_model.DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
-        if os.path.exists(
-            default_path := os.path.join(
-                self.definitions_save_path, self._DEFINITION_FILE_NAME
-            )
-        ):
+        default_path = os.path.join(
+            self.definitions_save_path, self._DEFINITION_FILE_NAME
+        )
+        print(f"Loading definitions from {default_path} if it exists...")
+        if os.path.exists(default_path):
             with open(default_path, "rb") as f:
                 definitions = pickle.load(f)
         else:
