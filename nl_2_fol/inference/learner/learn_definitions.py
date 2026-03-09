@@ -244,7 +244,7 @@ class LearnDefinitions:
             "Validating additional background predicate definitions: "
             f"{len(add_bck_def)} candidate(s)."
         )
-        for pred_name, (vars, defn) in add_bck_def.items():
+        for pred_name, (vars, defn) in list(add_bck_def.items()):
             print(f"[validate_additional] Checking predicate '{pred_name}'")
             # first extract the unknown predicates from the formula
             unknown_predicates = self._gavel.extract_unknown_predicates(defn)
