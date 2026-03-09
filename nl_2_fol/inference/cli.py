@@ -58,13 +58,8 @@ class Main:
         )
         if class_name == "all":
             learner.learn_fol_definitions()
-
-        elif class_name in learner._c3po_slim_dataset.classes:
-            learner._learn(
-                chemical_class=learner._c3po_slim_dataset.classes[class_name]
-            )
         else:
-            print(f"{class_name} not found in the dataset.")
+            learner.learn_class(class_name=class_name)
 
 
 if __name__ == "__main__":

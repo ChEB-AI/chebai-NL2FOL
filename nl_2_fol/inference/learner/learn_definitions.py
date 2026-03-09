@@ -73,6 +73,36 @@ class LearnDefinitions:
                 continue
             self._learn(chemical_class)
 
+    def learn_class(self, class_name: str):
+        if class_name not in self._c3po_slim_dataset.classes:
+            print(f"{class_name} not found in the dataset.")
+            return
+        chemical_class = self._c3po_slim_dataset.classes[class_name]
+        if chemical_class.definition is None:
+            print(f"No definition available for {class_name}, skipping learning.")
+            return
+        if chemical_class.id in self.definitions.learned_definitions:
+            print(f"Definition already learned for {class_name}, skipping learning.")
+            return
+        if class_name in self._failed_classes:
+            print(
+                f"{class_name} is in the list of classes which failed to learn in "
+                "previous runs, skipping learning to avoid unnecessary attempts."
+            )
+            while True:
+                retry_choice = (
+                    input(f"Do you want to retry learning '{class_name}'? (yes/no): ")
+                    .strip()
+                    .lower()
+                )
+                if retry_choice in {"yes", "y"}:
+                    break
+                if retry_choice in {"no", "n"}:
+                    print(f"Skipping retry for {class_name}.")
+                    return
+                print("Please answer with 'yes' or 'no'.")
+        self._learn(chemical_class)
+
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
         self._attempts = 0
         attempt_failure_summary = []
