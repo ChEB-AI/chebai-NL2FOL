@@ -212,7 +212,7 @@ class TestGavelFOLReasoner:
                 return model_check_molecule.ModelCheckerOutcome.TIMEOUT, None
 
         monkeypatch.setattr(
-            "nl_2_fol.inference.model_check_molecule.ModelChecker",
+            "nl_2_fol.inference.fol_reasoner.model_check_molecule.ModelChecker",
             _TimeoutModelChecker,
         )
         monkeypatch.setattr(reasoner, "_mol_to_fol", lambda _mol: ([], {}))
@@ -237,7 +237,7 @@ class TestGavelFOLReasoner:
                 return model_check_molecule.ModelCheckerOutcome.TIMEOUT, None
 
         monkeypatch.setattr(
-            "nl_2_fol.inference.model_check_molecule.ModelChecker",
+            "nl_2_fol.inference.fol_reasoner.model_check_molecule.ModelChecker",
             _TimeoutModelChecker,
         )
         monkeypatch.setattr(reasoner, "_mol_to_fol", lambda _mol: ([], {}))
