@@ -6,7 +6,7 @@ from gavel.logic import logic
 from rdkit import Chem
 
 import nl_2_fol.inference.fol_reasoner.model_check_molecule as model_check_molecule
-from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.inference.learner.custom_exceptions import MissingPredicateException
 
 
@@ -197,6 +197,27 @@ class TestGavelFOLReasoner:
             "C(=O)(C1=CC=C(C=C1F)OCCCCCC[NH+](CC=C)C)C=2C=CC(=CC2)Br"
         )
 
+        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        formula_str = (
+            "glycolipid <=> (glycerolipid & ?[O1, C1, O2, C2]: (o(O1) & "
+            "has_0_hs(O1) & c(C1) & bSINGLE(O1, C1) & o(O2) & has_0_hs(O2) & bSINGLE(C1, O2) "
+            "& c(C2) & bSINGLE(O2, C2) & has_1_hs(C1) & has_bond_to(C1, c)))"
+        )
+
+        add_def = (
+            "glycerolipid <=> ?[C1, C2, C3, O1, O2, O3]: (c(C1) & c(C2) & c(C3) & o(O1) "
+            "& o(O2) & o(O3) & bSINGLE(C1, C2) & bSINGLE(C2, C3) & bSINGLE(C1, O1) & "
+            "bSINGLE(C2, O2) & bSINGLE(C3, O3))"
+        )
+        _, parsed_add_def = reasoner.get_tptp_fol_definition(add_def)
+        reasoner.add_background_definition("glycerolipid", [], parsed_add_def)
+
+        mol = Chem.MolFromSmiles(
+            "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
+        )
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
         reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
     def test_timeout_returns_false_before_threshold(
