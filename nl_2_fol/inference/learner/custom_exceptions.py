@@ -1,7 +1,10 @@
 import traceback
 from functools import wraps
 
-from nl_2_fol.inference.data_model import SMILES_STRING, ChemicalStructure
+from nl_2_fol.inference.preprocessing.c3po_slim_data import (
+    SMILES_STRING,
+    ChemicalStructure,
+)
 
 
 def tptp_parse_exception(func):
@@ -103,7 +106,8 @@ class LearnOutOfBoxPredicateException(Exception):
             "Below is the list of predicates whose FOL formulas are not defined.\n\n"
             f"{predicates_details}\n\n"
         )
-        super().__init__(message)
+        self.message = message
+        super().__init__(self.message)
 
 
 class LowF1ScoreException(Exception):
@@ -111,6 +115,7 @@ class LowF1ScoreException(Exception):
     Exception raised when a generated FOL definition fails F1-score validation.
 
     Args:
+        current_f1_score: The F1 score achieved by the generated definition.
         pos_samples: List of positive ChemicalStructure samples.
         neg_samples: List of negative ChemicalStructure samples.
         matched_neg_samples: List of SMILES strings for negative samples incorrectly matched (false positives).
@@ -122,6 +127,7 @@ class LowF1ScoreException(Exception):
     @stop_program_upon_failure
     def __init__(
         self,
+        current_f1_score: float,
         pos_samples: set[ChemicalStructure],
         neg_samples: set[ChemicalStructure],
         matched_neg_samples: set[SMILES_STRING],
@@ -139,9 +145,7 @@ class LowF1ScoreException(Exception):
             # First pass: collect chemicals with definitions
             for chemical in chemicals:
                 if chemical.smiles in matched_smiles:
-                    chemical_data = chebi_name_to_data_mapping.get(
-                        chemical.name.lower().strip(), None
-                    )
+                    chemical_data = chebi_name_to_data_mapping.get(chemical.name, None)
                     chemical_def = None
                     if chemical_data:
                         chemical_def = chemical_data.get("definition", "")
@@ -208,7 +212,8 @@ class LowF1ScoreException(Exception):
 
         message_parts = [
             "The generated FOL definition did not meet the required F1 score threshold:\n"
-            "Please find below the names of molecules and optionally their definitions"
+            f"Current F1 Score: {current_f1_score:.2f}\n"
+            "Please find below the names of some molecules and optionally their definitions"
             " that were misclassified:\n"
         ]
         if fp_details is not None:
@@ -259,10 +264,11 @@ if __name__ == "__main__":
         unmatched_pos_samples = {"C1=CC=CC=C1O", "C1=CC=CC=C1"}  # False negative
 
         raise LowF1ScoreException(
-            pos_samples,
-            neg_samples,
-            matched_neg_samples,
-            unmatched_pos_samples,
+            current_f1_score=0.65,
+            pos_samples=pos_samples,
+            neg_samples=neg_samples,
+            matched_neg_samples=matched_neg_samples,
+            unmatched_pos_samples=unmatched_pos_samples,
             max_examples=2,
             chebi_name_to_data_mapping={
                 "moleculec": {"definition": "Definition of MoleculeC"},

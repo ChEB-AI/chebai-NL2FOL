@@ -9,7 +9,7 @@ from langchain_core.prompts import (
 )
 from langchain_core.runnables import Runnable
 
-from nl_2_fol.inference import custom_exceptions as ce
+from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
 from nl_2_fol.prompting.prompt_models import (
     CHEBIFOLOutput,

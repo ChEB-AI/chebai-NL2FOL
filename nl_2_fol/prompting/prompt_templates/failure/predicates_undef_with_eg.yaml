@@ -11,7 +11,12 @@ failure_prompt: |
   carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))
 
   If the predicate `oneCarbonCompound` is undefined, define it using FOL:
-  "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)"
-  "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
+  {{
+    "oneCarbonCompound": "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)",
+    "twoPlusCarbonCompound": "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
+  }}
+
+
+  Refer to the above examples and few-shot examples provided earlier for syntax and style conventions when constructing the FOL formula.
 
   Please provide FOL formulas for all undefined predicates.

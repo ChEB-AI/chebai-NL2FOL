@@ -5,6 +5,8 @@ import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
+
 
 class ChEBIDataWrapper(ChEBIData):
     def __init__(self, chebi_version: int):
@@ -32,10 +34,40 @@ class ChEBIDataWrapper(ChEBIData):
         # Latest chebi version has only 194466, so delete the duplicate entry with 133538
         df = df[df.index != 133538]
 
+        # CHEBI:91305  lysophosphatidylcholine(16:1/0:0)
+        # CHEBI:134604 lysophosphatidylcholine (16:1/0:0)
+        # Naming same for both entity with difference of single space
+        # Hence, deleting CHEBI:134604 to avoid duplicate entry after camel case conversion
+        df = df[df.index != 134604]
+
+        # CHEBI:91309  lysophosphatidylcholine(18:2/0:0)
+        # CHEBI:136082 lysophosphatidylcholine (18:2/0:0)
+        # Naming same for both entity with difference of single space
+        # Hence, deleting CHEBI:136082 to avoid duplicate entry after camel case conversion
+        df = df[df.index != 136082]
+
+        df["name"] = df["name"].apply(to_camel_case)
+
+        duplicate_rows = df.loc[df["name"].duplicated(keep=False), ["name"]]
+        if not duplicate_rows.empty:
+            duplicate_rows["chebi_id"] = duplicate_rows.index
+            duplicate_rows = duplicate_rows.sort_values(["name", "chebi_id"])
+            print("Found non-unique names after normalization:")
+            for name, group in duplicate_rows.groupby("name", sort=False):
+                ids = ", ".join(str(chebi_id) for chebi_id in group["chebi_id"])
+                print(f"- {name}: CHEBI IDs [{ids}]")
+
+            raise Exception(
+                "Duplicate names found after normalization. "
+                "Please resolve duplicates before proceeding."
+                "Adjust rules in camel case conversion if needed."
+            )
+
         return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
         df = self._preprocess_data()
+        df["name"] = df["name"].apply(to_camel_case)
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def _preprocess_data(self) -> pd.DataFrame:

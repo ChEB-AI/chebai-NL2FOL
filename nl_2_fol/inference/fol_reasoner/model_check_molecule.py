@@ -5,8 +5,8 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
-from nl_2_fol.inference.base_predicates import GAVEL_PREDICATES
-from nl_2_fol.inference.custom_exceptions import (
+from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
+from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
     mol_to_fol_exception,
@@ -15,12 +15,16 @@ from nl_2_fol.inference.custom_exceptions import (
 
 
 class GavelFOLReasoner:
+    _MODEL_CHECK_TIMEOUT_SECONDS = 30
+    _MAX_ALLOWED_TIMEOUTS_PER_FORMULA = 10
+
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
         self.background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ] = {}
+        self._timeout_tracking: dict[str, int] = {}
 
     @tptp_parse_exception
     def get_tptp_fol_definition(
@@ -42,7 +46,7 @@ class GavelFOLReasoner:
             raise Exception(
                 f"Error parsing FOL formula to TPTP format.\n"
                 f"Process: The formula is wrapped in TPTP annotated format and parsed.\n"
-                f"More specifics on the error: {e}"
+                f"[IMPORTANT] Critical error details for analysis:\n{e}"
             )
 
         # Ensure the left-hand side is a predicate expression (not ambiguous)
@@ -75,9 +79,9 @@ class GavelFOLReasoner:
                 "Process: The formula is converted to PNF (all quantifiers moved to"
                 "the front) with the matrix in CNF (Conjunctive Normal Form with N-ary"
                 "conjunctions and disjunctions).\n"
-                f"More specifics on the error: {e}"
+                f"[IMPORTANT] Critical error details for analysis:\n{e}"
             )
-        print(f"Input formula: {formula}\n\t Parsed as: {tptp_right_side}")
+        print(f"Input formula: {formula}\n\t Parsed Right Side as: {tptp_right_side}")
         return pred_variables, tptp_right_side
 
     @model_check_exception
@@ -85,45 +89,119 @@ class GavelFOLReasoner:
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-        additional_background_definitions: dict[
+        temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
     ) -> bool:
-        """Checks if a given molecule matches the logical definition."""
-        predicates = self._extract_predicates(definition_to_match)
-        missing_predicates = predicates - self._base_predicates.keys()
-        missing_predicates = (
-            missing_predicates - self.background_definitions.keys()
-            if self.background_definitions
-            else missing_predicates
+        """Checks if a given molecule matches a logical definition using model checking.
+
+        Converts the molecule to a first-order logic representation and uses a model
+        checker to determine if the molecule satisfies the given FOL formula.
+
+        Args:
+            molecule: RDKit molecule object to be checked.
+            definition_to_match: Quantified FOL formula in TPTP format representing
+                the chemical class definition to match against.
+            temp_additional_defs: Optional temporary background definitions to use
+                during this specific check, in addition to the instance's persistent
+                background definitions. Useful for validating additional predicates
+                before committing them permanently.
+
+        Returns:
+            True if the molecule matches the definition (model found), False otherwise.
+
+        Raises:
+            MissingPredicateException: If the formula contains predicates not defined
+                in base predicates, background definitions, or temporary definitions.
+            TimeoutError: If model checking times out repeatedly (>= MAX_ALLOWED_TIMEOUTS_PER_FORMULA)
+                for the same formula, indicating the formula may be too complex.
+            Exception: For various model checking failures such as predicate arity
+                mismatches or normalization errors.
+
+        Note:
+            Model checking has a timeout of MODEL_CHECK_TIMEOUT_SECONDS per check.
+            Timeouts are tracked per formula, and repeated timeouts trigger an error.
+        """
+        missing_predicates = self.extract_unknown_predicates(
+            definition_to_match, temp_additional_defs
         )
-        if additional_background_definitions:
-            missing_predicates = (
-                missing_predicates - additional_background_definitions.keys()
-            )
         if missing_predicates:
             raise MissingPredicateException(missing_predicates)
 
         universe, extensions = self._mol_to_fol(molecule)
         bck_def = {
             **self.background_definitions,
-            **(additional_background_definitions or {}),
+            **(temp_additional_defs or {}),
         }
         model_checker = ModelChecker(universe, extensions, bck_def)
+
+        exception_prefix = (
+            "MODEL CHECKING FAILED - Error during model checking for the formula.\n"
+            f"Background: The given formula was parsed through these steps:\n"
+            f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
+            f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
+            f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
+            f"Parsed Formula being checked: `{definition_to_match}`\n\n"
+            "[IMPORTANT] Critical error details for analysis: \n"
+        )
         try:
             # Can fail for definitions like: `∃[]: ((peptide(x)))`
-            outcome, _ = model_checker.find_model(definition_to_match)
-        except Exception as e:
-            raise Exception(
-                f"MODEL CHECKING FAILED - Error during model checking for the formula.\n"
-                f"Formula being checked: `{definition_to_match}`\n\n"
-                f"Background: The formula was parsed through these steps:\n"
-                f"  1. Parsed using TPTP parser and extracted right-hand side of biimplication.\n"
-                f"  2. Wrapped in QuantifiedFormula if not already quantified.\n"
-                f"  3. Normalized to PNF (all quantifiers at front) with matrix in CNF.\n\n"
-                f"More specifics on the error: {e}"
+            outcome, _ = model_checker.find_model(
+                definition_to_match, timeout=self._MODEL_CHECK_TIMEOUT_SECONDS
             )
+            if outcome == ModelCheckerOutcome.TIMEOUT:
+                # TODO: discuss
+                # Might the molecule be too complex, or the formula be too complex?
+                # Let's log this for analysis instead of raising an error immediately
+                formula_key = str(definition_to_match)
+
+                if formula_key not in self._timeout_tracking:
+                    # reset tracking if we encounter a new formula that we haven't seen before
+                    # Helpful to avoid storing timeout counts for formulas that are already processed.
+                    self._timeout_tracking = {}
+
+                timeout_count = self._timeout_tracking.get(formula_key, 0) + 1
+                self._timeout_tracking[formula_key] = timeout_count
+
+                print(
+                    f"[WARNING] Model checking timed out after {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds\n"
+                    f"(Timeout Count for this formula: #{timeout_count}).\n"
+                    f"MAX allowed timeouts per formula before raising error: {self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA}.\n"
+                    "This could be due to the complexity of the formula or the molecule.\n"
+                    f"Molecule: {Chem.MolToSmiles(molecule)}\n"
+                    "Consider simplifying the formula or using a less complex molecule for testing."
+                )
+                # If the same formula has timed out 10 times, we deem the formula is too
+                # complex for model checking rather than the molecule
+                if (
+                    self._timeout_tracking[formula_key]
+                    >= self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA
+                ):
+                    raise TimeoutError(
+                        f"Generated FOL formula took more than {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds during model checking.\n "
+                        "Try reducing the complexity of the formula"
+                    )
+
+        except ValueError as ve:
+            if "Predicate" in str(ve) and "is defined with arity" in str(ve):
+                # If the raised error is https://github.com/sfluegel05/chemlog-peptides/pull/9/files
+                # Extract predicate info from error message for better guidance
+                error_msg = str(ve)
+                logging_msg = (
+                    f"Predicate arity mismatch detected: {error_msg}\n"
+                    f"Example usage guidance:\n"
+                    f"  - Predicate with arity 0 (no arguments): use as 'predicate' in formula\n"
+                    f"  - Predicate with arity 1 (1 argument): use as 'predicate(x)'\n"
+                    f"  - Predicate with arity 2 (2 arguments): use as 'predicate(x, y)'\n"
+                    f"Ensure all predicate calls match their defined arity."
+                )
+                print(f"[WARNING] {logging_msg}")
+                raise Exception(logging_msg)
+            else:
+                raise Exception(f"{exception_prefix}{ve}")
+        except Exception as e:
+            raise Exception(f"{exception_prefix}{e}")
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 
     @mol_to_fol_exception
@@ -132,6 +210,25 @@ class GavelFOLReasoner:
         universe, extensions = mol_to_fol_atoms(mol)
         # rename / add custom extensions if needed
         return universe, extensions
+
+    def extract_unknown_predicates(
+        self,
+        formula: logic.QuantifiedFormula,
+        temp_additional_defs: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None = None,
+    ) -> set[str]:
+        predicates = self._extract_predicates(formula)
+        missing_predicates = predicates - self._base_predicates.keys()
+        missing_predicates = (
+            missing_predicates - self.background_definitions.keys()
+            if self.background_definitions
+            else missing_predicates
+        )
+        if temp_additional_defs:
+            missing_predicates = missing_predicates - temp_additional_defs.keys()
+        return missing_predicates
 
     def _extract_predicates(self, formula: logic.QuantifiedFormula) -> set[str]:
         """Extract all predicates from a parsed TPTP formula."""

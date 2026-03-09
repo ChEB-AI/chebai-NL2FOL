@@ -10,15 +10,16 @@ system_prompt: |
   but should be followed wherever applicable and sufficient to express the definition.
 
   - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
-    Hydrogen atoms are not represented explicitly, but as a property of their neighbours
-        `has_{n}_hs` - exactly n hydrogens (e.g., has_0_hs, has_1_hs)
-        `has_at_least_{n}_hs` - at least n hydrogens
-        `has_min_{n}_hs` - minimum hydrogens
+    Hydrogen atoms are not represented explicitly, but as a property of their neighbours:
+    - `has_{n}_hs` - exactly n hydrogens (e.g., has_0_hs, has_1_hs)
+    - `has_at_least_{n}_hs` - at least n hydrogens
+    - `has_min_{n}_hs` - minimum hydrogens
 
   - Atom charges:
-    - `charge1`, `charge_m2` for specific charges
+    - `charge1`, `charge2`, `charge3` for specific positive charges
+    - `charge_m1`, `charge_m2`, `charge_m3` for specific negative charges
     - `charge_p`, `charge_n` for positive or negative charge of arbitrary magnitude
-    -  `charge0` for neutral charge
+    - `charge0` for neutral charge
 
   - Stereochemistry/Chirality (CIP codes):
     - `cip_code_R`, `cip_code_S`
@@ -31,3 +32,5 @@ system_prompt: |
     - `net_charge_positive`
     - `net_charge_negative`
     - `net_charge_neutral`
+
+  Refer to the few-shot examples provided below for syntax and style conventions when constructing the FOL formula.

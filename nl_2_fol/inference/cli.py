@@ -2,7 +2,7 @@ import os
 
 from jsonargparse import CLI
 
-from nl_2_fol.inference.learn_definitions import LearnDefinitions
+from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.llm_inference import API_PLATFORM
 
@@ -18,6 +18,7 @@ PROMPT_TEMPLATES_DIR = os.path.join(PROJECT_DIR, "prompting", "prompt_templates"
 class Main:
     @staticmethod
     def learn(
+        class_name: str = "all",
         api_platform: API_PLATFORM = "anthropic",
         model_name: str = "claude-opus-4-6",
         system_prompt_fp: str = os.path.join(
@@ -36,9 +37,8 @@ class Main:
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
-        max_attempts: int = 4,
+        max_attempts: int = 3,
         f1_threshold: float = 0.8,
-        load_definitions_path: str | None = None,
     ):
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
@@ -55,9 +55,11 @@ class Main:
             structures_path=structures_data_path,
             max_attempts=max_attempts,
             f1_threshold=f1_threshold,
-            definitions_path=load_definitions_path,
         )
-        learner.learn_fol_definitions()
+        if class_name == "all":
+            learner.learn_fol_definitions()
+        else:
+            learner.learn_class(class_name=class_name)
 
 
 if __name__ == "__main__":

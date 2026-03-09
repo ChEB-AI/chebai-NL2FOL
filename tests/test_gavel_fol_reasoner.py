@@ -5,8 +5,9 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
-from nl_2_fol.inference.custom_exceptions import MissingPredicateException
-from nl_2_fol.inference.model_check_molecule import GavelFOLReasoner
+import nl_2_fol.inference.fol_reasoner.model_check_molecule as model_check_molecule
+from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
+from nl_2_fol.inference.learner.custom_exceptions import MissingPredicateException
 
 
 class TestGavelFOLReasoner:
@@ -160,7 +161,7 @@ class TestGavelFOLReasoner:
         assert "ptest" in error_message
         assert "qtest" in error_message
 
-    def test_does_mol_match_tptp_definition_exception(self, reasoner: GavelFOLReasoner):
+    def test_predicate_arity_exception(self, reasoner: GavelFOLReasoner):
         """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
         cdef = reasoner.convert_to_background_definitions(
             {"ptest": "ptest <=> has_bond(X, Y)"}  # ptest has no variables
@@ -185,6 +186,95 @@ class TestGavelFOLReasoner:
             "Predicate `ptest` is defined with arity 0 but called with 1 arguments"
             in error_message
         )
+
+    def test_model_checking(self, reasoner: GavelFOLReasoner):
+        """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
+        formula_str = "cation <=> net_charge_positive"
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+
+        mol = Chem.MolFromSmiles(
+            "C(=O)(C1=CC=C(C=C1F)OCCCCCC[NH+](CC=C)C)C=2C=CC(=CC2)Br"
+        )
+
+        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        formula_str = (
+            "glycolipid <=> (glycerolipid & ?[O1, C1, O2, C2]: (o(O1) & "
+            "has_0_hs(O1) & c(C1) & bSINGLE(O1, C1) & o(O2) & has_0_hs(O2) & bSINGLE(C1, O2) "
+            "& c(C2) & bSINGLE(O2, C2) & has_1_hs(C1) & has_bond_to(C1, c)))"
+        )
+
+        add_def = (
+            "glycerolipid <=> ?[C1, C2, C3, O1, O2, O3]: (c(C1) & c(C2) & c(C3) & o(O1) "
+            "& o(O2) & o(O3) & bSINGLE(C1, C2) & bSINGLE(C2, C3) & bSINGLE(C1, O1) & "
+            "bSINGLE(C2, O2) & bSINGLE(C3, O3))"
+        )
+        _, parsed_add_def = reasoner.get_tptp_fol_definition(add_def)
+        reasoner.add_background_definition("glycerolipid", [], parsed_add_def)
+
+        mol = Chem.MolFromSmiles(
+            "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
+        )
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+    def test_timeout_returns_false_before_threshold(
+        self, reasoner: GavelFOLReasoner, monkeypatch
+    ):
+        """Test timeout handling returns False before max timeout threshold is reached."""
+
+        class _TimeoutModelChecker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def find_model(self, *args, **kwargs):
+                return model_check_molecule.ModelCheckerOutcome.TIMEOUT, None
+
+        monkeypatch.setattr(
+            "nl_2_fol.inference.fol_reasoner.model_check_molecule.ModelChecker",
+            _TimeoutModelChecker,
+        )
+        monkeypatch.setattr(reasoner, "_mol_to_fol", lambda _mol: ([], {}))
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition("test_pred(X) <=> c(X)")
+        mol = Chem.MolFromSmiles("C")
+
+        calls_before_threshold = reasoner._MAX_ALLOWED_TIMEOUTS_PER_FORMULA - 1
+        for _ in range(calls_before_threshold):
+            assert reasoner.does_mol_match_tptp_definition(mol, parsed_formula) is False
+
+        assert reasoner._timeout_tracking[str(parsed_formula)] == calls_before_threshold
+
+    def test_timeout_raises_at_threshold(self, reasoner: GavelFOLReasoner, monkeypatch):
+        """Test timeout handling raises once max timeout threshold is reached."""
+
+        class _TimeoutModelChecker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def find_model(self, *args, **kwargs):
+                return model_check_molecule.ModelCheckerOutcome.TIMEOUT, None
+
+        monkeypatch.setattr(
+            "nl_2_fol.inference.fol_reasoner.model_check_molecule.ModelChecker",
+            _TimeoutModelChecker,
+        )
+        monkeypatch.setattr(reasoner, "_mol_to_fol", lambda _mol: ([], {}))
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition("test_pred(X) <=> c(X)")
+        mol = Chem.MolFromSmiles("C")
+
+        for _ in range(reasoner._MAX_ALLOWED_TIMEOUTS_PER_FORMULA - 1):
+            assert reasoner.does_mol_match_tptp_definition(mol, parsed_formula) is False
+
+        with pytest.raises(Exception) as exc_info:
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        error_message = str(exc_info.value)
+        assert "MODEL CHECKING FAILED" in error_message
+        assert "Generated FOL formula took more than 30 seconds" in error_message
 
     def test_ambiguous_formula_without_brackets(self, reasoner: GavelFOLReasoner):
         """Test that ambiguous formulas without proper brackets raise an error."""

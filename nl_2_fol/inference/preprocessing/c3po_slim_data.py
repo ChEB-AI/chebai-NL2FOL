@@ -17,7 +17,8 @@ import tqdm
 from pydantic import BaseModel, Field
 from rdkit import Chem
 
-from nl_2_fol.inference.chebi_data import ChEBIDataWrapper
+from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 SMILES_STRING = str
 CHEBI_ID = int
@@ -155,7 +156,7 @@ def load_c3po_slim_dataset(
     )
 
     slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
-    slim_df["name"] = slim_df["name"].str.lower().str.strip()
+    slim_df["name"] = slim_df["name"].apply(to_camel_case)
 
     # Sorting abstract classes first, specific classes later,
     # This to ensure when FOL definition for specific class is generated, all
@@ -179,7 +180,7 @@ def load_c3po_slim_dataset(
         except Exception:
             return None
 
-    structures_df["name"] = structures_df["name"].str.lower().str.strip()
+    structures_df["name"] = structures_df["name"].apply(to_camel_case)
     structures = {
         ChemicalStructure(
             name=str(row.name),
