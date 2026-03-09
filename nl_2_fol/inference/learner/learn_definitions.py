@@ -618,13 +618,23 @@ class LearnDefinitions:
         num_false_negatives = len(unmatched_pos_samples)
         num_false_positives = len(matched_neg_samples)
         num_true_negatives = len(neg_samples) - len(matched_neg_samples)
-        f1 = (
-            2
-            * num_true_positives
-            / (2 * num_true_positives + num_false_positives + num_false_negatives)
+
+        def safe_divide(numerator: float, denominator: float) -> float:
+            return numerator / denominator if denominator > 0 else 0.0
+
+        # Guard against edge cases where no positive predictions are made.
+        f1 = safe_divide(
+            2 * num_true_positives,
+            2 * num_true_positives + num_false_positives + num_false_negatives,
         )
-        ppv = num_true_positives / (num_true_positives + num_false_positives)
-        npv = num_true_negatives / (num_true_negatives + num_false_negatives)
+        ppv = safe_divide(
+            num_true_positives,
+            num_true_positives + num_false_positives,
+        )
+        npv = safe_divide(
+            num_true_negatives,
+            num_true_negatives + num_false_negatives,
+        )
         return def_model.DefinitionMetrics(
             F1=f1,
             PPV=ppv,
