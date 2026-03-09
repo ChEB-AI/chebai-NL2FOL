@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field
+import ast
+import json
+
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Pydantic Models ---
@@ -13,6 +16,33 @@ class IntermediateOutput(BaseModel):
 class CHEBIFOLOutput(BaseModel):
     intermediate_output: IntermediateOutput
     FOL_formula: str = Field(..., description="First-order logic formula")
+
+    @field_validator("intermediate_output", mode="before")
+    @classmethod
+    def _coerce_intermediate_output(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return value
+
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    parsed = parser(stripped)
+                except (json.JSONDecodeError, ValueError, SyntaxError):
+                    continue
+                if isinstance(parsed, dict):
+                    return parsed
+
+        return value
+
+    @field_validator("FOL_formula", mode="before")
+    @classmethod
+    def _coerce_fol_formula(cls, value):
+        if isinstance(value, list):
+            return " ".join(
+                part.strip() for part in value if isinstance(part, str) and part.strip()
+            )
+        return value
 
 
 class OutOfBoxPredicateDefinitions(BaseModel):
