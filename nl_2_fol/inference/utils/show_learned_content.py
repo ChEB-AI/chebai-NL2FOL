@@ -10,6 +10,9 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
     with open(pickle_file_path, "rb") as f:
         data: DefinitionLearningResults = pickle.load(f)
 
+    print(f"Number of learned definitions: {len(data.learned_definitions)}")
+    print(f"Number of additional definitions: {len(data.additional_definitions)}")
+
     for _, learned_def in data.learned_definitions.items():
         if class_name != "all" and learned_def.name != class_name:
             continue
