@@ -202,7 +202,7 @@ class TestGavelFOLReasoner:
         formula_str = (
             "glycolipid <=> (glycerolipid & ?[O1, C1, O2, C2]: (o(O1) & "
             "has_0_hs(O1) & c(C1) & bSINGLE(O1, C1) & o(O2) & has_0_hs(O2) & bSINGLE(C1, O2) "
-            "& c(C2) & bSINGLE(O2, C2) & has_1_hs(C1) & has_bond_to(C1, c)))"
+            "& c(C2) & bSINGLE(O2, C2) & has_1_hs(C1)))"
         )
 
         add_def = (
