@@ -19,6 +19,7 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
 
         print(f"Learned definition for predicate: {learned_def.name}")
         print(f"Pred variables: {learned_def.learned_FOL.pred_variables}")
+        print(f"Metrics: {learned_def.metrics}")
         print(f"Formula: {learned_def.learned_FOL.formula}")
         [print(his) for his in learned_def.prompts_history]
         print("---" * 10)
@@ -37,4 +38,4 @@ if __name__ == "__main__":
     pickle_file = Path(
         "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions.pkl"
     )
-    print_pickle_contents(pickle_file, class_name="glycerophospholipid")
+    print_pickle_contents(pickle_file, class_name="all")

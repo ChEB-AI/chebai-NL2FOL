@@ -11,6 +11,9 @@ from gavel.logic.logic import QuantifiedFormula
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
+from nl_2_fol.inference.learner.sample_matching_worker import (
+    check_if_definition_matches_samples,
+)
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
@@ -21,6 +24,7 @@ class LearnDefinitions:
     _DEFINITION_FILE_NAME = "learned_definitions.pkl"
     _MAX_NEGATIVE_SAMPLES = 1000
     _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
+    _SAMPLE_MATCH_TIMEOUT_SECONDS = 5 * 60
 
     def __init__(
         self,
@@ -325,12 +329,19 @@ class LearnDefinitions:
                     # which are part of the additional definition might be learned
                     # which can help learning the main chemical class definition
                     # [Placeholder] Might add logic trigger an error in future
-                    print(
-                        "[validate_additional] Main predicate is currently marked failed "
-                        "but learning will be attempted again: "
-                        f"'{pred_name}'."
-                    )
-                    pass
+                    # print(
+                    #     "[validate_additional] Main predicate is currently marked failed "
+                    #     "but learning will be attempted again: "
+                    #     f"'{pred_name}'."
+                    # )
+                    # raise Exception(
+                    #     "Cannot use predicate `{pred_name}` as its not possible to learn"
+                    #     "a reliable first order logic defintion at the moment"
+                    # )
+                    # TODO
+
+                    # Let it learn as an additional definition
+                    continue
                 print(
                     "[validate_additional] Triggering learning for main predicate: "
                     f"'{pred_name}'."
@@ -407,17 +418,25 @@ class LearnDefinitions:
             self._MAX_NEGATIVE_SAMPLES,
         )
 
-        unmatched_pos_samples, matched_neg_samples = (
-            self._check_if_definition_matches_samples(
-                chemical_class,
-                tptp_def,
-                pos_samples,
-                neg_samples,
-                temp_additional_defs,
-            )
+        (
+            unmatched_pos_samples,
+            matched_neg_samples,
+            processed_pos_samples,
+            processed_neg_samples,
+        ) = check_if_definition_matches_samples(
+            self._gavel,
+            self._SAMPLE_MATCH_TIMEOUT_SECONDS,
+            chemical_class,
+            tptp_def,
+            pos_samples,
+            neg_samples,
+            temp_additional_defs,
         )
         metrics = self._get_metrics(
-            unmatched_pos_samples, matched_neg_samples, pos_samples, neg_samples
+            unmatched_pos_samples,
+            matched_neg_samples,
+            processed_pos_samples,
+            processed_neg_samples,
         )
 
         # Validate against the threshold
@@ -430,8 +449,8 @@ class LearnDefinitions:
             )
             raise ce.LowF1ScoreException(
                 current_f1_score=metrics.F1,
-                pos_samples=pos_samples,
-                neg_samples=neg_samples,
+                pos_samples=processed_pos_samples,
+                neg_samples=processed_neg_samples,
                 matched_neg_samples=matched_neg_samples,
                 unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=self._MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION,
@@ -563,61 +582,18 @@ class LearnDefinitions:
 
         return positive_instances, negative_instances
 
-    def _check_if_definition_matches_samples(
-        self,
-        chemical_class: dm.ChemicalClass,
-        tptp_def: QuantifiedFormula,
-        pos_samples: set[dm.ChemicalStructure],
-        neg_samples: set[dm.ChemicalStructure],
-        temp_additional_defs: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ]
-        | None = None,
-    ) -> tuple[set[dm.SMILES_STRING], set[dm.SMILES_STRING]]:
-        def is_matched(chemical: dm.ChemicalStructure) -> bool:
-            return self._gavel.does_mol_match_tptp_definition(
-                chemical.mol,
-                tptp_def,
-                temp_additional_defs=temp_additional_defs,
-            )
-
-        unmatched_pos_samples = set()
-        for chemical in tqdm.tqdm(
-            pos_samples,
-            desc=f"Checking definition of {chemical_class.name} for positive samples...",
-        ):
-            matches = is_matched(chemical)
-            if not matches:
-                unmatched_pos_samples.add(chemical.smiles)
-        print(
-            f"\nUnmatched positive samples for {chemical_class.name}: {len(unmatched_pos_samples)}/{len(pos_samples)}"
-        )
-
-        matched_neg_samples = set()
-        for chemical in tqdm.tqdm(
-            neg_samples,
-            desc=f"Checking definition of {chemical_class.name} against negative samples...",
-        ):
-            matches = is_matched(chemical)
-            if matches:
-                matched_neg_samples.add(chemical.smiles)
-        print(
-            f"\nMatched negative samples for {chemical_class.name}: {len(matched_neg_samples)}/{len(neg_samples)}"
-        )
-        return unmatched_pos_samples, matched_neg_samples
-
     @ce.stop_program_upon_failure
     def _get_metrics(
         self,
         unmatched_pos_samples: set[dm.SMILES_STRING],
         matched_neg_samples: set[dm.SMILES_STRING],
-        pos_samples: set[dm.ChemicalStructure],
-        neg_samples: set[dm.ChemicalStructure],
+        processed_pos_samples: set[dm.ChemicalStructure],
+        processed_neg_samples: set[dm.ChemicalStructure],
     ) -> def_model.DefinitionMetrics:
-        num_true_positives = len(pos_samples) - len(unmatched_pos_samples)
+        num_true_positives = len(processed_pos_samples) - len(unmatched_pos_samples)
         num_false_negatives = len(unmatched_pos_samples)
         num_false_positives = len(matched_neg_samples)
-        num_true_negatives = len(neg_samples) - len(matched_neg_samples)
+        num_true_negatives = len(processed_neg_samples) - len(matched_neg_samples)
 
         def safe_divide(numerator: float, denominator: float) -> float:
             return numerator / denominator if denominator > 0 else 0.0

@@ -1,0 +1,279 @@
+import multiprocessing
+import queue
+import time
+import traceback
+
+from gavel.logic import logic
+from gavel.logic.logic import QuantifiedFormula
+
+from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
+
+__all__ = ["check_if_definition_matches_samples"]
+
+
+def check_if_definition_matches_samples(
+    gavel: GavelFOLReasoner,
+    sample_matching_timeout_seconds: int,
+    chemical_class: dm.ChemicalClass,
+    tptp_def: QuantifiedFormula,
+    pos_samples: set[dm.ChemicalStructure],
+    neg_samples: set[dm.ChemicalStructure],
+    temp_additional_defs: dict[
+        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+    ]
+    | None = None,
+) -> tuple[
+    set[dm.SMILES_STRING],
+    set[dm.SMILES_STRING],
+    set[dm.ChemicalStructure],
+    set[dm.ChemicalStructure],
+]:
+    unmatched_pos_samples = set()
+    matched_neg_samples = set()
+
+    processed_pos_smiles: set[dm.SMILES_STRING] = set()
+    processed_neg_smiles: set[dm.SMILES_STRING] = set()
+    pos_worker_error: tuple[str, str] | None = None
+    neg_worker_error: tuple[str, str] | None = None
+    pos_worker_completed = False
+    neg_worker_completed = False
+
+    pos_samples_list = list(pos_samples)
+    neg_samples_list = list(neg_samples)
+    ctx = multiprocessing.get_context("fork")
+    pos_result_queue = ctx.Queue()
+    neg_result_queue = ctx.Queue()
+    pos_worker = ctx.Process(
+        target=check_positive_samples_worker,
+        args=(
+            pos_result_queue,
+            gavel,
+            tptp_def,
+            pos_samples_list,
+            temp_additional_defs,
+        ),
+    )
+    neg_worker = ctx.Process(
+        target=check_negative_samples_worker,
+        args=(
+            neg_result_queue,
+            gavel,
+            tptp_def,
+            neg_samples_list,
+            temp_additional_defs,
+        ),
+    )
+
+    def drain_pos_queue() -> None:
+        nonlocal pos_worker_error
+        nonlocal pos_worker_completed
+        while True:
+            try:
+                event = pos_result_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            event_type = event[0]
+            if event_type == "pos_checked":
+                _, smiles, matched = event
+                processed_pos_smiles.add(smiles)
+                if not matched:
+                    unmatched_pos_samples.add(smiles)
+            elif event_type == "done":
+                pos_worker_completed = True
+            elif event_type == "error":
+                _, error_message, error_trace = event
+                pos_worker_error = (error_message, error_trace)
+
+    def drain_neg_queue() -> None:
+        nonlocal neg_worker_error
+        nonlocal neg_worker_completed
+        while True:
+            try:
+                event = neg_result_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            event_type = event[0]
+            if event_type == "neg_checked":
+                _, smiles, matched = event
+                processed_neg_smiles.add(smiles)
+                if matched:
+                    matched_neg_samples.add(smiles)
+            elif event_type == "done":
+                neg_worker_completed = True
+            elif event_type == "error":
+                _, error_message, error_trace = event
+                neg_worker_error = (error_message, error_trace)
+
+    pos_worker.start()
+    neg_worker.start()
+
+    deadline = time.monotonic() + sample_matching_timeout_seconds
+    timed_out = False
+
+    while pos_worker.is_alive() or neg_worker.is_alive():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        join_timeout = min(0.5, remaining)
+        if pos_worker.is_alive():
+            pos_worker.join(timeout=join_timeout)
+        if neg_worker.is_alive():
+            neg_worker.join(timeout=join_timeout)
+        drain_pos_queue()
+        drain_neg_queue()
+
+    if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
+        print(
+            "\nSample matching subprocesses exceeded "
+            f"{sample_matching_timeout_seconds} seconds and was terminated."
+        )
+        if pos_worker.is_alive():
+            pos_worker.terminate()
+            pos_worker.join(timeout=2)
+            if pos_worker.is_alive():
+                pos_worker.kill()
+                pos_worker.join()
+        if neg_worker.is_alive():
+            neg_worker.terminate()
+            neg_worker.join(timeout=2)
+            if neg_worker.is_alive():
+                neg_worker.kill()
+                neg_worker.join()
+
+    drain_pos_queue()
+    drain_neg_queue()
+
+    if pos_worker_error is not None:
+        error_message, error_trace = pos_worker_error
+        raise Exception(
+            "Positive sample matching subprocess failed with error: "
+            f"{error_message}\n{error_trace}"
+        )
+    if neg_worker_error is not None:
+        error_message, error_trace = neg_worker_error
+        raise Exception(
+            "Negative sample matching subprocess failed with error: "
+            f"{error_message}\n{error_trace}"
+        )
+    if (
+        not pos_worker_completed
+        and not timed_out
+        and pos_worker.exitcode not in (0, None)
+    ):
+        raise Exception(
+            "Positive sample matching subprocess exited unexpectedly with "
+            f"exit code: {pos_worker.exitcode}."
+        )
+    if (
+        not neg_worker_completed
+        and not timed_out
+        and neg_worker.exitcode not in (0, None)
+    ):
+        raise Exception(
+            "Negative sample matching subprocess exited unexpectedly with "
+            f"exit code: {neg_worker.exitcode}."
+        )
+
+    processed_pos_samples = {
+        chemical for chemical in pos_samples if chemical.smiles in processed_pos_smiles
+    }
+    processed_neg_samples = {
+        chemical for chemical in neg_samples if chemical.smiles in processed_neg_smiles
+    }
+
+    if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
+        raise Exception(
+            "No samples were processed before subprocess timeout while validating "
+            f"definition of {chemical_class.name}."
+        )
+
+    print(
+        "\nUnmatched positive (FN) samples for "
+        f"{chemical_class.name}: {len(unmatched_pos_samples)}/"
+        f"{len(processed_pos_samples)} processed "
+        f"(total available: {len(pos_samples)})"
+    )
+    print(
+        "\nMatched negative (FP) samples for "
+        f"{chemical_class.name}: {len(matched_neg_samples)}/"
+        f"{len(processed_neg_samples)} processed "
+        f"(total available: {len(neg_samples)})"
+    )
+    return (
+        unmatched_pos_samples,
+        matched_neg_samples,
+        processed_pos_samples,
+        processed_neg_samples,
+    )
+
+
+def _check_samples_worker(
+    result_queue,
+    gavel: GavelFOLReasoner,
+    tptp_def: QuantifiedFormula,
+    samples: list[dm.ChemicalStructure],
+    event_type: str,
+    temp_additional_defs: dict[
+        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+    ]
+    | None = None,
+) -> None:
+    def is_matched(chemical: dm.ChemicalStructure) -> bool:
+        return gavel.does_mol_match_tptp_definition(
+            chemical.mol,
+            tptp_def,
+            temp_additional_defs=temp_additional_defs,
+        )
+
+    try:
+        for chemical in samples:
+            matched = is_matched(chemical)
+            result_queue.put((event_type, chemical.smiles, matched))
+
+        result_queue.put(("done",))
+    except Exception as e:
+        result_queue.put(("error", str(e), traceback.format_exc()))
+
+
+def check_positive_samples_worker(
+    result_queue,
+    gavel: GavelFOLReasoner,
+    tptp_def: QuantifiedFormula,
+    pos_samples: list[dm.ChemicalStructure],
+    temp_additional_defs: dict[
+        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+    ]
+    | None = None,
+) -> None:
+    _check_samples_worker(
+        result_queue,
+        gavel,
+        tptp_def,
+        pos_samples,
+        "pos_checked",
+        temp_additional_defs,
+    )
+
+
+def check_negative_samples_worker(
+    result_queue,
+    gavel: GavelFOLReasoner,
+    tptp_def: QuantifiedFormula,
+    neg_samples: list[dm.ChemicalStructure],
+    temp_additional_defs: dict[
+        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+    ]
+    | None = None,
+) -> None:
+    _check_samples_worker(
+        result_queue,
+        gavel,
+        tptp_def,
+        neg_samples,
+        "neg_checked",
+        temp_additional_defs,
+    )
