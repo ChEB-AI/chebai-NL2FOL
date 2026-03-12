@@ -1,7 +1,6 @@
 import json
 import os
 import pickle
-import queue
 import traceback
 
 import tqdm
@@ -11,6 +10,7 @@ from gavel.logic.logic import QuantifiedFormula
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
+from nl_2_fol.inference.learner.base import BaseFOL
 from nl_2_fol.inference.learner.sample_matching_worker import (
     check_if_definition_matches_samples,
 )
@@ -19,7 +19,7 @@ from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
-class LearnDefinitions:
+class LearnDefinitions(BaseFOL):
     _DEFINITION_FILE_NAME = "learned_definitions.pkl"
     _MAX_NEGATIVE_SAMPLES = 1000
     _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
@@ -34,8 +34,12 @@ class LearnDefinitions:
         f1_threshold: float = 0.8,
         chebi_version: int = 244,
     ):
-        self.slim_dataset_path = slim_dataset_path
-        self.structures_path = structures_path
+        super().__init__(
+            slim_dataset_path=slim_dataset_path,
+            structures_path=structures_path,
+            chebi_version=chebi_version,
+            split="train",
+        )
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
         self.f1_threshold = f1_threshold
@@ -53,22 +57,20 @@ class LearnDefinitions:
         self._learned_classes: set[str] = set()
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
-        self._c3po_slim_dataset, entire_chebi_data = dm.load_c3po_slim_dataset(
-            self.slim_dataset_path, self.structures_path, self.chebi_version
+        self._chebi_name_to_data_map_train = (
+            self._entire_chebi_data.get_name_to_data_mapping_train()
         )
-        self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
-        self.undirected_chebi_graph = entire_chebi_data.get_undirected_hierarchy_graph()
         self._attempts: int = 0
 
     def learn_fol_definitions(self):
-        for chemical_class_name in tqdm.tqdm(self._c3po_slim_dataset.classes.keys()):
+        for chemical_class_name in tqdm.tqdm(self._c3po_slim_data.classes.keys()):
             if chemical_class_name in self._failed_classes:
                 continue
             if chemical_class_name in self._learned_classes:
                 # This class could have been learned duing recursive learning
                 # when handling missing predicate exception, so we skip it in the main loop
                 continue
-            chemical_class = self._c3po_slim_dataset.classes[chemical_class_name]
+            chemical_class = self._c3po_slim_data.classes[chemical_class_name]
             if chemical_class.definition is None:
                 continue
             if chemical_class.id in self.definitions.learned_definitions:
@@ -76,10 +78,10 @@ class LearnDefinitions:
             self._learn(chemical_class)
 
     def learn_class(self, class_name: str):
-        if class_name not in self._c3po_slim_dataset.classes:
+        if class_name not in self._c3po_slim_data.classes:
             print(f"{class_name} not found in the dataset.")
             return
-        chemical_class = self._c3po_slim_dataset.classes[class_name]
+        chemical_class = self._c3po_slim_data.classes[class_name]
         if chemical_class.definition is None:
             print(f"No definition available for {class_name}, skipping learning.")
             return
@@ -288,13 +290,13 @@ class LearnDefinitions:
                             f"redundant additional definition: '{unknown_pred}'."
                         )
                         add_bck_def.pop(unknown_pred)
-                elif unknown_pred in self._c3po_slim_dataset.classes:
+                elif unknown_pred in self._c3po_slim_data.classes:
                     print(
                         "[validate_additional] Predicate is a slim dataset class; "
                         f"triggering recursive learning: '{unknown_pred}'."
                     )
                     self._learn(
-                        self._c3po_slim_dataset.get_chemical_class_by_name(unknown_pred)
+                        self._c3po_slim_data.get_chemical_class_by_name(unknown_pred)
                     )
                 elif unknown_pred not in add_bck_def:
                     # This means the definition provided for the missing predicate also contains unknown predicates which we don't have definitions for, hence we cannot validate it and we raise an exception to llm to generate a new definition for the main chemical class instead of trying to fix the additional background definition
@@ -321,7 +323,7 @@ class LearnDefinitions:
                     f"redundant additional definition: '{pred_name}'."
                 )
                 add_bck_def.pop(pred_name)
-            elif pred_name in self._c3po_slim_dataset.classes:
+            elif pred_name in self._c3po_slim_data.classes:
                 if pred_name in self._failed_classes:
                     # We still might want to attempt learning, now certain predicates
                     # which are part of the additional definition might be learned
@@ -344,9 +346,7 @@ class LearnDefinitions:
                     "[validate_additional] Triggering learning for main predicate: "
                     f"'{pred_name}'."
                 )
-                self._learn(
-                    self._c3po_slim_dataset.get_chemical_class_by_name(pred_name)
-                )
+                self._learn(self._c3po_slim_data.get_chemical_class_by_name(pred_name))
             else:
                 print(
                     "[validate_additional] Main predicate is out-of-box and remains as "
@@ -364,7 +364,7 @@ class LearnDefinitions:
         chemical_class_predicates = {
             predicate
             for predicate in e.missing_predicates
-            if predicate in self._c3po_slim_dataset.classes
+            if predicate in self._c3po_slim_data.classes
             and predicate not in self._learned_classes
             and predicate not in self._failed_classes
         }
@@ -373,15 +373,15 @@ class LearnDefinitions:
                 f"Missing predicate '{predicate}' is a chemical class in the slim dataset and not yet learned, "
                 "hence triggering learning for it first before handling other missing predicates."
             )
-            self._learn(self._c3po_slim_dataset.get_chemical_class_by_name(predicate))
+            self._learn(self._c3po_slim_data.get_chemical_class_by_name(predicate))
 
         raised_exception = ce.RetryException()
         other_predicates = e.missing_predicates - chemical_class_predicates
         if other_predicates:
             predicates_to_learn: dict[str, str | None] = {}
             for predicate in other_predicates:
-                if predicate in self._chebi_name_to_data_mapping:
-                    chebi_data = self._chebi_name_to_data_mapping[predicate]
+                if predicate in self._chebi_name_to_data_map_train:
+                    chebi_data = self._chebi_name_to_data_map_train[predicate]
                     predicates_to_learn[predicate] = chebi_data["definition"]
                 else:
                     predicates_to_learn[predicate] = None
@@ -450,7 +450,7 @@ class LearnDefinitions:
                 matched_neg_samples=matched_neg_samples,
                 unmatched_pos_samples=unmatched_pos_samples,
                 max_examples=self._MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION,
-                chebi_name_to_data_mapping=self._chebi_name_to_data_mapping,
+                chebi_name_to_data_mapping=self._chebi_name_to_data_map_train,
             )
 
         self._accept_learned_definition(
@@ -532,106 +532,6 @@ class LearnDefinitions:
         else:
             predicate_with_vars = pred_name
         self.chebi_prompt_obj.generated_predicates_names.add(predicate_with_vars)
-
-    @ce.stop_program_upon_failure
-    def _get_closest_negatives(
-        self, available_smiles: list[str], target_id, n_samples=100
-    ) -> list[dm.SMILES_STRING]:
-        # get closest samples in terms of distance in chebi
-        if n_samples >= len(available_smiles):
-            return available_smiles
-
-        q = queue.Queue()
-        q.put(int(target_id))
-        visited = set()
-        selected_smiles = set()
-
-        # BFS until we get n_samples or exhaust the graph
-        # select closest labels to target_id and choose SMILES from those labels until we have n_samples
-        while not q.empty() and len(selected_smiles) < n_samples:
-            current = q.get()
-            for neighbor in self.undirected_chebi_graph.neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    q.put(neighbor)
-                    if str(neighbor) in self._c3po_slim_dataset.id_to_class_name:
-                        for smiles in self._c3po_slim_dataset.classes[
-                            self._c3po_slim_dataset.id_to_class_name[str(neighbor)]
-                        ].all_positive_examples:
-                            if smiles in available_smiles:
-                                selected_smiles.add(smiles)
-                            if len(selected_smiles) >= n_samples:
-                                return list(selected_smiles)
-
-        return list(selected_smiles)
-
-    @ce.stop_program_upon_failure
-    def _get_positive_and_negative_samples(
-        self, chemical_class: dm.ChemicalClass, max_neg_samples: int = 1000
-    ) -> tuple[set[dm.ChemicalStructure], set[dm.ChemicalStructure]]:
-        # validation examples already substracted during from positive examples
-        positive_examples = chemical_class.all_positive_examples
-        positive_instances = {
-            self._c3po_slim_dataset.smiles_to_instance[smiles]
-            for smiles in positive_examples
-            if smiles in self._c3po_slim_dataset.smiles_to_instance
-        }
-        negative_examples = list(self._c3po_slim_dataset.all_smiles - positive_examples)
-        negative_examples = self._get_closest_negatives(
-            negative_examples, chemical_class.id, n_samples=max_neg_samples
-        )
-        negative_instances = {
-            self._c3po_slim_dataset.smiles_to_instance[smiles]
-            for smiles in negative_examples
-            if smiles in self._c3po_slim_dataset.smiles_to_instance
-        }
-        assert len(positive_instances) > 0, (
-            f"No positive samples found for {chemical_class.name}"
-        )
-        assert len(negative_instances) > 0, (
-            f"No negative samples found for {chemical_class.name}"
-        )
-
-        return positive_instances, negative_instances
-
-    @ce.stop_program_upon_failure
-    def _get_metrics(
-        self,
-        unmatched_pos_samples: set[dm.SMILES_STRING],
-        matched_neg_samples: set[dm.SMILES_STRING],
-        processed_pos_samples: set[dm.ChemicalStructure],
-        processed_neg_samples: set[dm.ChemicalStructure],
-    ) -> def_model.DefinitionMetrics:
-        num_true_positives = len(processed_pos_samples) - len(unmatched_pos_samples)
-        num_false_negatives = len(unmatched_pos_samples)
-        num_false_positives = len(matched_neg_samples)
-        num_true_negatives = len(processed_neg_samples) - len(matched_neg_samples)
-
-        def safe_divide(numerator: float, denominator: float) -> float:
-            return numerator / denominator if denominator > 0 else 0.0
-
-        # Guard against edge cases where no positive predictions are made.
-        f1 = safe_divide(
-            2 * num_true_positives,
-            2 * num_true_positives + num_false_positives + num_false_negatives,
-        )
-        ppv = safe_divide(
-            num_true_positives,
-            num_true_positives + num_false_positives,
-        )
-        npv = safe_divide(
-            num_true_negatives,
-            num_true_negatives + num_false_negatives,
-        )
-        return def_model.DefinitionMetrics(
-            F1=f1,
-            PPV=ppv,
-            NPV=npv,
-            TP=num_true_positives,
-            FP=num_false_positives,
-            FN=num_false_negatives,
-            TN=num_true_negatives,
-        )
 
     def _load_definitions(
         self,
