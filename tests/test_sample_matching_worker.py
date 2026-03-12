@@ -175,7 +175,9 @@ class TestCheckIfDefinitionMatchesSamples:
     def test_pos_worker_error_is_propagated(self, mock_mp, common_inputs):
         """An exception raised inside the positive-sample worker propagates to the caller."""
         pos_q: queue.Queue = queue.Queue()
-        pos_q.put(("error", "model check failed", "Traceback (most recent call last)..."))
+        pos_q.put(
+            ("error", "model check failed", "Traceback (most recent call last)...")
+        )
 
         neg_q: queue.Queue = queue.Queue()
         neg_q.put(("done",))
@@ -319,7 +321,9 @@ class TestCheckIfDefinitionMatchesSamples:
         self, mock_mp, common_inputs
     ):
         """A non-zero exit code from the pos worker (no error event) raises StopProgramException."""
-        pos_q: queue.Queue = queue.Queue()  # no events — crashed before sending anything
+        pos_q: queue.Queue = (
+            queue.Queue()
+        )  # no events — crashed before sending anything
 
         neg_q: queue.Queue = queue.Queue()
         neg_q.put(("done",))
@@ -337,7 +341,8 @@ class TestCheckIfDefinitionMatchesSamples:
         )
 
         with pytest.raises(
-            StopProgramException, match="Positive sample matching subprocess exited unexpectedly"
+            StopProgramException,
+            match="Positive sample matching subprocess exited unexpectedly",
         ):
             check_if_definition_matches_samples(
                 gavel=common_inputs["gavel"],
