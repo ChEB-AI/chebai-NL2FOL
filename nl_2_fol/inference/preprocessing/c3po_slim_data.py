@@ -90,7 +90,6 @@ class Dataset(BaseModel):
 
     classes: dict[str, ChemicalClass]
     structures: set[ChemicalStructure] = set()
-    validation_examples: set[SMILES_STRING] = set()
 
     @property
     def name(self):
@@ -134,9 +133,11 @@ class Dataset(BaseModel):
 
 
 def load_c3po_slim_dataset(
+    *,
     slim_dataset_path: str = "data/classes_slim.csv",
     structures_path: str = "data/structures.csv",
     chebi_version: int = 244,
+    split="train",
 ) -> tuple[Dataset, ChEBIDataWrapper]:
     print("Loading and processing C3PO slim dataset...")
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
@@ -150,19 +151,24 @@ def load_c3po_slim_dataset(
     validation_smiles = set(
         structures_df.loc[structures_df["in_validation_set"], "smiles"]
     )
-    structures_df = structures_df[~structures_df["in_validation_set"]]
-    slim_df = slim_df.loc[~slim_df["smiles"].isin(validation_smiles)]
-
     assert validation_smiles, (
         "No validation examples found in the dataset. Please check the dataset files."
     )
-    print(f"Found {len(validation_smiles)} validation examples.")
-    assert not structures_df.empty, (
-        "No training structures found after filtering out validation examples. Please check the dataset files."
-    )
-    print(
-        f"Found {len(structures_df)} training structures after filtering out validation examples."
-    )
+    if split == "train":
+        structures_df = structures_df[~structures_df["in_validation_set"]]
+        slim_df = slim_df.loc[~slim_df["smiles"].isin(validation_smiles)]
+        print(f"Found {len(slim_df)} classes for train set ")
+        print(f"Found {len(structures_df)} training structures")
+
+    elif split == "val":
+        structures_df = structures_df[structures_df["in_validation_set"]]
+        slim_df = slim_df.loc[slim_df["smiles"].isin(validation_smiles)]
+        print(f"Found {len(slim_df)} classes for validation set")
+        print(f"Found {len(structures_df)} validation structures ")
+    else:
+        raise ValueError()
+
+    assert not structures_df.empty and not slim_df.empty
 
     chemlog_chebi_class = ChEBIDataWrapper(
         chebi_version=chebi_version, validation_smiles=validation_smiles
@@ -229,13 +235,12 @@ def load_c3po_slim_dataset(
         ontology_version="slim",
         classes=classes,  # pyright: ignore[reportArgumentType]
         structures=structures,
-        validation_examples=validation_smiles,
     )
 
     print(
+        f"For split : {split}"
         f"Loaded : Classes: {len(dataset.classes)}\n"
         f"Instances: {len(dataset.structures)}\n"
-        f"Validation examples: {len(dataset.validation_examples)}"  # pyright: ignore[reportArgumentType]
     )
 
     return dataset, chemlog_chebi_class
