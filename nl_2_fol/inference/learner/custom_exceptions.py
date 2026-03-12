@@ -1,10 +1,11 @@
 import traceback
 from functools import wraps
+from typing import TYPE_CHECKING
 
-from nl_2_fol.inference.preprocessing.c3po_slim_data import (
-    SMILES_STRING,
-    ChemicalStructure,
-)
+from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
+
+if TYPE_CHECKING:
+    from nl_2_fol.inference.preprocessing.c3po_slim_data import SMILES_STRING
 
 
 def tptp_parse_exception(func):
