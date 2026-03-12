@@ -151,6 +151,7 @@ def load_c3po_slim_dataset(
         structures_df.loc[structures_df["in_validation_set"], "smiles"]
     )
     structures_df = structures_df[~structures_df["in_validation_set"]]
+    slim_df = slim_df.loc[~slim_df["smiles"].isin(validation_smiles)]
 
     assert validation_smiles, (
         "No validation examples found in the dataset. Please check the dataset files."
