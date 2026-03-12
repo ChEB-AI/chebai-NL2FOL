@@ -2,6 +2,7 @@ import os
 import pickle
 
 from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
+from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
 
@@ -28,7 +29,15 @@ class PerformValidation(BaseFOL):
         for chebi_id, learned_def in self._loaded_defs.learned_definitions.items():
             print(f"Validating definition for {learned_def.name}...")
             class_name = learned_def.name
-            chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
+            try:
+                chemical_class = self._c3po_slim_data.get_chemical_class_by_name(
+                    class_name
+                )
+            except ce.StopProgramException:
+                print(
+                    f"Chemical class {class_name} not found in dataset. Skipping validation for this class."
+                )
+                continue
 
             val_metrics = self._score_definition(
                 chemical_class=chemical_class,

@@ -5,7 +5,7 @@ import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
-from nl_2_fol.inference.preprocessing import SMILES_STRING
+from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
@@ -76,12 +76,12 @@ class ChEBIDataWrapper(ChEBIData):
 
         return df
 
-    def get_chebi_id_to_data_mapping_train(self) -> dict[str, dict]:
+    def get_chebi_id_to_data_mapping_train(self) -> dict[CHEBI_ID, dict]:
         df = self._get_chebi_id_to_data_mapping()
         df = df[~df["smiles"].isin(self.validation_smiles)]
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
-    def get_chebi_id_to_data_mapping_all(self) -> dict[str, dict]:
+    def get_chebi_id_to_data_mapping_all(self) -> dict[CHEBI_ID, dict]:
         df = self._get_chebi_id_to_data_mapping()
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 

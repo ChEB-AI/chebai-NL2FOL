@@ -17,6 +17,7 @@ import tqdm
 from pydantic import BaseModel, Field
 from rdkit import Chem
 
+from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
@@ -39,7 +40,9 @@ class ChemicalStructure(BaseModel):
 
     def __eq__(self, other):
         if not isinstance(other, ChemicalStructure):
-            return NotImplemented
+            return ce.StopProgramException(
+                "Cannot compare ChemicalStructure with non-ChemicalStructure object"
+            )
         return self.smiles == other.smiles
 
 
@@ -72,7 +75,9 @@ class ChemicalClass(BaseModel):
 
     def __eq__(self, other):
         if not isinstance(other, ChemicalStructure):
-            return NotImplemented
+            return ce.StopProgramException(
+                "Cannot compare ChemicalClass with non-ChemicalClass object"
+            )
         return self.name == other.name
 
 
@@ -122,11 +127,11 @@ class Dataset(BaseModel):
         for cc in self.classes.values():
             if cc.id == class_id:
                 return cc
-        raise ValueError(f"Class {class_id} not found in dataset")
+        raise ce.StopProgramException(f"Class {class_id} not found in dataset")
 
     def get_chemical_class_by_name(self, class_name: str) -> ChemicalClass:
         if class_name not in self.classes:
-            raise ValueError(f"Class {class_name} not found in dataset")
+            raise ce.StopProgramException(f"Class {class_name} not found in dataset")
         return self.classes[class_name]
 
 
@@ -164,7 +169,7 @@ def load_c3po_slim_dataset(
         print(f"Found {len(slim_df)} classes for validation set")
         print(f"Found {len(structures_df)} validation structures ")
     else:
-        raise ValueError()
+        raise ValueError(f"Invalid split: {split}. Expected 'train' or 'val'.")
 
     assert not structures_df.empty and not slim_df.empty
 
@@ -213,7 +218,12 @@ def load_c3po_slim_dataset(
 
     def parse_positive_examples(examples: str) -> set[SMILES_STRING]:
         p_examples: set[SMILES_STRING] = set(ast.literal_eval(str(examples)))
-        return p_examples - validation_smiles
+        if split == "train":
+            return p_examples - validation_smiles
+        elif split == "val":
+            return p_examples & validation_smiles
+        else:
+            raise ValueError(f"Invalid split: {split}. Expected 'train' or 'val'.")
 
     classes = {
         row.name: ChemicalClass(
@@ -236,7 +246,7 @@ def load_c3po_slim_dataset(
     )
 
     print(
-        f"For split : {split}"
+        f"For split : {split}\n"
         f"Loaded : Classes: {len(dataset.classes)}\n"
         f"Instances: {len(dataset.structures)}\n"
     )
