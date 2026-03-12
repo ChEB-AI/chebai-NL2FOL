@@ -1,11 +1,21 @@
 import queue
 
+from gavel.logic import logic
+
+from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
+from nl_2_fol.inference.learner.sample_matching_worker import (
+    check_if_definition_matches_samples,
+)
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 
 class BaseFOL:
+    _DEFINITION_FILE_NAME = "learned_definitions.pkl"
+    _MAX_NEGATIVE_SAMPLES = 1000
+    _SAMPLE_MATCH_TIMEOUT_SECONDS = 5 * 60
+
     def __init__(
         self,
         slim_dataset_path: str,
@@ -25,6 +35,58 @@ class BaseFOL:
         )
         self.undirected_chebi_graph = (
             self._entire_chebi_data.get_undirected_hierarchy_graph()
+        )
+        self._gavel = GavelFOLReasoner()
+
+    def _score_definition(
+        self,
+        *,
+        chemical_class: dm.ChemicalClass,
+        tptp_def: logic.QuantifiedFormula,
+        sample_match_timeout_seconds: int,
+        max_neg_samples: int,
+        temp_additional_defs: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None,
+    ) -> tuple[
+        def_model.DefinitionMetrics,
+        set[dm.SMILES_STRING],
+        set[dm.SMILES_STRING],
+        set[dm.ChemicalStructure],
+        set[dm.ChemicalStructure],
+    ]:
+        pos_samples, neg_samples = self._get_positive_and_negative_samples(
+            chemical_class,
+            max_neg_samples,
+        )
+
+        (
+            unmatched_pos_samples,
+            matched_neg_samples,
+            processed_pos_samples,
+            processed_neg_samples,
+        ) = check_if_definition_matches_samples(
+            self._gavel,
+            sample_match_timeout_seconds,
+            chemical_class,
+            tptp_def,
+            pos_samples,
+            neg_samples,
+            temp_additional_defs,
+        )
+        metrics = self._get_metrics(
+            unmatched_pos_samples,
+            matched_neg_samples,
+            processed_pos_samples,
+            processed_neg_samples,
+        )
+        return (
+            metrics,
+            unmatched_pos_samples,
+            matched_neg_samples,
+            processed_pos_samples,
+            processed_neg_samples,
         )
 
     @ce.stop_program_upon_failure

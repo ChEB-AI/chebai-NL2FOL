@@ -19,7 +19,7 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
 
         print(f"Learned definition for predicate: {learned_def.name}")
         print(f"Pred variables: {learned_def.learned_FOL.pred_variables}")
-        print(f"Metrics: {learned_def.metrics}")
+        print(f"Metrics: {learned_def.train_metrics}")
         print(f"Formula: {learned_def.learned_FOL.formula}")
         [print(his) for his in learned_def.prompts_history]
         print("---" * 10)

@@ -11,19 +11,13 @@ from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
-from nl_2_fol.inference.learner.sample_matching_worker import (
-    check_if_definition_matches_samples,
-)
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
 class LearnDefinitions(BaseFOL):
-    _DEFINITION_FILE_NAME = "learned_definitions.pkl"
-    _MAX_NEGATIVE_SAMPLES = 1000
     _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
-    _SAMPLE_MATCH_TIMEOUT_SECONDS = 5 * 60
 
     def __init__(
         self,
@@ -411,40 +405,31 @@ class LearnDefinitions(BaseFOL):
             result.FOL_formula
         )
 
-        pos_samples, neg_samples = self._get_positive_and_negative_samples(
-            chemical_class,
-            self._MAX_NEGATIVE_SAMPLES,
-        )
-
         (
+            train_metrics,
             unmatched_pos_samples,
             matched_neg_samples,
             processed_pos_samples,
             processed_neg_samples,
-        ) = check_if_definition_matches_samples(
-            self._gavel,
-            self._SAMPLE_MATCH_TIMEOUT_SECONDS,
-            chemical_class,
-            tptp_def,
-            pos_samples,
-            neg_samples,
-            temp_additional_defs,
-        )
-        metrics = self._get_metrics(
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
+        ) = self._score_definition(
+            chemical_class=chemical_class,
+            tptp_def=tptp_def,
+            sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
+            max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
+            temp_additional_defs=temp_additional_defs,
         )
 
-        if metrics.F1 < self.f1_threshold and self._attempts < self.max_attempts - 1:
+        if (
+            train_metrics.F1 < self.f1_threshold
+            and self._attempts < self.max_attempts - 1
+        ):
             print(
-                f"F1 score {metrics.F1:.2f} is below the threshold of "
+                f"F1 score {train_metrics.F1:.2f} is below the threshold of "
                 f"{self.f1_threshold:.2f} for CHEBI:{chemical_class.id}: "
                 f"{chemical_class.name}"
             )
             raise ce.LowF1ScoreException(
-                current_f1_score=metrics.F1,
+                current_f1_score=train_metrics.F1,
                 pos_samples=processed_pos_samples,
                 neg_samples=processed_neg_samples,
                 matched_neg_samples=matched_neg_samples,
@@ -457,7 +442,7 @@ class LearnDefinitions(BaseFOL):
             chemical_class,
             tptp_def,
             pred_variables,
-            metrics,
+            train_metrics,
             temp_additional_defs=temp_additional_defs,
         )
 
@@ -466,7 +451,7 @@ class LearnDefinitions(BaseFOL):
         chemical_class: dm.ChemicalClass,
         tptp_def: QuantifiedFormula,
         pred_variables: list[logic.Variable],
-        metrics: def_model.DefinitionMetrics,
+        train_metrics: def_model.DefinitionMetrics,
         temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
@@ -493,7 +478,7 @@ class LearnDefinitions(BaseFOL):
         )
         self.definitions.learned_definitions[chemical_class.id] = (
             def_model.LearnedDefinition(
-                metrics=metrics,
+                train_metrics=train_metrics,
                 learned_FOL=def_model.FOLFormula(
                     formula=tptp_def, pred_variables=pred_variables
                 ),
@@ -511,7 +496,7 @@ class LearnDefinitions(BaseFOL):
             chemical_class.name, pred_variables
         )
         print(
-            f"Learned definition for {chemical_class.id} with F1 score: {metrics.F1:.2f}"
+            f"Learned definition for {chemical_class.id} with F1 score: {train_metrics.F1:.2f}"
         )
 
     def _add_generated_predicates_to_prompt_obj(
