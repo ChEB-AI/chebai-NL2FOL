@@ -7,6 +7,7 @@ from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 __all__ = ["check_if_definition_matches_samples"]
@@ -29,8 +30,8 @@ def check_if_definition_matches_samples(
     set[dm.ChemicalStructure],
     set[dm.ChemicalStructure],
 ]:
-    unmatched_pos_samples = set()
-    matched_neg_samples = set()
+    unmatched_pos_samples = set()  # FNs
+    matched_neg_samples = set()  # FPs
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
@@ -153,18 +154,20 @@ def check_if_definition_matches_samples(
             "Positive sample matching subprocess failed with error: "
             f"{error_message}\n{error_trace}"
         )
+
     if neg_worker_error is not None:
         error_message, error_trace = neg_worker_error
         raise Exception(
             "Negative sample matching subprocess failed with error: "
             f"{error_message}\n{error_trace}"
         )
+
     if (
         not pos_worker_completed
         and not timed_out
         and pos_worker.exitcode not in (0, None)
     ):
-        raise Exception(
+        raise StopProgramException(
             "Positive sample matching subprocess exited unexpectedly with "
             f"exit code: {pos_worker.exitcode}."
         )
@@ -173,11 +176,10 @@ def check_if_definition_matches_samples(
         and not timed_out
         and neg_worker.exitcode not in (0, None)
     ):
-        raise Exception(
+        raise StopProgramException(
             "Negative sample matching subprocess exited unexpectedly with "
             f"exit code: {neg_worker.exitcode}."
         )
-
     processed_pos_samples = {
         chemical for chemical in pos_samples if chemical.smiles in processed_pos_smiles
     }
@@ -186,9 +188,16 @@ def check_if_definition_matches_samples(
     }
 
     if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
-        raise Exception(
-            "No samples were processed before subprocess timeout while validating "
-            f"definition of {chemical_class.name}."
+        raise TimeoutError(
+            "No samples were processed within "
+            f"{sample_matching_timeout_seconds} seconds while validating definition "
+            f"of {chemical_class.name}. Try reducing formula complexity."
+        )
+
+    if timed_out:
+        print(
+            "\nSample matching timed out; returning partial results for "
+            f"{chemical_class.name}."
         )
 
     print(
