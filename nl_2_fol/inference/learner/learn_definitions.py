@@ -439,9 +439,7 @@ class LearnDefinitions:
             processed_neg_samples,
         )
 
-        # Validate against the threshold
-        # TODO:  adjust threshold wrt how many def meet it
-        if metrics.F1 < self.f1_threshold:
+        if metrics.F1 < self.f1_threshold and self._attempts < self.max_attempts - 1:
             print(
                 f"F1 score {metrics.F1:.2f} is below the threshold of "
                 f"{self.f1_threshold:.2f} for CHEBI:{chemical_class.id}: "
@@ -456,9 +454,28 @@ class LearnDefinitions:
                 max_examples=self._MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION,
                 chebi_name_to_data_mapping=self._chebi_name_to_data_mapping,
             )
+
+        self._accept_learned_definition(
+            chemical_class,
+            tptp_def,
+            pred_variables,
+            metrics,
+            temp_additional_defs=temp_additional_defs,
+        )
+
+    def _accept_learned_definition(
+        self,
+        chemical_class: dm.ChemicalClass,
+        tptp_def: QuantifiedFormula,
+        pred_variables: list[logic.Variable],
+        metrics: def_model.DefinitionMetrics,
+        temp_additional_defs: dict[
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
+        ]
+        | None = None,
+    ):
         # TODO: What if the additonal defintions are changed in next attempt
         # and both are valid which to use? rn the earliest
-
         if temp_additional_defs:
             # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
             for def_name, (pred_vars, background_def) in temp_additional_defs.items():
