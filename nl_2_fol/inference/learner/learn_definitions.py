@@ -15,7 +15,6 @@ from nl_2_fol.inference.learner.sample_matching_worker import (
     check_if_definition_matches_samples,
 )
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
-from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
@@ -33,12 +32,14 @@ class LearnDefinitions:
         structures_path: str,
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
+        chebi_version: int = 244,
     ):
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
         self.f1_threshold = f1_threshold
+        self.chebi_version = chebi_version
         # load definitions from the path and store them in a suitable data structure
         # this will be used to learn new definitions based on the classified chemical classes
 
@@ -52,13 +53,10 @@ class LearnDefinitions:
         self._learned_classes: set[str] = set()
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
-        # Load Entire Chebi data
-        entire_chebi_data = ChEBIDataWrapper(chebi_version=244)
-        self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
-
-        self._c3po_slim_dataset = dm.load_c3po_slim_dataset(
-            entire_chebi_data, self.slim_dataset_path, self.structures_path
+        self._c3po_slim_dataset, entire_chebi_data = dm.load_c3po_slim_dataset(
+            self.slim_dataset_path, self.structures_path, self.chebi_version
         )
+        self._chebi_name_to_data_mapping = entire_chebi_data.get_name_to_data_mapping()
         self.undirected_chebi_graph = entire_chebi_data.get_undirected_hierarchy_graph()
         self._attempts: int = 0
 
@@ -569,7 +567,7 @@ class LearnDefinitions:
 
     @ce.stop_program_upon_failure
     def _get_positive_and_negative_samples(
-        self, chemical_class: dm.ChemicalClass, max_neg_samples: int = 5000
+        self, chemical_class: dm.ChemicalClass, max_neg_samples: int = 1000
     ) -> tuple[set[dm.ChemicalStructure], set[dm.ChemicalStructure]]:
         # validation examples already substracted during from positive examples
         positive_examples = chemical_class.all_positive_examples
@@ -578,10 +576,7 @@ class LearnDefinitions:
             for smiles in positive_examples
             if smiles in self._c3po_slim_dataset.smiles_to_instance
         }
-        negative_examples = list(
-            (self._c3po_slim_dataset.all_smiles - positive_examples)
-            - self._c3po_slim_dataset.validation_examples
-        )
+        negative_examples = list(self._c3po_slim_dataset.all_smiles - positive_examples)
         negative_examples = self._get_closest_negatives(
             negative_examples, chemical_class.id, n_samples=max_neg_samples
         )

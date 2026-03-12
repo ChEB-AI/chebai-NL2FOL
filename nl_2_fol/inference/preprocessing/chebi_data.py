@@ -5,11 +5,12 @@ import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
+from nl_2_fol.inference.preprocessing.c3po_slim_data import SMILES_STRING
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
 class ChEBIDataWrapper(ChEBIData):
-    def __init__(self, chebi_version: int):
+    def __init__(self, chebi_version: int, validation_smiles: set[SMILES_STRING]):
         self.chebi_version = chebi_version
 
         os.makedirs(self.base_dir, exist_ok=True)
@@ -149,7 +150,7 @@ class ChEBIDataWrapper(ChEBIData):
 
 
 if __name__ == "__main__":
-    chebi_data_wrapper = ChEBIDataWrapper(chebi_version=244)
+    chebi_data_wrapper = ChEBIDataWrapper(chebi_version=244, validation_smiles=set())
     # Get mappings
     name_to_data_mapping = chebi_data_wrapper.get_name_to_data_mapping()
     print(f"\n\nTotal unique names (mapping keys): {len(name_to_data_mapping)}")

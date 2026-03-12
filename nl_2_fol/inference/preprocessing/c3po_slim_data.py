@@ -134,10 +134,10 @@ class Dataset(BaseModel):
 
 
 def load_c3po_slim_dataset(
-    chemlog_chebi_class: ChEBIDataWrapper,
     slim_dataset_path: str = "data/classes_slim.csv",
     structures_path: str = "data/structures.csv",
-) -> Dataset:
+    chebi_version: int = 244,
+) -> tuple[Dataset, ChEBIDataWrapper]:
     print("Loading and processing C3PO slim dataset...")
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
         raise FileNotFoundError(
@@ -147,14 +147,25 @@ def load_c3po_slim_dataset(
 
     slim_df = pd.read_csv(slim_dataset_path)
     structures_df = pd.read_csv(structures_path)
-
     validation_smiles = set(
         structures_df.loc[structures_df["in_validation_set"], "smiles"]
     )
+    structures_df = structures_df[~structures_df["in_validation_set"]]
+
     assert validation_smiles, (
         "No validation examples found in the dataset. Please check the dataset files."
     )
+    print(f"Found {len(validation_smiles)} validation examples.")
+    assert not structures_df.empty, (
+        "No training structures found after filtering out validation examples. Please check the dataset files."
+    )
+    print(
+        f"Found {len(structures_df)} training structures after filtering out validation examples."
+    )
 
+    chemlog_chebi_class = ChEBIDataWrapper(
+        chebi_version=chebi_version, validation_smiles=validation_smiles
+    )
     slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
     slim_df["name"] = slim_df["name"].apply(to_camel_case)
 
@@ -226,8 +237,8 @@ def load_c3po_slim_dataset(
         f"Validation examples: {len(dataset.validation_examples)}"  # pyright: ignore[reportArgumentType]
     )
 
-    return dataset
+    return dataset, chemlog_chebi_class
 
 
 if __name__ == "__main__":
-    load_c3po_slim_dataset(ChEBIDataWrapper(chebi_version=244))
+    load_c3po_slim_dataset()
