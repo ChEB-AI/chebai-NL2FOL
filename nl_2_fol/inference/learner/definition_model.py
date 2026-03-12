@@ -4,7 +4,7 @@ from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, ConfigDict, Field
 
-from nl_2_fol.inference.preprocessing.c3po_slim_data import CHEBI_ID
+from nl_2_fol.inference.preprocessing import CHEBI_ID
 
 
 class DefinitionMetrics(BaseModel):

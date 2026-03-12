@@ -17,11 +17,9 @@ import tqdm
 from pydantic import BaseModel, Field
 from rdkit import Chem
 
+from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
-
-SMILES_STRING = str
-CHEBI_ID = int
 
 
 # make this hashable?

@@ -1,15 +1,12 @@
 import os
 import pickle
-from typing import TYPE_CHECKING
 
 import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
+from nl_2_fol.inference.preprocessing import SMILES_STRING
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
-
-if TYPE_CHECKING:
-    from nl_2_fol.inference.preprocessing.c3po_slim_data import SMILES_STRING
 
 
 class ChEBIDataWrapper(ChEBIData):
