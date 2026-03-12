@@ -13,14 +13,21 @@ load_dotenv("./api_keys.env")  # This loads the .env file
 # Get openai api key from: https://openai.com/api/
 
 
-assert any(os.getenv(key) for key in API_KEYS_NAME_LIST), (
-    f"Detailed Error: None of the required API keys ({API_KEYS_NAME_LIST}) "
-    "were found in the environment variables. Please check your .env file."
-)
+def validate_any_api_key_present() -> None:
+    """Validate that at least one supported API key is available.
+
+    Keep this as an explicit runtime check instead of running on import,
+    so unit tests and CI can import modules without API credentials.
+    """
+    assert any(os.getenv(key) for key in API_KEYS_NAME_LIST), (
+        f"Detailed Error: None of the required API keys ({API_KEYS_NAME_LIST}) "
+        "were found in the environment variables. Please check your .env file."
+    )
 
 
 tracing = False  # Set to True in debug mode
 if tracing:
+    validate_any_api_key_present()
     # Refer Tracibility docs: https://docs.langchain.com/langsmith/observability-quickstart
     # View on trace of the prompting here:
     # https://smith.langchain.com/public/5dddca10-2d31-4be8-b4c3-caca98504868/r/019b55af-4679-7e31-96f0-516ffad9499d
