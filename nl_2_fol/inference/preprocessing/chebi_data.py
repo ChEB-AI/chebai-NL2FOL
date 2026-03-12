@@ -25,7 +25,16 @@ class ChEBIDataWrapper(ChEBIData):
         # # processed: dataframe that combines chebi data with mols from sdf file
         # self.processed = self.process_data()
 
-    def get_name_to_data_mapping(self) -> dict[str, dict]:
+    def get_name_to_data_mapping_train(self) -> dict[str, dict]:
+        df = self._get_name_to_data_mapping()
+        df = df[~df["smiles"].isin(self.validation_smiles)]
+        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def get_name_to_data_mapping_all(self) -> dict[str, dict]:
+        df = self._get_name_to_data_mapping()
+        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def _get_name_to_data_mapping(self) -> pd.DataFrame:
         df = self._preprocess_data()
         # --- One Duplicate entry in Chebi 244 -----
         # 1. Name: l-lysine zwitterion
@@ -33,7 +42,6 @@ class ChEBIDataWrapper(ChEBIData):
         #    - ID: 133538, SMILES: [O-]C([C@H](CCCCN)[NH3+])=O...
         #    - ID: 194466, SMILES: [NH3+]CCCC[C@@H](C([O-])=O)N...
 
-        df = df[~df["smiles"].isin(self.validation_smiles)]
         # Latest chebi version has only 194466, so delete the duplicate entry with 133538
         df = df[df.index != 133538]
 
@@ -66,13 +74,21 @@ class ChEBIDataWrapper(ChEBIData):
                 "Adjust rules in camel case conversion if needed."
             )
 
-        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+        return df
 
-    def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
-        df = self._preprocess_data()
-        df["name"] = df["name"].apply(to_camel_case)
+    def get_chebi_id_to_data_mapping_train(self) -> dict[str, dict]:
+        df = self._get_chebi_id_to_data_mapping()
         df = df[~df["smiles"].isin(self.validation_smiles)]
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def get_chebi_id_to_data_mapping_all(self) -> dict[str, dict]:
+        df = self._get_chebi_id_to_data_mapping()
+        return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def _get_chebi_id_to_data_mapping(self) -> pd.DataFrame:
+        df = self._preprocess_data()
+        df["name"] = df["name"].apply(to_camel_case)
+        return df
 
     def _preprocess_data(self) -> pd.DataFrame:
         data_dict = self.process_chebi()
@@ -155,10 +171,10 @@ class ChEBIDataWrapper(ChEBIData):
 if __name__ == "__main__":
     chebi_data_wrapper = ChEBIDataWrapper(chebi_version=244, validation_smiles=set())
     # Get mappings
-    name_to_data_mapping = chebi_data_wrapper.get_name_to_data_mapping()
+    name_to_data_mapping = chebi_data_wrapper.get_name_to_data_mapping_train()
     print(f"\n\nTotal unique names (mapping keys): {len(name_to_data_mapping)}")
     print(f"Sample entries: {list(name_to_data_mapping)[:5]}")
-    chebi_id_to_data_mapping = chebi_data_wrapper.get_chebi_id_to_data_mapping()
+    chebi_id_to_data_mapping = chebi_data_wrapper.get_chebi_id_to_data_mapping_train()
     print(f"Sample entries: {list(chebi_id_to_data_mapping)[:5]}")
     # Get hierarchy graph and topological ordering
     topological_ordering = chebi_data_wrapper.get_topological_ordering()
