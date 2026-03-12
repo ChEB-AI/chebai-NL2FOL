@@ -12,6 +12,7 @@ from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 class ChEBIDataWrapper(ChEBIData):
     def __init__(self, chebi_version: int, validation_smiles: set[SMILES_STRING]):
         self.chebi_version = chebi_version
+        self.validation_smiles = validation_smiles
 
         os.makedirs(self.base_dir, exist_ok=True)
         os.makedirs(
@@ -32,6 +33,7 @@ class ChEBIDataWrapper(ChEBIData):
         #    - ID: 133538, SMILES: [O-]C([C@H](CCCCN)[NH3+])=O...
         #    - ID: 194466, SMILES: [NH3+]CCCC[C@@H](C([O-])=O)N...
 
+        df = df[~df["smiles"].isin(self.validation_smiles)]
         # Latest chebi version has only 194466, so delete the duplicate entry with 133538
         df = df[df.index != 133538]
 
@@ -69,6 +71,7 @@ class ChEBIDataWrapper(ChEBIData):
     def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
         df = self._preprocess_data()
         df["name"] = df["name"].apply(to_camel_case)
+        df = df[~df["smiles"].isin(self.validation_smiles)]
         return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def _preprocess_data(self) -> pd.DataFrame:
