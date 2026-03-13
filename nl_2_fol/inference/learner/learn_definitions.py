@@ -6,7 +6,6 @@ import tqdm
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
-from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
@@ -36,17 +35,13 @@ class LearnDefinitions(BaseFOL):
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
         self.f1_threshold = f1_threshold
-        self.chebi_version = chebi_version
-        # load definitions from the path and store them in a suitable data structure
-        # this will be used to learn new definitions based on the classified chemical classes
 
-        self._gavel = GavelFOLReasoner()
         # Stores chemical classes which failed to learn FOL in previous programs calls,
         # so we can skip them in the main loop and avoid unnecessary attempts
         self._failed_classes: set = set()
 
         # Tracks the classes for which definitions have been learned,
-        # so we can avoid redundant learning when handling missing predicate exception
+        # TODO: check this var if needed
         self._learned_classes: set[str] = set()
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 

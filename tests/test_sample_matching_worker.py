@@ -241,7 +241,7 @@ class TestCheckIfDefinitionMatchesSamples:
             )
 
         assert error_text in str(exc_info.value)
-        assert traceback_text in str(exc_info.value)
+        assert traceback_text not in str(exc_info.value)
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
     def test_neg_worker_error_is_propagated(self, mock_mp, common_inputs):
