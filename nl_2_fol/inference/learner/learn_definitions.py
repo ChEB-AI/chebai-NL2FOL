@@ -104,6 +104,10 @@ class LearnDefinitions(BaseFOL):
         self._attempts = 0
         attempt_failure_summary = []
 
+        # Tracks all the definitions which scored below threshold from all attempts
+        # If no generated def pass the threshold, then we accept the one with best score
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition] = {}
+
         result = None
         raised_exception = None
         try:
@@ -118,7 +122,11 @@ class LearnDefinitions(BaseFOL):
                 f"\nInput text to LLM: {input_text}\n",
                 f"Generated FOL definition: {result.FOL_formula}\n",
             )
-            self._parse_and_validate_generated_definition(result, chemical_class)
+            self._parse_and_validate_generated_definition(
+                result=result,
+                chemical_class=chemical_class,
+                low_score_defs_collector=low_score_defs_collector,
+            )
             self._on_successful_learning(chemical_class)
             return
         except Exception as e:
@@ -206,6 +214,7 @@ class LearnDefinitions(BaseFOL):
                     result,  # pyright: ignore[reportArgumentType]
                     chemical_class,
                     temp_additional_defs=add_bck_def,
+                    low_score_defs_collector=low_score_defs_collector,
                 )
                 self._on_successful_learning(chemical_class)
                 return
@@ -226,8 +235,35 @@ class LearnDefinitions(BaseFOL):
                 )
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
+        self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
         self._failed_classes.add(chemical_class.name)
         self._post_cleanup(session_id=chemical_class.name)
+
+    def _accept_highest_scoring_def(
+        self,
+        chemical_class: dm.ChemicalClass,
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition],
+    ):
+        if not low_score_defs_collector:
+            print(
+                "No generated FOL definition could be accepted because no "
+                "candidate definitions were collected."
+            )
+            return
+
+        best_scored_def = max(
+            low_score_defs_collector.values(),
+            key=lambda x: x.train_metrics.F1,
+        )
+        print(
+            "As no generated FOL definition was able to pass the F1 threshold of "
+            f"{self.f1_threshold:.2f}, accepting the definition with the highest F1 "
+            f"score {best_scored_def.train_metrics.F1:.2f} among all attempts."
+        )
+        self._accept_learned_definition(
+            chemical_class,
+            scored_def=best_scored_def,
+        )
 
     def _on_successful_learning(self, chemical_class: dm.ChemicalClass):
         self._learned_classes.add(chemical_class.name)
@@ -387,6 +423,7 @@ class LearnDefinitions(BaseFOL):
         self,
         result: CHEBIFOLOutput,
         chemical_class: dm.ChemicalClass,
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition],
         temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
@@ -416,11 +453,16 @@ class LearnDefinitions(BaseFOL):
             max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
             temp_additional_defs=temp_additional_defs,
         )
+        scored_def = def_model.ScoredDefinition(
+            pred_variables=pred_variables,
+            tptp_def=tptp_def,
+            train_metrics=train_metrics,
+            temp_additional_defs=temp_additional_defs,
+        )
 
-        if (
-            train_metrics.F1 < self.f1_threshold
-            and self._attempts < self.max_attempts - 1
-        ):
+        if train_metrics.F1 < self.f1_threshold:
+            low_score_defs_collector[self._attempts] = scored_def
+
             print(
                 f"F1 score {train_metrics.F1:.2f} is below the threshold of "
                 f"{self.f1_threshold:.2f} for CHEBI:{chemical_class.id}: "
@@ -438,28 +480,22 @@ class LearnDefinitions(BaseFOL):
 
         self._accept_learned_definition(
             chemical_class,
-            tptp_def,
-            pred_variables,
-            train_metrics,
-            temp_additional_defs=temp_additional_defs,
+            scored_def,
         )
 
     def _accept_learned_definition(
         self,
         chemical_class: dm.ChemicalClass,
-        tptp_def: QuantifiedFormula,
-        pred_variables: list[logic.Variable],
-        train_metrics: def_model.DefinitionMetrics,
-        temp_additional_defs: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ]
-        | None = None,
+        scored_def: def_model.ScoredDefinition,
     ):
         # TODO: What if the additonal defintions are changed in next attempt
         # and both are valid which to use? rn the earliest
-        if temp_additional_defs:
+        if scored_def.temp_additional_defs:
             # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
-            for def_name, (pred_vars, background_def) in temp_additional_defs.items():
+            for def_name, (
+                pred_vars,
+                background_def,
+            ) in scored_def.temp_additional_defs.items():
                 if def_name not in self.definitions.additional_definitions:
                     self.definitions.additional_definitions[def_name] = (
                         def_model.AdditionalDefinition(
@@ -480,9 +516,10 @@ class LearnDefinitions(BaseFOL):
         )
         self.definitions.learned_definitions[chemical_class.id] = (
             def_model.LearnedDefinition(
-                train_metrics=train_metrics,
+                train_metrics=scored_def.train_metrics,
                 learned_FOL=def_model.FOLFormula(
-                    formula=tptp_def, pred_variables=pred_variables
+                    formula=scored_def.tptp_def,
+                    pred_variables=scored_def.pred_variables,
                 ),
                 name=chemical_class.name,
                 definition=chemical_class.definition
@@ -492,13 +529,14 @@ class LearnDefinitions(BaseFOL):
             )
         )
         self._gavel.add_background_definition(
-            chemical_class.name, pred_variables, tptp_def
+            chemical_class.name, scored_def.pred_variables, scored_def.tptp_def
         )
         self._add_generated_predicates_to_prompt_obj(
-            chemical_class.name, pred_variables
+            chemical_class.name, scored_def.pred_variables
         )
         print(
-            f"Learned definition for {chemical_class.id} with F1 score: {train_metrics.F1:.2f}"
+            f"Learned definition for {chemical_class.id}:{chemical_class.name} "
+            "with F1 score: {scored_def.train_metrics.F1:.2f}"
         )
 
     def _add_generated_predicates_to_prompt_obj(

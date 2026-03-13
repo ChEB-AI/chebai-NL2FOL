@@ -85,6 +85,15 @@ class DefinitionLearningResults(BaseModel):
     )
 
 
+class ScoredDefinition(BaseModel):
+    pred_variables: list[logic.Variable]
+    tptp_def: QuantifiedFormula
+    train_metrics: DefinitionMetrics
+    temp_additional_defs: (
+        dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]] | None
+    ) = None
+
+
 if __name__ == "__main__":
     # Example usage
     from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
