@@ -249,20 +249,44 @@ class LearnDefinitions(BaseFOL):
                 "No generated FOL definition could be accepted because no "
                 "candidate definitions were collected."
             )
-            return
-
-        best_scored_def = max(
-            low_score_defs_collector.values(),
-            key=lambda x: x.train_metrics.F1,
-        )
+            # If no generated FOL could be parsed/scored, persist a safe parsed
+            # placeholder definition along with prompt history for traceability.
+            pred_variables, placeholder_tptp_def = self._gavel.get_tptp_fol_definition(
+                "failed_placeholder_predicate <=> failed_placeholder_predicate"
+            )
+            best_scored_def = def_model.ScoredDefinition(
+                pred_variables=pred_variables,
+                tptp_def=placeholder_tptp_def,
+                train_metrics=def_model.DefinitionMetrics(
+                    F1=0.0,
+                    TN=0,
+                    FP=0,
+                    FN=0,
+                    TP=0,
+                    NPV=0.0,
+                    PPV=0.0,
+                ),
+                temp_additional_defs=None,
+            )
+        else:
+            best_scored_def = max(
+                low_score_defs_collector.values(),
+                key=lambda x: x.train_metrics.F1,
+            )
         print(
             "As no generated FOL definition was able to pass the F1 threshold of "
             f"{self.f1_threshold:.2f}, accepting the definition with the highest F1 "
             f"score {best_scored_def.train_metrics.F1:.2f} among all attempts."
         )
+        learn_success = True
+        if best_scored_def.train_metrics.F1 <= 0.0:
+            # Either the generated FOL was not able to process/check even a single sample
+            # due to timeout during model checking,
+            # Or the FOL was not able to classify single sample correctly
+            learn_success = False
+
         self._accept_learned_definition(
-            chemical_class,
-            scored_def=best_scored_def,
+            chemical_class, scored_def=best_scored_def, learn_success=learn_success
         )
 
     def _on_successful_learning(self, chemical_class: dm.ChemicalClass):
@@ -481,12 +505,14 @@ class LearnDefinitions(BaseFOL):
         self._accept_learned_definition(
             chemical_class,
             scored_def,
+            learn_success=True,
         )
 
     def _accept_learned_definition(
         self,
         chemical_class: dm.ChemicalClass,
         scored_def: def_model.ScoredDefinition,
+        learn_success: bool,
     ):
         # TODO: What if the additonal defintions are changed in next attempt
         # and both are valid which to use? rn the earliest
@@ -503,7 +529,7 @@ class LearnDefinitions(BaseFOL):
                             fol_formula=def_model.FOLFormula(
                                 formula=background_def, pred_variables=pred_vars
                             ),
-                            learn_success=True,
+                            learn_success=learn_success,
                         )
                     )
                     self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
@@ -526,17 +552,19 @@ class LearnDefinitions(BaseFOL):
                 if chemical_class.definition
                 else "",
                 prompts_history=prompts_history,
+                learn_success=learn_success,
             )
         )
-        self._gavel.add_background_definition(
-            chemical_class.name, scored_def.pred_variables, scored_def.tptp_def
-        )
-        self._add_generated_predicates_to_prompt_obj(
-            chemical_class.name, scored_def.pred_variables
-        )
+        if learn_success:
+            self._gavel.add_background_definition(
+                chemical_class.name, scored_def.pred_variables, scored_def.tptp_def
+            )
+            self._add_generated_predicates_to_prompt_obj(
+                chemical_class.name, scored_def.pred_variables
+            )
         print(
             f"Learned definition for {chemical_class.id}:{chemical_class.name} "
-            "with F1 score: {scored_def.train_metrics.F1:.2f}"
+            f"with F1 score: {scored_def.train_metrics.F1:.2f}"
         )
 
     def _add_generated_predicates_to_prompt_obj(
