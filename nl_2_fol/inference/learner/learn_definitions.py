@@ -1,4 +1,3 @@
-import json
 import os
 import pickle
 import traceback
@@ -44,7 +43,7 @@ class LearnDefinitions(BaseFOL):
         self._gavel = GavelFOLReasoner()
         # Stores chemical classes which failed to learn FOL in previous programs calls,
         # so we can skip them in the main loop and avoid unnecessary attempts
-        self._failed_classes: dict[str, list[str]] = {}
+        self._failed_classes: set = set()
 
         # Tracks the classes for which definitions have been learned,
         # so we can avoid redundant learning when handling missing predicate exception
@@ -227,15 +226,14 @@ class LearnDefinitions(BaseFOL):
                 )
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
-        self._failed_classes[chemical_class.name] = attempt_failure_summary
-        self._save_not_learned_classes_list()
+        self._failed_classes.add(chemical_class.name)
         self._post_cleanup(session_id=chemical_class.name)
 
     def _on_successful_learning(self, chemical_class: dm.ChemicalClass):
         self._learned_classes.add(chemical_class.name)
         if chemical_class.name in self._failed_classes:
             # some recursive calls might lead to re-learning of already failed classes
-            del self._failed_classes[chemical_class.name]
+            self._failed_classes.remove(chemical_class.name)
         self._save_definitions()
         self._post_cleanup(session_id=chemical_class.name)
 
@@ -538,51 +536,8 @@ class LearnDefinitions(BaseFOL):
             definitions = def_model.DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
             )
-        self._load_not_learned_classes_list()
         self._load_background_defs_from_pmodel(definitions)
         return definitions
-
-    def _load_not_learned_classes_list(self):
-        # This is to load the list of not learned classes from previous runs of the program, so we can skip them in the main loop and avoid unnecessary attempts
-        unlearned_classes_path = os.path.join(
-            self.definitions_save_path, "unlearned_classes.json"
-        )
-        if os.path.exists(unlearned_classes_path):
-            with open(unlearned_classes_path, "r") as f:
-                # Load class names from JSON file
-                saved_classes_data = json.load(f)
-                # Initialize the dict with loaded class names but empty failure lists for this run
-                self._failed_classes = {
-                    class_name: [] for class_name in saved_classes_data.keys()
-                }
-                print(
-                    "Loaded not learned classes from previous runs:"
-                    f"{set(saved_classes_data.keys())}.\n"
-                    "Hence this run will skip learning definitions for these classes and "
-                    "avoid unnecessary attempts."
-                )
-
-    def _save_not_learned_classes_list(self):
-        # This is to save the list of not learned classes to a file, so we can load it in the next runs and skip them in the main loop and avoid unnecessary attempts
-        unlearned_classes_path = os.path.join(
-            self.definitions_save_path, "unlearned_classes.json"
-        )
-
-        # Load existing saved classes
-        saved_classes_data = {}
-        if os.path.exists(unlearned_classes_path):
-            with open(unlearned_classes_path, "r") as f:
-                saved_classes_data = json.load(f)
-
-        # Update with new classes and their failures (only append new ones)
-        for class_name, failure_list in self._failed_classes.items():
-            if class_name not in saved_classes_data:
-                # Only save if new class
-                saved_classes_data[class_name] = failure_list if failure_list else []
-
-        # Write the entire updated data to JSON file
-        with open(unlearned_classes_path, "w") as f:
-            json.dump(saved_classes_data, f, indent=2)
 
     def _load_background_defs_from_pmodel(
         self, new_definitions: def_model.DefinitionLearningResults
@@ -590,28 +545,37 @@ class LearnDefinitions(BaseFOL):
         """Load back the state from from learned definitions."""
         loaded_def_names = []
         for _, learned_def in new_definitions.learned_definitions.items():
-            self._gavel.add_background_definition(
-                learned_def.name,
-                learned_def.learned_FOL.pred_variables,
-                learned_def.learned_FOL.formula,
-            )
-            self._add_generated_predicates_to_prompt_obj(
-                learned_def.name, learned_def.learned_FOL.pred_variables
-            )
-            loaded_def_names.append(learned_def.name)
-            self._learned_classes.add(learned_def.name)
+            if learned_def.learn_success:
+                self._gavel.add_background_definition(
+                    learned_def.name,
+                    learned_def.learned_FOL.pred_variables,
+                    learned_def.learned_FOL.formula,
+                )
+                self._add_generated_predicates_to_prompt_obj(
+                    learned_def.name, learned_def.learned_FOL.pred_variables
+                )
+                loaded_def_names.append(learned_def.name)
+                self._learned_classes.add(learned_def.name)
+            else:
+                # If class has completely failed to learn, we ignore it
+                self._failed_classes.add(learned_def.name)
+
         print(f"Loaded definitions for the following classes: {loaded_def_names}")
 
         loaded_additional_def_names = []
         for name, add_def in new_definitions.additional_definitions.items():
-            self._gavel.add_background_definition(
-                name, add_def.fol_formula.pred_variables, add_def.fol_formula.formula
-            )
-            self._add_generated_predicates_to_prompt_obj(
-                name, add_def.fol_formula.pred_variables
-            )
-            loaded_additional_def_names.append(name)
-            self._learned_classes.add(name)
+            if add_def.learn_success:
+                self._gavel.add_background_definition(
+                    name,
+                    add_def.fol_formula.pred_variables,
+                    add_def.fol_formula.formula,
+                )
+                self._add_generated_predicates_to_prompt_obj(
+                    name, add_def.fol_formula.pred_variables
+                )
+                loaded_additional_def_names.append(name)
+                self._learned_classes.add(name)
+
         print(
             f"Loaded the following additional definitions for out-of-box predicates: {loaded_additional_def_names}"
         )
