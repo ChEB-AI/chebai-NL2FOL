@@ -15,7 +15,7 @@ from copy import copy
 import pandas as pd
 import tqdm
 from pydantic import BaseModel, Field
-from rdkit import Chem
+from rdkit import Chem, rdBase
 
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
@@ -159,13 +159,11 @@ def load_c3po_slim_dataset(
     )
     if split == "train":
         structures_df = structures_df[~structures_df["in_validation_set"]]
-        slim_df = slim_df.loc[~slim_df["smiles"].isin(validation_smiles)]
         print(f"Found {len(slim_df)} classes for train set ")
         print(f"Found {len(structures_df)} training structures")
 
     elif split == "val":
         structures_df = structures_df[structures_df["in_validation_set"]]
-        slim_df = slim_df.loc[slim_df["smiles"].isin(validation_smiles)]
         print(f"Found {len(slim_df)} classes for validation set")
         print(f"Found {len(structures_df)} validation structures ")
     else:
@@ -196,8 +194,9 @@ def load_c3po_slim_dataset(
 
     def parse_smiles_to_mol(smiles: str) -> Chem.Mol | None:
         try:
-            mol = Chem.MolFromSmiles(smiles)
-            return mol
+            # Suppress RDKit parser warnings for malformed SMILES.
+            with rdBase.BlockLogs():
+                return Chem.MolFromSmiles(smiles)
         except Exception:
             return None
 

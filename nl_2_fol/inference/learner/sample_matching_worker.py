@@ -1,4 +1,5 @@
 import multiprocessing
+import os
 import queue
 import time
 import traceback
@@ -42,6 +43,13 @@ def check_if_definition_matches_samples(
 
     pos_samples_list = list(pos_samples)
     neg_samples_list = list(neg_samples)
+    print(
+        "\n[sample-matching] Starting validation for "
+        f"{chemical_class.name} | "
+        f"pos={len(pos_samples_list)} neg={len(neg_samples_list)} "
+        f"timeout={sample_matching_timeout_seconds}s",
+        flush=True,
+    )
     ctx = multiprocessing.get_context("fork")
     pos_result_queue = ctx.Queue()
     neg_result_queue = ctx.Queue()
@@ -83,9 +91,18 @@ def check_if_definition_matches_samples(
                     unmatched_pos_samples.add(smiles)
             elif event_type == "done":
                 pos_worker_completed = True
+                print(
+                    "[sample-matching] Positive worker reported done.",
+                    flush=True,
+                )
             elif event_type == "error":
                 _, error_message, error_trace = event
                 pos_worker_error = (error_message, error_trace)
+                print(
+                    "[sample-matching] Positive worker reported error: "
+                    f"{error_message}",
+                    flush=True,
+                )
 
     def drain_neg_queue() -> None:
         nonlocal neg_worker_error
@@ -104,15 +121,30 @@ def check_if_definition_matches_samples(
                     matched_neg_samples.add(smiles)
             elif event_type == "done":
                 neg_worker_completed = True
+                print(
+                    "[sample-matching] Negative worker reported done.",
+                    flush=True,
+                )
             elif event_type == "error":
                 _, error_message, error_trace = event
                 neg_worker_error = (error_message, error_trace)
+                print(
+                    "[sample-matching] Negative worker reported error: "
+                    f"{error_message}",
+                    flush=True,
+                )
 
     pos_worker.start()
     neg_worker.start()
+    print(
+        "[sample-matching] Spawned workers "
+        f"(pos_pid={pos_worker.pid}, neg_pid={neg_worker.pid}).",
+        flush=True,
+    )
 
     deadline = time.monotonic() + sample_matching_timeout_seconds
     timed_out = False
+    last_progress_report = time.monotonic()
 
     while pos_worker.is_alive() or neg_worker.is_alive():
         remaining = deadline - time.monotonic()
@@ -126,6 +158,17 @@ def check_if_definition_matches_samples(
             neg_worker.join(timeout=join_timeout)
         drain_pos_queue()
         drain_neg_queue()
+
+        now = time.monotonic()
+        if now - last_progress_report >= 5:
+            print(
+                "[sample-matching] Progress "
+                f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
+                f"neg={len(processed_neg_smiles)}/{len(neg_samples_list)} "
+                f"remaining={max(0, int(deadline - now))}s",
+                flush=True,
+            )
+            last_progress_report = now
 
     if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
         print(
@@ -231,6 +274,9 @@ def _check_samples_worker(
     ]
     | None = None,
 ) -> None:
+    label = "positive" if event_type == "pos_checked" else "negative"
+    total_samples = len(samples)
+
     def is_matched(chemical: dm.ChemicalStructure) -> bool:
         return gavel.does_mol_match_tptp_definition(
             chemical.mol,
@@ -239,12 +285,32 @@ def _check_samples_worker(
         )
 
     try:
-        for chemical in samples:
+        print(
+            f"[sample-matching:{label}] Worker PID={os.getpid()} starting "
+            f"{total_samples} samples.",
+            flush=True,
+        )
+        for idx, chemical in enumerate(samples, start=1):
             matched = is_matched(chemical)
             result_queue.put((event_type, chemical.smiles, matched))
+            if idx == 1 or idx % 25 == 0 or idx == total_samples:
+                print(
+                    f"[sample-matching:{label}] "
+                    f"processed {idx}/{total_samples} "
+                    f"(smiles={chemical.smiles}, matched={matched})",
+                    flush=True,
+                )
 
         result_queue.put(("done",))
+        print(
+            f"[sample-matching:{label}] Worker PID={os.getpid()} completed.",
+            flush=True,
+        )
     except Exception as e:
+        print(
+            f"[sample-matching:{label}] Worker PID={os.getpid()} failed: {e}",
+            flush=True,
+        )
         result_queue.put(("error", str(e), traceback.format_exc()))
 
 
