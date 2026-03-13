@@ -464,8 +464,12 @@ class LearnDefinitions(BaseFOL):
             for def_name, (pred_vars, background_def) in temp_additional_defs.items():
                 if def_name not in self.definitions.additional_definitions:
                     self.definitions.additional_definitions[def_name] = (
-                        def_model.FOLFormula(
-                            formula=background_def, pred_variables=pred_vars
+                        def_model.AdditionalDefinition(
+                            used_for=[chemical_class.id],
+                            fol_formula=def_model.FOLFormula(
+                                formula=background_def, pred_variables=pred_vars
+                            ),
+                            learn_success=True,
                         )
                     )
                     self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
@@ -601,9 +605,11 @@ class LearnDefinitions(BaseFOL):
         loaded_additional_def_names = []
         for name, add_def in new_definitions.additional_definitions.items():
             self._gavel.add_background_definition(
-                name, add_def.pred_variables, add_def.formula
+                name, add_def.fol_formula.pred_variables, add_def.fol_formula.formula
             )
-            self._add_generated_predicates_to_prompt_obj(name, add_def.pred_variables)
+            self._add_generated_predicates_to_prompt_obj(
+                name, add_def.fol_formula.pred_variables
+            )
             loaded_additional_def_names.append(name)
             self._learned_classes.add(name)
         print(

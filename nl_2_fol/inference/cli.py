@@ -3,6 +3,7 @@ import os
 from jsonargparse import CLI
 
 from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
+from nl_2_fol.inference.learner.validator import PerformValidation
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.llm_inference import API_PLATFORM
 
@@ -60,6 +61,25 @@ class Main:
             learner.learn_fol_definitions()
         else:
             learner.learn_class(class_name=class_name)
+
+    @staticmethod
+    def validate(
+        defs_file_path: str,  # nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions.pkl
+        class_name: str = "all",
+        # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
+        slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
+        # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
+        structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
+    ):
+        validator = PerformValidation(
+            defs_file_path=defs_file_path,
+            slim_dataset_path=slim_dataset_path,
+            structures_path=structures_data_path,
+        )
+        if class_name == "all":
+            validator.validate()
+        else:
+            validator.validate_class(class_name=class_name)
 
 
 if __name__ == "__main__":

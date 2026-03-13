@@ -46,6 +46,31 @@ class LearnedDefinition(BaseModel):
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
     definition: str = Field(..., description="definition of the structure from CHEBI")
 
+    learn_success: bool = Field(
+        default=True,
+        description="If False, indicates definition could not be learned "
+        "(e.g., due to generated FOL being too complex for model checking)",
+    )
+
+
+class AdditionalDefinition(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    fol_formula: FOLFormula = Field(
+        ..., description="FOL formula representing the additional definition"
+    )
+    used_for: list[CHEBI_ID] = Field(
+        ...,
+        description="List of ChEBI IDs for which this additional definition is relevant",
+    )
+
+    learn_success: bool = Field(
+        default=True,
+        description="If False, indicates definition could not be learned with "
+        "ATLEAST one of the main chemical class definition "
+        "(e.g., due to generated FOL being too complex for model checking)",
+    )
+
 
 class DefinitionLearningResults(BaseModel):
     """Dictionary mapping ChEBI IDs to their learned definitions."""
@@ -55,7 +80,7 @@ class DefinitionLearningResults(BaseModel):
     learned_definitions: dict[CHEBI_ID, LearnedDefinition] = Field(
         ..., description="Dictionary mapping ChEBI IDs to their learned definitions"
     )
-    additional_definitions: dict[str, FOLFormula] = Field(
+    additional_definitions: dict[str, AdditionalDefinition] = Field(
         ..., description="Additional definitions provided by the user (optional)"
     )
 
@@ -106,8 +131,11 @@ if __name__ == "__main__":
             ),
         },
         additional_definitions={
-            "Example": FOLFormula(
-                formula=fol_formula_3, pred_variables=pred_variables_3
+            "Example": AdditionalDefinition(
+                fol_formula=FOLFormula(
+                    formula=fol_formula_3, pred_variables=pred_variables_3
+                ),
+                used_for=[12345, 56645],
             )
         },
     )

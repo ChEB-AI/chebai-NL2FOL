@@ -13,7 +13,7 @@ class PerformValidation(BaseFOL):
         defs_file_path: str,
         slim_dataset_path: str,
         structures_path: str,
-        chebi_version: int,
+        chebi_version: int = 244,
     ):
         super().__init__(
             slim_dataset_path=slim_dataset_path,
@@ -48,6 +48,31 @@ class PerformValidation(BaseFOL):
             )[0]
             self._loaded_defs.learned_definitions[chebi_id].val_metrics = val_metrics
 
+        self._save_validated_definitions()
+
+    def validate_class(self, class_name: str):
+        print(f"Validating definition for {class_name}...")
+        try:
+            chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
+        except ce.StopProgramException:
+            print(
+                f"Chemical class {class_name} not found in dataset. Skipping validation for this class."
+            )
+            return
+        learned_def = self._loaded_defs.learned_definitions[chemical_class.id]
+        val_metrics = self._score_definition(
+            chemical_class=chemical_class,
+            tptp_def=learned_def.learned_FOL.formula,
+            sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
+            max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
+            temp_additional_defs=None,
+        )[0]
+        self._loaded_defs.learned_definitions[
+            chemical_class.id
+        ].val_metrics = val_metrics
+        self._save_validated_definitions()
+
+    def _save_validated_definitions(self):
         base_path, extension = os.path.splitext(self.defs_file_path)
         output_path = (
             f"{base_path}_with_val{extension}"
@@ -86,7 +111,7 @@ class PerformValidation(BaseFOL):
 
         for name, add_def in new_definitions.additional_definitions.items():
             self._gavel.add_background_definition(
-                name, add_def.pred_variables, add_def.formula
+                name, add_def.fol_formula.pred_variables, add_def.fol_formula.formula
             )
         print(
             f"Loaded {len(new_definitions.additional_definitions)} additional definitions"
