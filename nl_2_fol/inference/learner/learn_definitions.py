@@ -141,6 +141,7 @@ class LearnDefinitions(BaseFOL):
         )
         previous_fol_def = result.FOL_formula if result else ""
         outofbox_max_attempts, curr_outofbox = 1, 0
+        undef_retry_context: str | None = None
         while self._attempts < self.max_attempts:
             print(
                 f"Attempt {self._attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
@@ -151,6 +152,7 @@ class LearnDefinitions(BaseFOL):
                     self.chebi_prompt_obj.invoke_llm_with_undef_failure_prompt(
                         raised_exception.predicates_to_learn,
                         session_id=chemical_class.name,
+                        retry_context=undef_retry_context,
                     )
                 )
 
@@ -185,11 +187,11 @@ class LearnDefinitions(BaseFOL):
                         print(
                             f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {self._attempts + 3}"
                         )
-                        message = raised_exception.message
-                        message += (
-                            "\n [IMPORTANT] Previous attempt failed because of the "
-                            f"following reason \n {e}\n"
-                            "Please analyse the error message and retry."
+                        undef_retry_context = (
+                            "[IMPORTANT] Previously generated additional definitions "
+                            "for undefined predicates failed while parsing due to the below "
+                            f"reason:\n{e}\n"
+                            "Please analyze this error and return corrected definitions."
                         )
                         continue
 
@@ -218,6 +220,7 @@ class LearnDefinitions(BaseFOL):
                 raised_exception = e
                 if isinstance(e, ce.MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
+                    undef_retry_context = None
                 elif isinstance(e, ce.StopProgramException):
                     raise e
                 print(
