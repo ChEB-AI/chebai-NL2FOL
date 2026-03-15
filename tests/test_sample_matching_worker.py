@@ -56,12 +56,12 @@ class TestCheckIfDefinitionMatchesSamples:
 
         is_alive() call sequence when a timeout occurs before workers finish:
           - pos: while-check(T) → outer-timeout-check(T) → inner-pos-check(T) → post-terminate(F)
-          - neg: inner-neg-check(T) → post-terminate(F)
+           - neg: inner-neg-check(T) → terminate-check(T) → post-terminate(F)
         """
         mock_pos_proc = MagicMock()
         mock_pos_proc.is_alive.side_effect = [True, True, True, False]
         mock_neg_proc = MagicMock()
-        mock_neg_proc.is_alive.side_effect = [True, False]
+        mock_neg_proc.is_alive.side_effect = [True, True, False]
         return mock_pos_proc, mock_neg_proc
 
     # ------------------------------------------------------------------ #

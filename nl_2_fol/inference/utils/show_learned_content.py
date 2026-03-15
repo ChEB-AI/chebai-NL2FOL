@@ -22,7 +22,8 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         print(f"Metrics: {learned_def.train_metrics}")
         print(f"Formula: {learned_def.learned_FOL.formula}")
         print(f"Learned success: {learned_def.learn_success}")
-        [print(his) for his in learned_def.prompts_history]
+        for his in learned_def.prompts_history:
+            print(his)
         print("---" * 10)
 
     for name, add_def in data.additional_definitions.items():

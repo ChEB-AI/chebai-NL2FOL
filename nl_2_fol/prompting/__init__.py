@@ -19,10 +19,11 @@ def validate_any_api_key_present() -> None:
     Keep this as an explicit runtime check instead of running on import,
     so unit tests and CI can import modules without API credentials.
     """
-    assert any(os.getenv(key) for key in API_KEYS_NAME_LIST), (
-        f"Detailed Error: None of the required API keys ({API_KEYS_NAME_LIST}) "
-        "were found in the environment variables. Please check your .env file."
-    )
+    if not any(os.getenv(key) for key in API_KEYS_NAME_LIST):
+        raise RuntimeError(
+            f"Detailed Error: None of the required API keys ({API_KEYS_NAME_LIST}) "
+            "were found in the environment variables. Please check your .env file."
+        )
 
 
 tracing = False  # Set to True in debug mode

@@ -112,10 +112,6 @@ class GavelFOLReasoner:
                 in base predicates, background definitions, or temporary definitions.
             Exception: For various model checking failures such as predicate arity
                 mismatches or normalization errors.
-
-        Note:
-            Model checking has a timeout of MODEL_CHECK_TIMEOUT_SECONDS per check.
-            Timeouts are tracked per formula, and repeated timeouts trigger an error.
         """
         missing_predicates = self.extract_unknown_predicates(
             definition_to_match, temp_additional_defs

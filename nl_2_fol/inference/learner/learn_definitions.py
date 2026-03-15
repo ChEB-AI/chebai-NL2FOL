@@ -247,7 +247,7 @@ class LearnDefinitions(BaseFOL):
             # If no generated FOL could be parsed/scored, persist a safe parsed
             # placeholder definition along with prompt history for traceability.
             pred_variables, placeholder_tptp_def = self._gavel.get_tptp_fol_definition(
-                "failed_placeholder_predicate <=> failed_placeholder_predicate"
+                "failed_placeholder_predicate(X) <=> (c(X) & ~c(X))"
             )
             best_scored_def = def_model.ScoredDefinition(
                 pred_variables=pred_variables,

@@ -32,12 +32,18 @@ class TestGavelFOLReasoner:
         with pytest.raises(Exception):
             reasoner.get_tptp_fol_definition(invalid_formula)
 
-    def test_tptp_parsing(self, reasoner):
+    def test_tptp_parsing_success(self, reasoner):
         """Test that TPTP parsing handles invalid formulas gracefully."""
         # This test may fail in latest python versions
         # See https://github.com/gavel-tool/python-gavel/issues/25
-        invalid_formula = "oligopeptide <=> peptide"
-        reasoner.get_tptp_fol_definition(invalid_formula)
+        formula = "oligopeptide <=> peptide"
+        reasoner.get_tptp_fol_definition(formula)
+
+        formula = "failed_placeholder_predicate(X) <=> (c(X) & ~c(X))"
+        reasoner.get_tptp_fol_definition(formula)
+
+        formula = "failed_placeholder_predicate <=> failed_placeholder_predicate"
+        reasoner.get_tptp_fol_definition(formula)
 
     def test_get_tptp_fol_definition_simple(self, reasoner: GavelFOLReasoner):
         """Test parsing a simple FOL definition."""

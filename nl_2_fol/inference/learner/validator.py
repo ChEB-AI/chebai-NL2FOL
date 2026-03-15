@@ -2,7 +2,6 @@ import os
 import pickle
 
 from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
-from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
 
@@ -26,39 +25,19 @@ class PerformValidation(BaseFOL):
         self._loaded_defs = self._load_definitions(defs_file_path)
 
     def validate(self):
-        for chebi_id, learned_def in self._loaded_defs.learned_definitions.items():
-            print(f"Validating definition for {learned_def.name}...")
-            class_name = learned_def.name
-            try:
-                chemical_class = self._c3po_slim_data.get_chemical_class_by_name(
-                    class_name
-                )
-            except ce.StopProgramException:
-                print(
-                    f"Chemical class {class_name} not found in dataset. Skipping validation for this class."
-                )
-                continue
-
-            val_metrics = self._score_definition(
-                chemical_class=chemical_class,
-                tptp_def=learned_def.learned_FOL.formula,
-                sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
-                max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
-                temp_additional_defs=None,
-            )[0]
-            self._loaded_defs.learned_definitions[chebi_id].val_metrics = val_metrics
-
-        self._save_validated_definitions()
+        for _, learned_def in self._loaded_defs.learned_definitions.items():
+            self.validate_class(learned_def.name)
 
     def validate_class(self, class_name: str):
         print(f"Validating definition for {class_name}...")
-        try:
-            chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
-        except ce.StopProgramException:
+        chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
+        if chemical_class.id not in self._loaded_defs.learned_definitions:
             print(
-                f"Chemical class {class_name} not found in dataset. Skipping validation for this class."
+                f"No learned definition found for class {class_name} with id "
+                f"{chemical_class.id}. Skipping validation for this class."
             )
             return
+
         learned_def = self._loaded_defs.learned_definitions[chemical_class.id]
         val_metrics = self._score_definition(
             chemical_class=chemical_class,
@@ -100,20 +79,26 @@ class PerformValidation(BaseFOL):
     ) -> def_model.DefinitionLearningResults:
         """Load back the state from from learned definitions."""
 
+        counter = 0
         for _, learned_def in new_definitions.learned_definitions.items():
-            self._gavel.add_background_definition(
-                learned_def.name,
-                learned_def.learned_FOL.pred_variables,
-                learned_def.learned_FOL.formula,
-            )
+            if learned_def.learned_FOL:
+                self._gavel.add_background_definition(
+                    learned_def.name,
+                    learned_def.learned_FOL.pred_variables,
+                    learned_def.learned_FOL.formula,
+                )
+                counter += 1
 
-        print(f"Loaded {len(new_definitions.learned_definitions)} definitions")
+        print(f"Loaded {counter} definitions")
 
+        counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
-            self._gavel.add_background_definition(
-                name, add_def.fol_formula.pred_variables, add_def.fol_formula.formula
-            )
-        print(
-            f"Loaded {len(new_definitions.additional_definitions)} additional definitions"
-        )
+            if add_def.learn_success:
+                self._gavel.add_background_definition(
+                    name,
+                    add_def.fol_formula.pred_variables,
+                    add_def.fol_formula.formula,
+                )
+                counter += 1
+        print(f"Loaded {counter} additional definitions")
         return new_definitions

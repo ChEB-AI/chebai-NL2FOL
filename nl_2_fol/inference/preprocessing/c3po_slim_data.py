@@ -40,9 +40,7 @@ class ChemicalStructure(BaseModel):
 
     def __eq__(self, other):
         if not isinstance(other, ChemicalStructure):
-            return ce.StopProgramException(
-                "Cannot compare ChemicalStructure with non-ChemicalStructure object"
-            )
+            return NotImplemented
         return self.smiles == other.smiles
 
 
@@ -75,9 +73,7 @@ class ChemicalClass(BaseModel):
 
     def __eq__(self, other):
         if not isinstance(other, ChemicalStructure):
-            return ce.StopProgramException(
-                "Cannot compare ChemicalClass with non-ChemicalClass object"
-            )
+            return NotImplemented
         return self.name == other.name
 
 

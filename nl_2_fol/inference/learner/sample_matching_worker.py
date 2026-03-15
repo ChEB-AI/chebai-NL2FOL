@@ -193,17 +193,17 @@ def check_if_definition_matches_samples(
 
     if pos_worker_error is not None:
         error_message, error_trace = pos_worker_error
+        print(error_message, error_trace, sep="\n")
         raise Exception(
             f"Positive sample matching subprocess failed with error: {error_message}"
         )
-        print(error_message, error_trace, sep="\n")
 
     if neg_worker_error is not None:
         error_message, error_trace = neg_worker_error
+        print(error_message, error_trace, sep="\n")
         raise Exception(
             f"Negative sample matching subprocess failed with error: {error_message}"
         )
-        print(error_message, error_trace, sep="\n")
 
     if (
         not pos_worker_completed
