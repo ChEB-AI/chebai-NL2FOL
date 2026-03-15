@@ -33,6 +33,24 @@ def _make_mock_context(
     return mock_ctx
 
 
+def _make_error_event(
+    message: str,
+    traceback_text: str,
+    exc_type: type[BaseException] | None = None,
+    exc_args: tuple | None = None,
+    exc_state: dict | None = None,
+) -> tuple:
+    return (
+        "error",
+        message,
+        traceback_text,
+        exc_type.__module__ if exc_type is not None else None,
+        exc_type.__qualname__ if exc_type is not None else None,
+        exc_args,
+        exc_state,
+    )
+
+
 class TestCheckIfDefinitionMatchesSamples:
     """Tests for subprocess timeout and error-handling paths."""
 
@@ -179,7 +197,10 @@ class TestCheckIfDefinitionMatchesSamples:
         """An exception raised inside the positive-sample worker propagates to the caller."""
         pos_q: queue.Queue = queue.Queue()
         pos_q.put(
-            ("error", "model check failed", "Traceback (most recent call last)...")
+            _make_error_event(
+                "model check failed",
+                "Traceback (most recent call last)...",
+            )
         )
 
         neg_q: queue.Queue = queue.Queue()
@@ -216,7 +237,7 @@ class TestCheckIfDefinitionMatchesSamples:
         traceback_text = "Traceback ..."
 
         pos_q: queue.Queue = queue.Queue()
-        pos_q.put(("error", error_text, traceback_text))
+        pos_q.put(_make_error_event(error_text, traceback_text))
 
         neg_q: queue.Queue = queue.Queue()
         neg_q.put(("done",))
@@ -255,12 +276,10 @@ class TestCheckIfDefinitionMatchesSamples:
 
         pos_q: queue.Queue = queue.Queue()
         pos_q.put(
-            (
-                "error",
+            _make_error_event(
                 str(original_exc),
                 "Traceback ...",
-                type(original_exc).__module__,
-                type(original_exc).__qualname__,
+                type(original_exc),
                 original_exc.args,
                 dict(original_exc.__dict__),
             )
@@ -300,7 +319,7 @@ class TestCheckIfDefinitionMatchesSamples:
         pos_q.put(("done",))
 
         neg_q: queue.Queue = queue.Queue()
-        neg_q.put(("error", "neg model check failed", "Traceback ..."))
+        neg_q.put(_make_error_event("neg model check failed", "Traceback ..."))
 
         mock_pos_proc = MagicMock()
         mock_pos_proc.is_alive.return_value = False
@@ -333,7 +352,7 @@ class TestCheckIfDefinitionMatchesSamples:
         """Error event is raised even when some pos results arrived before the error."""
         pos_q: queue.Queue = queue.Queue()
         pos_q.put(("pos_checked", "c1ccccc1", True))  # partial result before error
-        pos_q.put(("error", "mid-batch failure", "Traceback ..."))
+        pos_q.put(_make_error_event("mid-batch failure", "Traceback ..."))
 
         neg_q: queue.Queue = queue.Queue()
         neg_q.put(("done",))

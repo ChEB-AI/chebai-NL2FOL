@@ -26,43 +26,26 @@ WorkerError = tuple[
 
 
 def _parse_error_event(event: tuple) -> WorkerError:
-    """Normalize worker error events across old/new payload formats."""
-    if len(event) >= 7:
-        (
-            _,
-            error_message,
-            error_trace,
-            exc_module,
-            exc_qualname,
-            exc_args,
-            exc_state,
-        ) = event
-        normalized_args = exc_args if isinstance(exc_args, tuple) else None
-        normalized_state = exc_state if isinstance(exc_state, dict) else None
-        return (
-            error_message,
-            error_trace,
-            exc_module,
-            exc_qualname,
-            normalized_args,
-            normalized_state,
-        )
-
-    if len(event) >= 6:
-        _, error_message, error_trace, exc_module, exc_qualname, exc_args = event
-        normalized_args = exc_args if isinstance(exc_args, tuple) else None
-        return (
-            error_message,
-            error_trace,
-            exc_module,
-            exc_qualname,
-            normalized_args,
-            None,
-        )
-
-    # Backward-compatible shape: ("error", message, traceback)
-    _, error_message, error_trace = event
-    return error_message, error_trace, None, None, None, None
+    """Parse the structured worker error event."""
+    (
+        _,
+        error_message,
+        error_trace,
+        exc_module,
+        exc_qualname,
+        exc_args,
+        exc_state,
+    ) = event
+    normalized_args = exc_args if isinstance(exc_args, tuple) else None
+    normalized_state = exc_state if isinstance(exc_state, dict) else None
+    return (
+        error_message,
+        error_trace,
+        exc_module,
+        exc_qualname,
+        normalized_args,
+        normalized_state,
+    )
 
 
 def _resolve_exception_class(
@@ -424,8 +407,16 @@ def _check_samples_worker(
         try:
             result_queue.put(serialized_error_event)
         except Exception:
-            # Fallback ensures the parent still receives an error notification.
-            result_queue.put(("error", str(e), error_trace))
+            fallback_error_event = (
+                "error",
+                str(e),
+                error_trace,
+                None,
+                None,
+                e.args,
+                None,
+            )
+            result_queue.put(fallback_error_event)
 
 
 def check_positive_samples_worker(
