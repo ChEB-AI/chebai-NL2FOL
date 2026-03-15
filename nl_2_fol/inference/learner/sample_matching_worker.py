@@ -3,6 +3,7 @@ import os
 import queue
 import time
 import traceback
+from importlib import import_module
 
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
@@ -12,6 +13,112 @@ from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 __all__ = ["check_if_definition_matches_samples"]
+
+
+WorkerError = tuple[
+    str,
+    str,
+    str | None,
+    str | None,
+    tuple | None,
+    dict | None,
+]
+
+
+def _parse_error_event(event: tuple) -> WorkerError:
+    """Normalize worker error events across old/new payload formats."""
+    if len(event) >= 7:
+        (
+            _,
+            error_message,
+            error_trace,
+            exc_module,
+            exc_qualname,
+            exc_args,
+            exc_state,
+        ) = event
+        normalized_args = exc_args if isinstance(exc_args, tuple) else None
+        normalized_state = exc_state if isinstance(exc_state, dict) else None
+        return (
+            error_message,
+            error_trace,
+            exc_module,
+            exc_qualname,
+            normalized_args,
+            normalized_state,
+        )
+
+    if len(event) >= 6:
+        _, error_message, error_trace, exc_module, exc_qualname, exc_args = event
+        normalized_args = exc_args if isinstance(exc_args, tuple) else None
+        return (
+            error_message,
+            error_trace,
+            exc_module,
+            exc_qualname,
+            normalized_args,
+            None,
+        )
+
+    # Backward-compatible shape: ("error", message, traceback)
+    _, error_message, error_trace = event
+    return error_message, error_trace, None, None, None, None
+
+
+def _resolve_exception_class(
+    module_name: str | None,
+    qualname: str | None,
+) -> type[BaseException] | None:
+    if not module_name or not qualname:
+        return None
+
+    try:
+        module = import_module(module_name)
+        resolved_obj = module
+        for attr in qualname.split("."):
+            resolved_obj = getattr(resolved_obj, attr)
+        if isinstance(resolved_obj, type) and issubclass(resolved_obj, BaseException):
+            return resolved_obj
+    except Exception:
+        return None
+    return None
+
+
+def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
+    error_message, error_trace, exc_module, exc_qualname, exc_args, exc_state = (
+        worker_error
+    )
+    print(error_message, error_trace, sep="\n")
+
+    exception_cls = _resolve_exception_class(exc_module, exc_qualname)
+    if exception_cls is not None:
+        try:
+            # Avoid custom __init__ signatures (e.g., MissingPredicateException expects
+            # a set) by restoring BaseException args/state directly.
+            rebuilt_exception = exception_cls.__new__(exception_cls)
+            BaseException.__init__(
+                rebuilt_exception,
+                *(exc_args if exc_args is not None else (error_message,)),
+            )
+            if exc_state:
+                rebuilt_exception.__dict__.update(exc_state)
+        except Exception:
+            rebuilt_exception = exception_cls(error_message)
+
+        if error_trace:
+            rebuilt_exception.add_note(
+                "Original worker traceback (from subprocess):\n" + error_trace
+            )
+        raise rebuilt_exception
+
+    fallback_exception = Exception(
+        f"{worker_label} sample matching subprocess failed with error: {error_message}"
+    )
+    if error_trace:
+        fallback_exception.add_note(
+            "Original worker traceback (from subprocess):\n" + error_trace
+        )
+    raise fallback_exception
 
 
 def check_if_definition_matches_samples(
@@ -36,8 +143,8 @@ def check_if_definition_matches_samples(
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
-    pos_worker_error: tuple[str, str] | None = None
-    neg_worker_error: tuple[str, str] | None = None
+    pos_worker_error: WorkerError | None = None
+    neg_worker_error: WorkerError | None = None
     pos_worker_completed = False
     neg_worker_completed = False
 
@@ -96,8 +203,8 @@ def check_if_definition_matches_samples(
                     flush=True,
                 )
             elif event_type == "error":
-                _, error_message, error_trace = event
-                pos_worker_error = (error_message, error_trace)
+                pos_worker_error = _parse_error_event(event)
+                error_message = pos_worker_error[0]
                 print(
                     "[sample-matching] Positive worker reported error: "
                     f"{error_message}",
@@ -126,8 +233,8 @@ def check_if_definition_matches_samples(
                     flush=True,
                 )
             elif event_type == "error":
-                _, error_message, error_trace = event
-                neg_worker_error = (error_message, error_trace)
+                neg_worker_error = _parse_error_event(event)
+                error_message = neg_worker_error[0]
                 print(
                     "[sample-matching] Negative worker reported error: "
                     f"{error_message}",
@@ -192,18 +299,10 @@ def check_if_definition_matches_samples(
     drain_neg_queue()
 
     if pos_worker_error is not None:
-        error_message, error_trace = pos_worker_error
-        print(error_message, error_trace, sep="\n")
-        raise Exception(
-            f"Positive sample matching subprocess failed with error: {error_message}"
-        )
+        _raise_worker_error("Positive", pos_worker_error)
 
     if neg_worker_error is not None:
-        error_message, error_trace = neg_worker_error
-        print(error_message, error_trace, sep="\n")
-        raise Exception(
-            f"Negative sample matching subprocess failed with error: {error_message}"
-        )
+        _raise_worker_error("Negative", neg_worker_error)
 
     if (
         not pos_worker_completed
@@ -311,7 +410,22 @@ def _check_samples_worker(
             f"[sample-matching:{label}] Worker PID={os.getpid()} failed: {e}",
             flush=True,
         )
-        result_queue.put(("error", str(e), traceback.format_exc()))
+        error_trace = traceback.format_exc()
+        exception_type = type(e)
+        serialized_error_event = (
+            "error",
+            str(e),
+            error_trace,
+            exception_type.__module__,
+            exception_type.__qualname__,
+            e.args,
+            dict(e.__dict__),
+        )
+        try:
+            result_queue.put(serialized_error_event)
+        except Exception:
+            # Fallback ensures the parent still receives an error notification.
+            result_queue.put(("error", str(e), error_trace))
 
 
 def check_positive_samples_worker(
