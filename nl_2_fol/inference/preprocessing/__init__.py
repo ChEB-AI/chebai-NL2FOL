@@ -1,0 +1,2 @@
+SMILES_STRING = str
+CHEBI_ID = int

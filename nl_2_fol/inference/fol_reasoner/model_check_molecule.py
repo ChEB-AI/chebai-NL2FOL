@@ -15,16 +15,12 @@ from nl_2_fol.inference.learner.custom_exceptions import (
 
 
 class GavelFOLReasoner:
-    _MODEL_CHECK_TIMEOUT_SECONDS = 30
-    _MAX_ALLOWED_TIMEOUTS_PER_FORMULA = 10
-
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
         self.background_definitions: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ] = {}
-        self._timeout_tracking: dict[str, int] = {}
 
     @tptp_parse_exception
     def get_tptp_fol_definition(
@@ -114,14 +110,8 @@ class GavelFOLReasoner:
         Raises:
             MissingPredicateException: If the formula contains predicates not defined
                 in base predicates, background definitions, or temporary definitions.
-            TimeoutError: If model checking times out repeatedly (>= MAX_ALLOWED_TIMEOUTS_PER_FORMULA)
-                for the same formula, indicating the formula may be too complex.
             Exception: For various model checking failures such as predicate arity
                 mismatches or normalization errors.
-
-        Note:
-            Model checking has a timeout of MODEL_CHECK_TIMEOUT_SECONDS per check.
-            Timeouts are tracked per formula, and repeated timeouts trigger an error.
         """
         missing_predicates = self.extract_unknown_predicates(
             definition_to_match, temp_additional_defs
@@ -147,41 +137,7 @@ class GavelFOLReasoner:
         )
         try:
             # Can fail for definitions like: `∃[]: ((peptide(x)))`
-            outcome, _ = model_checker.find_model(
-                definition_to_match, timeout=self._MODEL_CHECK_TIMEOUT_SECONDS
-            )
-            if outcome == ModelCheckerOutcome.TIMEOUT:
-                # TODO: discuss
-                # Might the molecule be too complex, or the formula be too complex?
-                # Let's log this for analysis instead of raising an error immediately
-                formula_key = str(definition_to_match)
-
-                if formula_key not in self._timeout_tracking:
-                    # reset tracking if we encounter a new formula that we haven't seen before
-                    # Helpful to avoid storing timeout counts for formulas that are already processed.
-                    self._timeout_tracking = {}
-
-                timeout_count = self._timeout_tracking.get(formula_key, 0) + 1
-                self._timeout_tracking[formula_key] = timeout_count
-
-                print(
-                    f"[WARNING] Model checking timed out after {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds\n"
-                    f"(Timeout Count for this formula: #{timeout_count}).\n"
-                    f"MAX allowed timeouts per formula before raising error: {self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA}.\n"
-                    "This could be due to the complexity of the formula or the molecule.\n"
-                    f"Molecule: {Chem.MolToSmiles(molecule)}\n"
-                    "Consider simplifying the formula or using a less complex molecule for testing."
-                )
-                # If the same formula has timed out 10 times, we deem the formula is too
-                # complex for model checking rather than the molecule
-                if (
-                    self._timeout_tracking[formula_key]
-                    >= self._MAX_ALLOWED_TIMEOUTS_PER_FORMULA
-                ):
-                    raise TimeoutError(
-                        f"Generated FOL formula took more than {self._MODEL_CHECK_TIMEOUT_SECONDS} seconds during model checking.\n "
-                        "Try reducing the complexity of the formula"
-                    )
+            outcome, _ = model_checker.find_model(definition_to_match)
 
         except ValueError as ve:
             if "Predicate" in str(ve) and "is defined with arity" in str(ve):

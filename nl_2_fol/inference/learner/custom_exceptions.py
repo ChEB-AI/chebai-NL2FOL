@@ -1,10 +1,8 @@
 import traceback
 from functools import wraps
 
-from nl_2_fol.inference.preprocessing.c3po_slim_data import (
-    SMILES_STRING,
-    ChemicalStructure,
-)
+from nl_2_fol.inference.preprocessing import SMILES_STRING
+from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
 
 
 def tptp_parse_exception(func):
@@ -145,7 +143,10 @@ class LowF1ScoreException(Exception):
             # First pass: collect chemicals with definitions
             for chemical in chemicals:
                 if chemical.smiles in matched_smiles:
-                    chemical_data = chebi_name_to_data_mapping.get(chemical.name, None)
+                    chemical_data = chebi_name_to_data_mapping.get(
+                        chemical.name,
+                        chebi_name_to_data_mapping.get(chemical.name.lower(), None),
+                    )
                     chemical_def = None
                     if chemical_data:
                         chemical_def = chemical_data.get("definition", "")

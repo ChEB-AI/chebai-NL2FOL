@@ -4,7 +4,7 @@ from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, ConfigDict, Field
 
-from nl_2_fol.inference.preprocessing.c3po_slim_data import CHEBI_ID
+from nl_2_fol.inference.preprocessing import CHEBI_ID
 
 
 class DefinitionMetrics(BaseModel):
@@ -31,8 +31,11 @@ class FOLFormula(BaseModel):
 class LearnedDefinition(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    metrics: DefinitionMetrics = Field(
+    train_metrics: DefinitionMetrics = Field(
         ..., description="Metrics of the learned definition"
+    )
+    val_metrics: DefinitionMetrics | None = Field(
+        default=None, description="Metrics of the learned definition"
     )
     learned_FOL: FOLFormula = Field(
         ..., description="Learned FOL formula for the chemical class"
@@ -43,6 +46,31 @@ class LearnedDefinition(BaseModel):
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
     definition: str = Field(..., description="definition of the structure from CHEBI")
 
+    learn_success: bool = Field(
+        default=True,
+        description="If False, indicates definition could not be learned "
+        "(e.g., due to generated FOL being too complex for model checking)",
+    )
+
+
+class AdditionalDefinition(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    fol_formula: FOLFormula = Field(
+        ..., description="FOL formula representing the additional definition"
+    )
+    used_for: list[CHEBI_ID] = Field(
+        ...,
+        description="List of ChEBI IDs for which this additional definition is relevant",
+    )
+
+    learn_success: bool = Field(
+        default=True,
+        description="If False, indicates definition could not be learned with "
+        "ATLEAST one of the main chemical class definition "
+        "(e.g., due to generated FOL being too complex for model checking)",
+    )
+
 
 class DefinitionLearningResults(BaseModel):
     """Dictionary mapping ChEBI IDs to their learned definitions."""
@@ -52,9 +80,18 @@ class DefinitionLearningResults(BaseModel):
     learned_definitions: dict[CHEBI_ID, LearnedDefinition] = Field(
         ..., description="Dictionary mapping ChEBI IDs to their learned definitions"
     )
-    additional_definitions: dict[str, FOLFormula] = Field(
+    additional_definitions: dict[str, AdditionalDefinition] = Field(
         ..., description="Additional definitions provided by the user (optional)"
     )
+
+
+class ScoredDefinition(BaseModel):
+    pred_variables: list[logic.Variable]
+    tptp_def: QuantifiedFormula
+    train_metrics: DefinitionMetrics
+    temp_additional_defs: (
+        dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]] | None
+    ) = None
 
 
 if __name__ == "__main__":
@@ -74,7 +111,7 @@ if __name__ == "__main__":
     results = DefinitionLearningResults(
         learned_definitions={
             12345: LearnedDefinition(
-                metrics=DefinitionMetrics(
+                train_metrics=DefinitionMetrics(
                     TP=10, FP=2, FN=3, TN=85, F1=0.83, PPV=0.83, NPV=0.97
                 ),
                 learned_FOL=FOLFormula(
@@ -88,7 +125,7 @@ if __name__ == "__main__":
                 definition="A chemical class used for demonstration purposes.",
             ),
             56645: LearnedDefinition(
-                metrics=DefinitionMetrics(
+                train_metrics=DefinitionMetrics(
                     TP=8, FP=1, FN=4, TN=87, F1=0.80, PPV=0.89, NPV=0.96
                 ),
                 learned_FOL=FOLFormula(
@@ -103,8 +140,11 @@ if __name__ == "__main__":
             ),
         },
         additional_definitions={
-            "Example": FOLFormula(
-                formula=fol_formula_3, pred_variables=pred_variables_3
+            "Example": AdditionalDefinition(
+                fol_formula=FOLFormula(
+                    formula=fol_formula_3, pred_variables=pred_variables_3
+                ),
+                used_for=[12345, 56645],
             )
         },
     )

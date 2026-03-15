@@ -5,12 +5,14 @@ import networkx as nx
 import pandas as pd
 from chemlog.preprocessing.chebi_data import ChEBIData
 
+from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
 class ChEBIDataWrapper(ChEBIData):
-    def __init__(self, chebi_version: int):
+    def __init__(self, chebi_version: int, validation_smiles: set[SMILES_STRING]):
         self.chebi_version = chebi_version
+        self.validation_smiles = validation_smiles
 
         os.makedirs(self.base_dir, exist_ok=True)
         os.makedirs(
@@ -23,7 +25,16 @@ class ChEBIDataWrapper(ChEBIData):
         # # processed: dataframe that combines chebi data with mols from sdf file
         # self.processed = self.process_data()
 
-    def get_name_to_data_mapping(self) -> dict[str, dict]:
+    def get_name_to_data_mapping_train(self) -> dict[str, dict]:
+        df = self._get_name_to_data_mapping()
+        df = df[~df["smiles"].isin(self.validation_smiles)]
+        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def get_name_to_data_mapping_all(self) -> dict[str, dict]:
+        df = self._get_name_to_data_mapping()
+        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def _get_name_to_data_mapping(self) -> pd.DataFrame:
         df = self._preprocess_data()
         # --- One Duplicate entry in Chebi 244 -----
         # 1. Name: l-lysine zwitterion
@@ -63,12 +74,21 @@ class ChEBIDataWrapper(ChEBIData):
                 "Adjust rules in camel case conversion if needed."
             )
 
-        return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
+        return df
 
-    def get_chebi_id_to_data_mapping(self) -> dict[int, dict]:
+    def get_chebi_id_to_data_mapping_train(self) -> dict[CHEBI_ID, dict]:
+        df = self._get_chebi_id_to_data_mapping()
+        df = df[~df["smiles"].isin(self.validation_smiles)]
+        return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def get_chebi_id_to_data_mapping_all(self) -> dict[CHEBI_ID, dict]:
+        df = self._get_chebi_id_to_data_mapping()
+        return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
+
+    def _get_chebi_id_to_data_mapping(self) -> pd.DataFrame:
         df = self._preprocess_data()
         df["name"] = df["name"].apply(to_camel_case)
-        return df.to_dict(orient="index")  # pyright: ignore[reportReturnType]
+        return df
 
     def _preprocess_data(self) -> pd.DataFrame:
         data_dict = self.process_chebi()
@@ -149,12 +169,12 @@ class ChEBIDataWrapper(ChEBIData):
 
 
 if __name__ == "__main__":
-    chebi_data_wrapper = ChEBIDataWrapper(chebi_version=244)
+    chebi_data_wrapper = ChEBIDataWrapper(chebi_version=244, validation_smiles=set())
     # Get mappings
-    name_to_data_mapping = chebi_data_wrapper.get_name_to_data_mapping()
+    name_to_data_mapping = chebi_data_wrapper.get_name_to_data_mapping_train()
     print(f"\n\nTotal unique names (mapping keys): {len(name_to_data_mapping)}")
     print(f"Sample entries: {list(name_to_data_mapping)[:5]}")
-    chebi_id_to_data_mapping = chebi_data_wrapper.get_chebi_id_to_data_mapping()
+    chebi_id_to_data_mapping = chebi_data_wrapper.get_chebi_id_to_data_mapping_train()
     print(f"Sample entries: {list(chebi_id_to_data_mapping)[:5]}")
     # Get hierarchy graph and topological ordering
     topological_ordering = chebi_data_wrapper.get_topological_ordering()

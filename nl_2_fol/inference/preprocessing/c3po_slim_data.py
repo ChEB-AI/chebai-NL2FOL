@@ -15,13 +15,12 @@ from copy import copy
 import pandas as pd
 import tqdm
 from pydantic import BaseModel, Field
-from rdkit import Chem
+from rdkit import Chem, rdBase
 
+from nl_2_fol.inference.learner import custom_exceptions as ce
+from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
-
-SMILES_STRING = str
-CHEBI_ID = int
 
 
 # make this hashable?
@@ -90,7 +89,6 @@ class Dataset(BaseModel):
 
     classes: dict[str, ChemicalClass]
     structures: set[ChemicalStructure] = set()
-    validation_examples: set[SMILES_STRING] = set()
 
     @property
     def name(self):
@@ -125,19 +123,21 @@ class Dataset(BaseModel):
         for cc in self.classes.values():
             if cc.id == class_id:
                 return cc
-        raise ValueError(f"Class {class_id} not found in dataset")
+        raise ce.StopProgramException(f"Class {class_id} not found in dataset")
 
     def get_chemical_class_by_name(self, class_name: str) -> ChemicalClass:
         if class_name not in self.classes:
-            raise ValueError(f"Class {class_name} not found in dataset")
+            raise ce.StopProgramException(f"Class {class_name} not found in dataset")
         return self.classes[class_name]
 
 
 def load_c3po_slim_dataset(
-    chemlog_chebi_class: ChEBIDataWrapper,
+    *,
     slim_dataset_path: str = "data/classes_slim.csv",
     structures_path: str = "data/structures.csv",
-) -> Dataset:
+    chebi_version: int = 244,
+    split="train",
+) -> tuple[Dataset, ChEBIDataWrapper]:
     print("Loading and processing C3PO slim dataset...")
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
         raise FileNotFoundError(
@@ -147,14 +147,29 @@ def load_c3po_slim_dataset(
 
     slim_df = pd.read_csv(slim_dataset_path)
     structures_df = pd.read_csv(structures_path)
-
     validation_smiles = set(
         structures_df.loc[structures_df["in_validation_set"], "smiles"]
     )
     assert validation_smiles, (
         "No validation examples found in the dataset. Please check the dataset files."
     )
+    if split == "train":
+        structures_df = structures_df[~structures_df["in_validation_set"]]
+        print(f"Found {len(slim_df)} classes for train set ")
+        print(f"Found {len(structures_df)} training structures")
 
+    elif split == "val":
+        structures_df = structures_df[structures_df["in_validation_set"]]
+        print(f"Found {len(slim_df)} classes for validation set")
+        print(f"Found {len(structures_df)} validation structures ")
+    else:
+        raise ValueError(f"Invalid split: {split}. Expected 'train' or 'val'.")
+
+    assert not structures_df.empty and not slim_df.empty
+
+    chemlog_chebi_class = ChEBIDataWrapper(
+        chebi_version=chebi_version, validation_smiles=validation_smiles
+    )
     slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
     slim_df["name"] = slim_df["name"].apply(to_camel_case)
 
@@ -175,8 +190,9 @@ def load_c3po_slim_dataset(
 
     def parse_smiles_to_mol(smiles: str) -> Chem.Mol | None:
         try:
-            mol = Chem.MolFromSmiles(smiles)
-            return mol
+            # Suppress RDKit parser warnings for malformed SMILES.
+            with rdBase.BlockLogs():
+                return Chem.MolFromSmiles(smiles)
         except Exception:
             return None
 
@@ -197,7 +213,12 @@ def load_c3po_slim_dataset(
 
     def parse_positive_examples(examples: str) -> set[SMILES_STRING]:
         p_examples: set[SMILES_STRING] = set(ast.literal_eval(str(examples)))
-        return p_examples - validation_smiles
+        if split == "train":
+            return p_examples - validation_smiles
+        elif split == "val":
+            return p_examples & validation_smiles
+        else:
+            raise ValueError(f"Invalid split: {split}. Expected 'train' or 'val'.")
 
     classes = {
         row.name: ChemicalClass(
@@ -217,17 +238,16 @@ def load_c3po_slim_dataset(
         ontology_version="slim",
         classes=classes,  # pyright: ignore[reportArgumentType]
         structures=structures,
-        validation_examples=validation_smiles,
     )
 
     print(
+        f"For split : {split}\n"
         f"Loaded : Classes: {len(dataset.classes)}\n"
         f"Instances: {len(dataset.structures)}\n"
-        f"Validation examples: {len(dataset.validation_examples)}"  # pyright: ignore[reportArgumentType]
     )
 
-    return dataset
+    return dataset, chemlog_chebi_class
 
 
 if __name__ == "__main__":
-    load_c3po_slim_dataset(ChEBIDataWrapper(chebi_version=244))
+    load_c3po_slim_dataset()
