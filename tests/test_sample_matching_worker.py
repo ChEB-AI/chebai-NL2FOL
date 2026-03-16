@@ -6,7 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rdkit import Chem
 
-from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
+from nl_2_fol.inference.learner.custom_exceptions import (
+    MissingPredicateException,
+    StopProgramException,
+)
 from nl_2_fol.inference.learner.sample_matching_worker import (
     check_if_definition_matches_samples,
 )
@@ -28,6 +31,24 @@ def _make_mock_context(
     mock_ctx.Queue.side_effect = [pos_queue, neg_queue]
     mock_ctx.Process.side_effect = [pos_proc, neg_proc]
     return mock_ctx
+
+
+def _make_error_event(
+    message: str,
+    traceback_text: str,
+    exc_type: type[BaseException] | None = None,
+    exc_args: tuple | None = None,
+    exc_state: dict | None = None,
+) -> tuple:
+    return (
+        "error",
+        message,
+        traceback_text,
+        exc_type.__module__ if exc_type is not None else None,
+        exc_type.__qualname__ if exc_type is not None else None,
+        exc_args,
+        exc_state,
+    )
 
 
 class TestCheckIfDefinitionMatchesSamples:
@@ -176,7 +197,10 @@ class TestCheckIfDefinitionMatchesSamples:
         """An exception raised inside the positive-sample worker propagates to the caller."""
         pos_q: queue.Queue = queue.Queue()
         pos_q.put(
-            ("error", "model check failed", "Traceback (most recent call last)...")
+            _make_error_event(
+                "model check failed",
+                "Traceback (most recent call last)...",
+            )
         )
 
         neg_q: queue.Queue = queue.Queue()
@@ -213,7 +237,7 @@ class TestCheckIfDefinitionMatchesSamples:
         traceback_text = "Traceback ..."
 
         pos_q: queue.Queue = queue.Queue()
-        pos_q.put(("error", error_text, traceback_text))
+        pos_q.put(_make_error_event(error_text, traceback_text))
 
         neg_q: queue.Queue = queue.Queue()
         neg_q.put(("done",))
@@ -244,13 +268,58 @@ class TestCheckIfDefinitionMatchesSamples:
         assert traceback_text not in str(exc_info.value)
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
+    def test_pos_worker_error_preserves_original_exception_type(
+        self, mock_mp, common_inputs
+    ):
+        """Worker metadata allows parent to raise MissingPredicateException directly."""
+        original_exc = MissingPredicateException({"UnknownPredicate"})
+
+        pos_q: queue.Queue = queue.Queue()
+        pos_q.put(
+            _make_error_event(
+                str(original_exc),
+                "Traceback ...",
+                type(original_exc),
+                original_exc.args,
+                dict(original_exc.__dict__),
+            )
+        )
+
+        neg_q: queue.Queue = queue.Queue()
+        neg_q.put(("done",))
+
+        mock_pos_proc = MagicMock()
+        mock_pos_proc.is_alive.return_value = False
+        mock_pos_proc.exitcode = 0
+
+        mock_neg_proc = MagicMock()
+        mock_neg_proc.is_alive.return_value = False
+        mock_neg_proc.exitcode = 0
+
+        mock_mp.get_context.return_value = _make_mock_context(
+            pos_q, neg_q, mock_pos_proc, mock_neg_proc
+        )
+
+        with pytest.raises(MissingPredicateException) as exc_info:
+            check_if_definition_matches_samples(
+                gavel=common_inputs["gavel"],
+                sample_matching_timeout_seconds=10,
+                chemical_class=common_inputs["chemical_class"],
+                tptp_def=common_inputs["tptp_def"],
+                pos_samples=common_inputs["pos_samples"],
+                neg_samples=common_inputs["neg_samples"],
+            )
+
+        assert exc_info.value.missing_predicates == {"UnknownPredicate"}
+
+    @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
     def test_neg_worker_error_is_propagated(self, mock_mp, common_inputs):
         """An exception raised inside the negative-sample worker propagates to the caller."""
         pos_q: queue.Queue = queue.Queue()
         pos_q.put(("done",))
 
         neg_q: queue.Queue = queue.Queue()
-        neg_q.put(("error", "neg model check failed", "Traceback ..."))
+        neg_q.put(_make_error_event("neg model check failed", "Traceback ..."))
 
         mock_pos_proc = MagicMock()
         mock_pos_proc.is_alive.return_value = False
@@ -283,7 +352,7 @@ class TestCheckIfDefinitionMatchesSamples:
         """Error event is raised even when some pos results arrived before the error."""
         pos_q: queue.Queue = queue.Queue()
         pos_q.put(("pos_checked", "c1ccccc1", True))  # partial result before error
-        pos_q.put(("error", "mid-batch failure", "Traceback ..."))
+        pos_q.put(_make_error_event("mid-batch failure", "Traceback ..."))
 
         neg_q: queue.Queue = queue.Queue()
         neg_q.put(("done",))

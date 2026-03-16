@@ -1,7 +1,16 @@
+import argparse
 import pickle
 from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
+
+DEFAULT_PICKLE_FILE = (
+    Path(__file__).resolve().parent.parent
+    / "learner"
+    / "learned"
+    / "claude-opus-4-6"
+    / "learned_definitions.pkl"
+)
 
 
 def print_pickle_contents(pickle_file_path, class_name="all"):
@@ -36,9 +45,108 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         print("---" * 10)
 
 
-if __name__ == "__main__":
-    # Replace with your pickle file path
-    pickle_file = Path(
-        "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_new.pkl"
+def delete_class_from_pickle(
+    pickle_file_path, class_name, output_file_path=None, create_backup=True
+):
+    """Delete a class from learned/additional definitions and save updated pickle."""
+
+    if class_name == "all":
+        raise ValueError(
+            "Refusing to delete all classes. Please pass a specific class."
+        )
+
+    input_path = Path(pickle_file_path)
+    original_pickle_bytes = input_path.read_bytes()
+    data: DefinitionLearningResults = pickle.loads(original_pickle_bytes)
+
+    target = str(class_name).strip()
+
+    learned_keys_to_delete = [
+        key
+        for key, learned_def in data.learned_definitions.items()
+        if str(key) == target or learned_def.name == target
+    ]
+    additional_keys_to_delete = [
+        name for name in data.additional_definitions if name == target
+    ]
+
+    for key in learned_keys_to_delete:
+        del data.learned_definitions[key]
+
+    for key in additional_keys_to_delete:
+        del data.additional_definitions[key]
+
+    total_deleted = len(learned_keys_to_delete) + len(additional_keys_to_delete)
+    if total_deleted == 0:
+        print(f"No class found for '{class_name}'. Nothing deleted.")
+        return False
+
+    output_path = Path(output_file_path) if output_file_path else input_path
+
+    if create_backup and output_path.resolve() == input_path.resolve():
+        backup_path = input_path.with_suffix(input_path.suffix + ".bak")
+        backup_path.write_bytes(original_pickle_bytes)
+        print(f"Backup written to: {backup_path}")
+
+    with open(output_path, "wb") as f:
+        pickle.dump(data, f)
+
+    print(f"Deleted {len(learned_keys_to_delete)} learned definition(s).")
+    print(f"Deleted {len(additional_keys_to_delete)} additional definition(s).")
+    print(f"Updated pickle written to: {output_path}")
+    return True
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description="Show or delete class definitions from learned_definitions pickle."
     )
-    print_pickle_contents(pickle_file, class_name="all")
+    parser.add_argument(
+        "--pickle-file",
+        type=Path,
+        default=DEFAULT_PICKLE_FILE,
+        help="Path to learned_definitions pickle file.",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    show_parser = subparsers.add_parser("show", help="Show learned content.")
+    show_parser.add_argument(
+        "--class-name",
+        default="all",
+        help="Class name to filter (default: all).",
+    )
+
+    delete_parser = subparsers.add_parser("delete", help="Delete a class.")
+    delete_parser.add_argument(
+        "class_name",
+        help="Class name or learned definition key to delete.",
+    )
+    delete_parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=None,
+        help="Optional output pickle path. Defaults to in-place update.",
+    )
+    delete_parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Do not create a backup when editing in place.",
+    )
+
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+
+    if args.command in (None, "show"):
+        class_name = args.class_name if args.command == "show" else "all"
+        print_pickle_contents(args.pickle_file, class_name=class_name)
+    elif args.command == "delete":
+        delete_class_from_pickle(
+            args.pickle_file,
+            class_name=args.class_name,
+            output_file_path=args.output_file,
+            create_backup=not args.no_backup,
+        )

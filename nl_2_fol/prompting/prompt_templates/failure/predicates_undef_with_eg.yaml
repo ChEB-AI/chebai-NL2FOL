@@ -4,6 +4,7 @@ failure_prompt: |
 
   In the previous FOL definition, the following predicates have no FOL formulas defined:
   {undefined_predicates_details}
+  {retry_context_section}
 
   Here is an example of how to define undefined predicates in FOL:
 

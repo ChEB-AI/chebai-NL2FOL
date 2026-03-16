@@ -86,6 +86,8 @@ class DefinitionLearningResults(BaseModel):
 
 
 class ScoredDefinition(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     pred_variables: list[logic.Variable]
     tptp_def: QuantifiedFormula
     train_metrics: DefinitionMetrics

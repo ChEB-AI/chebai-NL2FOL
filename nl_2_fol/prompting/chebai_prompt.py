@@ -226,10 +226,12 @@ class ChebiPrompt:
         self,
         undefined_predicates: dict[str, str | None],
         session_id: str,
+        retry_context: str | None = None,
     ) -> OutOfBoxPredicateDefinitions:
         try:
             undefined_predicates_text = self._get_undef_failure_prompt(
-                undefined_predicates
+                undefined_predicates,
+                retry_context=retry_context,
             )
 
             # Get session history
@@ -255,6 +257,7 @@ class ChebiPrompt:
     def _get_undef_failure_prompt(
         self,
         undefined_predicates_details: dict[str, str | None],
+        retry_context: str | None = None,
     ) -> str:
         prompt_text = load_yaml_sys_prompt(
             self.undef_failure_prompt_fp, key="failure_prompt"
@@ -264,8 +267,14 @@ class ChebiPrompt:
             + (f"\n    Chemical Definition: {definition}" if definition else "")
             for name, definition in undefined_predicates_details.items()
         )
+        retry_context_section = (
+            f"\n\nAdditional context from the previous failed attempt:\n{retry_context}\n"
+            if retry_context
+            else ""
+        )
         prompt_text = prompt_text.format(
-            undefined_predicates_details=undefined_predicates_txt
+            undefined_predicates_details=undefined_predicates_txt,
+            retry_context_section=retry_context_section,
         )
         return prompt_text
 
