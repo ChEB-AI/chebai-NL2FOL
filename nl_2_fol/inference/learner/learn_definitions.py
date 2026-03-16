@@ -274,7 +274,9 @@ class LearnDefinitions(BaseFOL):
         print(
             "As no generated FOL definition was able to pass the F1 threshold of "
             f"{self.f1_threshold:.2f}, accepting the definition with the highest F1 "
-            f"score {best_scored_def.train_metrics.F1:.2f} among all attempts."
+            f"score {best_scored_def.train_metrics.F1:.2f} "
+            f"among {len(low_score_defs_collector)} low threshold defintions generated in "
+            f"{self._attempts} previous attempts."
         )
         learn_success = True
         if best_scored_def.train_metrics.F1 <= 0.0:
