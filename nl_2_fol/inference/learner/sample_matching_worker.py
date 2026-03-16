@@ -182,14 +182,14 @@ def check_if_definition_matches_samples(
             elif event_type == "done":
                 pos_worker_completed = True
                 print(
-                    "[sample-matching] Positive worker reported done.",
+                    f"[sample-matching for {chemical_class.name}] Positive worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
                 pos_worker_error = _parse_error_event(event)
                 error_message = pos_worker_error[0]
                 print(
-                    "[sample-matching] Positive worker reported error: "
+                    f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
                     f"{error_message}",
                     flush=True,
                 )
@@ -212,14 +212,14 @@ def check_if_definition_matches_samples(
             elif event_type == "done":
                 neg_worker_completed = True
                 print(
-                    "[sample-matching] Negative worker reported done.",
+                    f"[sample-matching for {chemical_class.name}] Negative worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
                 neg_worker_error = _parse_error_event(event)
                 error_message = neg_worker_error[0]
                 print(
-                    "[sample-matching] Negative worker reported error: "
+                    f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
                     f"{error_message}",
                     flush=True,
                 )
@@ -227,7 +227,7 @@ def check_if_definition_matches_samples(
     pos_worker.start()
     neg_worker.start()
     print(
-        "[sample-matching] Spawned workers "
+        f"[sample-matching for {chemical_class.name}] Spawned workers "
         f"(pos_pid={pos_worker.pid}, neg_pid={neg_worker.pid}).",
         flush=True,
     )
@@ -252,7 +252,7 @@ def check_if_definition_matches_samples(
         now = time.monotonic()
         if now - last_progress_report >= 5:
             print(
-                "[sample-matching] Progress "
+                f"[sample-matching for {chemical_class.name}] Progress "
                 f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
                 f"neg={len(processed_neg_smiles)}/{len(neg_samples_list)} "
                 f"remaining={max(0, int(deadline - now))}s",
@@ -262,7 +262,7 @@ def check_if_definition_matches_samples(
 
     if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
         print(
-            "\nSample matching subprocesses exceeded "
+            f"[sample-matching for {chemical_class.name}] Sample matching subprocesses exceeded "
             f"{sample_matching_timeout_seconds} seconds and was terminated."
         )
         if pos_worker.is_alive():
@@ -321,19 +321,16 @@ def check_if_definition_matches_samples(
 
     if timed_out:
         print(
-            "\nSample matching timed out; returning partial results for "
-            f"{chemical_class.name}."
+            f"[sample-matching for {chemical_class.name}] Sample matching timed out; returning partial results."
         )
 
     print(
-        "\nUnmatched positive (FN) samples for "
-        f"{chemical_class.name}: {len(unmatched_pos_samples)}/"
+        f"[sample-matching for {chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
         f"{len(processed_pos_samples)} processed "
         f"(total available: {len(pos_samples)})"
     )
     print(
-        "\nMatched negative (FP) samples for "
-        f"{chemical_class.name}: {len(matched_neg_samples)}/"
+        f"[sample-matching for {chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
         f"{len(processed_neg_samples)} processed "
         f"(total available: {len(neg_samples)})"
     )
