@@ -4,8 +4,12 @@ from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
 
-DEFAULT_PICKLE_FILE = Path(
-    "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions.pkl"
+DEFAULT_PICKLE_FILE = (
+    Path(__file__).resolve().parent.parent
+    / "learner"
+    / "learned"
+    / "claude-opus-4-6"
+    / "learned_definitions.pkl"
 )
 
 
