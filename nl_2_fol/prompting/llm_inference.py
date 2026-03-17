@@ -83,7 +83,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
             --cpus-per-task=8 --threads-per-core=1 --mem=64G
             --time=02:00:00 --gres=gpu:1 --pty bash
         """
-        from nl_2_fol.prompting.custom_api import T5_3B_NL2FOL
+        from nl_2_fol.prompting.custom_api.t5_model import T5_3B_NL2FOL
 
         platform = "custom"
         llm = T5_3B_NL2FOL()
