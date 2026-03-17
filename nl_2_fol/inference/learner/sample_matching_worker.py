@@ -3,6 +3,7 @@ import os
 import queue
 import time
 import traceback
+from importlib import import_module
 
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
@@ -12,6 +13,95 @@ from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 __all__ = ["check_if_definition_matches_samples"]
+
+
+WorkerError = tuple[
+    str,
+    str,
+    str | None,
+    str | None,
+    tuple | None,
+    dict | None,
+]
+
+
+def _parse_error_event(event: tuple) -> WorkerError:
+    """Parse the structured worker error event."""
+    (
+        _,
+        error_message,
+        error_trace,
+        exc_module,
+        exc_qualname,
+        exc_args,
+        exc_state,
+    ) = event
+    normalized_args = exc_args if isinstance(exc_args, tuple) else None
+    normalized_state = exc_state if isinstance(exc_state, dict) else None
+    return (
+        error_message,
+        error_trace,
+        exc_module,
+        exc_qualname,
+        normalized_args,
+        normalized_state,
+    )
+
+
+def _resolve_exception_class(
+    module_name: str | None,
+    qualname: str | None,
+) -> type[BaseException] | None:
+    if not module_name or not qualname:
+        return None
+
+    try:
+        module = import_module(module_name)
+        resolved_obj = module
+        for attr in qualname.split("."):
+            resolved_obj = getattr(resolved_obj, attr)
+        if isinstance(resolved_obj, type) and issubclass(resolved_obj, BaseException):
+            return resolved_obj
+    except Exception:
+        return None
+    return None
+
+
+def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
+    error_message, error_trace, exc_module, exc_qualname, exc_args, exc_state = (
+        worker_error
+    )
+    print(error_message, error_trace, sep="\n")
+
+    exception_cls = _resolve_exception_class(exc_module, exc_qualname)
+    if exception_cls is not None:
+        try:
+            # Avoid custom __init__ signatures (e.g., MissingPredicateException expects
+            # a set) by restoring BaseException args/state directly.
+            rebuilt_exception = exception_cls.__new__(exception_cls)
+            BaseException.__init__(
+                rebuilt_exception,
+                *(exc_args if exc_args is not None else (error_message,)),
+            )
+            if exc_state:
+                rebuilt_exception.__dict__.update(exc_state)
+        except Exception:
+            rebuilt_exception = exception_cls(error_message)
+
+        if error_trace:
+            rebuilt_exception.add_note(
+                "Original worker traceback (from subprocess):\n" + error_trace
+            )
+        raise rebuilt_exception
+
+    fallback_exception = Exception(
+        f"{worker_label} sample matching subprocess failed with error: {error_message}"
+    )
+    if error_trace:
+        fallback_exception.add_note(
+            "Original worker traceback (from subprocess):\n" + error_trace
+        )
+    raise fallback_exception
 
 
 def check_if_definition_matches_samples(
@@ -36,8 +126,8 @@ def check_if_definition_matches_samples(
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
-    pos_worker_error: tuple[str, str] | None = None
-    neg_worker_error: tuple[str, str] | None = None
+    pos_worker_error: WorkerError | None = None
+    neg_worker_error: WorkerError | None = None
     pos_worker_completed = False
     neg_worker_completed = False
 
@@ -92,14 +182,14 @@ def check_if_definition_matches_samples(
             elif event_type == "done":
                 pos_worker_completed = True
                 print(
-                    "[sample-matching] Positive worker reported done.",
+                    f"[sample-matching for {chemical_class.name}] Positive worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
-                _, error_message, error_trace = event
-                pos_worker_error = (error_message, error_trace)
+                pos_worker_error = _parse_error_event(event)
+                error_message = pos_worker_error[0]
                 print(
-                    "[sample-matching] Positive worker reported error: "
+                    f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
                     f"{error_message}",
                     flush=True,
                 )
@@ -122,14 +212,14 @@ def check_if_definition_matches_samples(
             elif event_type == "done":
                 neg_worker_completed = True
                 print(
-                    "[sample-matching] Negative worker reported done.",
+                    f"[sample-matching for {chemical_class.name}] Negative worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
-                _, error_message, error_trace = event
-                neg_worker_error = (error_message, error_trace)
+                neg_worker_error = _parse_error_event(event)
+                error_message = neg_worker_error[0]
                 print(
-                    "[sample-matching] Negative worker reported error: "
+                    f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
                     f"{error_message}",
                     flush=True,
                 )
@@ -137,7 +227,7 @@ def check_if_definition_matches_samples(
     pos_worker.start()
     neg_worker.start()
     print(
-        "[sample-matching] Spawned workers "
+        f"[sample-matching for {chemical_class.name}] Spawned workers "
         f"(pos_pid={pos_worker.pid}, neg_pid={neg_worker.pid}).",
         flush=True,
     )
@@ -162,7 +252,7 @@ def check_if_definition_matches_samples(
         now = time.monotonic()
         if now - last_progress_report >= 5:
             print(
-                "[sample-matching] Progress "
+                f"[sample-matching for {chemical_class.name}] Progress "
                 f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
                 f"neg={len(processed_neg_smiles)}/{len(neg_samples_list)} "
                 f"remaining={max(0, int(deadline - now))}s",
@@ -172,7 +262,7 @@ def check_if_definition_matches_samples(
 
     if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
         print(
-            "\nSample matching subprocesses exceeded "
+            f"[sample-matching for {chemical_class.name}] Sample matching subprocesses exceeded "
             f"{sample_matching_timeout_seconds} seconds and was terminated."
         )
         if pos_worker.is_alive():
@@ -192,18 +282,10 @@ def check_if_definition_matches_samples(
     drain_neg_queue()
 
     if pos_worker_error is not None:
-        error_message, error_trace = pos_worker_error
-        print(error_message, error_trace, sep="\n")
-        raise Exception(
-            f"Positive sample matching subprocess failed with error: {error_message}"
-        )
+        _raise_worker_error("Positive", pos_worker_error)
 
     if neg_worker_error is not None:
-        error_message, error_trace = neg_worker_error
-        print(error_message, error_trace, sep="\n")
-        raise Exception(
-            f"Negative sample matching subprocess failed with error: {error_message}"
-        )
+        _raise_worker_error("Negative", neg_worker_error)
 
     if (
         not pos_worker_completed
@@ -239,19 +321,16 @@ def check_if_definition_matches_samples(
 
     if timed_out:
         print(
-            "\nSample matching timed out; returning partial results for "
-            f"{chemical_class.name}."
+            f"[sample-matching for {chemical_class.name}] Sample matching timed out; returning partial results."
         )
 
     print(
-        "\nUnmatched positive (FN) samples for "
-        f"{chemical_class.name}: {len(unmatched_pos_samples)}/"
+        f"[sample-matching for {chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
         f"{len(processed_pos_samples)} processed "
         f"(total available: {len(pos_samples)})"
     )
     print(
-        "\nMatched negative (FP) samples for "
-        f"{chemical_class.name}: {len(matched_neg_samples)}/"
+        f"[sample-matching for {chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
         f"{len(processed_neg_samples)} processed "
         f"(total available: {len(neg_samples)})"
     )
@@ -311,7 +390,30 @@ def _check_samples_worker(
             f"[sample-matching:{label}] Worker PID={os.getpid()} failed: {e}",
             flush=True,
         )
-        result_queue.put(("error", str(e), traceback.format_exc()))
+        error_trace = traceback.format_exc()
+        exception_type = type(e)
+        serialized_error_event = (
+            "error",
+            str(e),
+            error_trace,
+            exception_type.__module__,
+            exception_type.__qualname__,
+            e.args,
+            dict(e.__dict__),
+        )
+        try:
+            result_queue.put(serialized_error_event)
+        except Exception:
+            fallback_error_event = (
+                "error",
+                str(e),
+                error_trace,
+                None,
+                None,
+                e.args,
+                None,
+            )
+            result_queue.put(fallback_error_event)
 
 
 def check_positive_samples_worker(
