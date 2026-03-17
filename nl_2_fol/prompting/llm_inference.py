@@ -88,6 +88,10 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
             from nl_2_fol.prompting.custom_api.models.t5 import T5_3B_NL2FOL
 
             custom_llm = T5_3B_NL2FOL()
+        elif model_name == "Mistral-Small-24B-Instruct-nl-to-fol":
+            from nl_2_fol.prompting.custom_api.models.mistral import Mistral_24B
+
+            custom_llm = Mistral_24B()
         else:
             raise ValueError(f"Unknown custom model name `{model_name}`")
 

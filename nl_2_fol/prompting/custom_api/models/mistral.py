@@ -13,15 +13,8 @@ import torch
 from langchain_core.language_models import LLM
 from peft import PeftModel
 from pydantic import PrivateAttr
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-_SYSTEM_PROMPT = (
-    "You are a helpful AI assistant that translates Natural Language (NL) text "
-    "into First-Order Logic (FOL) using only the given quantors and junctors: "
-    "\u2200 (for all), \u2203 (there exists), \u00ac (not), \u2227 (and), \u2228 (or), \u2192 (implies), "
-    "\u2194 (if and only if), \u2295 (xor). "
-    "Start your answer with '\U0001d719=' followed by the FOL-formula. Do not include any other text."
-)
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 
 class Mistral_24B(LLM):
@@ -33,7 +26,6 @@ class Mistral_24B(LLM):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.HF_BASE_MODEL, trust_remote_code=True
         )
@@ -54,29 +46,17 @@ class Mistral_24B(LLM):
     def _llm_type(self) -> str:
         return "Mistral-Small-24B-Instruct-nl-to-fol"
 
-    def _format_prompt(self, text: str) -> str:
-        return self._tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": text},
-            ],
-            tokenize=False,
-            add_generation_prompt=False,
-        )
-
     def _call(
         self,
         prompt: str,
         stop: list[str] | None = None,
         **kwargs,
     ) -> str:
-        formatted = self._format_prompt(prompt)
-        output = self._infer_model(formatted)
+        output = self._infer_model(prompt)
         return self._tokenizer.decode(output[0], skip_special_tokens=True)
 
     def _batch_call(self, prompts: list[str]) -> list[str]:
-        formatted = [self._format_prompt(p) for p in prompts]
-        outputs = self._infer_model(formatted)
+        outputs = self._infer_model(prompts)
         return [self._tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
 
     @torch.inference_mode()
@@ -94,5 +74,12 @@ class Mistral_24B(LLM):
 
 if __name__ == "__main__":
     llm = Mistral_24B()
-    result = llm.invoke("All dogs are animals.")
+    # Example NL input
+    nl_input = "All dogs are animals."
+    # Preprocess prompt
+    input_text = (
+        "translate English natural language statements into first-order logic (FOL): "
+        + nl_input
+    )
+    result = llm.invoke(input_text)
     print(result)
