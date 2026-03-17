@@ -552,6 +552,8 @@ class LearnDefinitions(BaseFOL):
                     formula=scored_def.tptp_def,
                     pred_variables=scored_def.pred_variables,
                 ),
+                # llm may rename `3OxoSteroid` to `threeOxoSteroid` hence use chemical.name
+                # See:  https://github.com/ChEB-AI/chebai-NL2FOL/issues/13
                 name=chemical_class.name,
                 definition=chemical_class.definition
                 if chemical_class.definition
