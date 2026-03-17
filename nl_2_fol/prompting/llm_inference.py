@@ -21,7 +21,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
 
     if platform == "groq":
         try:
-            from langchain_groq import ChatGroq
+            from langchain_groq import ChatGroq  # type: ignore
         except ImportError:
             raise ImportError(
                 "Please install groq by using `pip install langchain-groq`"
@@ -40,7 +40,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
 
     elif platform == "anthropic":
         try:
-            from langchain_anthropic import ChatAnthropic
+            from langchain_anthropic import ChatAnthropic  # type: ignore
         except ImportError:
             raise ImportError(
                 "Please install anthropic by using `pip install langchain-anthropic`"
@@ -58,7 +58,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
         return llm
     elif platform == "openai":
         try:
-            from langchain_openai import ChatOpenAI
+            from langchain_openai import ChatOpenAI  # type: ignore
         except ImportError:
             raise ImportError(
                 "Please install openai by using `pip install langchain-openai`"
@@ -74,7 +74,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
         _test_api_with_a_prompt(llm)
         return llm
 
-    elif model_name == "t5-3b-nl-to-fol":
+    elif platform == "custom":
         """
         Inference need to be run on a GPU-enabled machine.
         You can use the below command to access one such machine on the cluster:
@@ -83,17 +83,24 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
             --cpus-per-task=8 --threads-per-core=1 --mem=64G
             --time=02:00:00 --gres=gpu:1 --pty bash
         """
-        from nl_2_fol.prompting.custom_api.t5_model import T5_3B_NL2FOL
 
-        platform = "custom"
-        llm = T5_3B_NL2FOL()
+        if model_name == "t5-3b-nl-to-fol":
+            from nl_2_fol.prompting.custom_api.t5_model import T5_3B_NL2FOL
 
-        result = llm.invoke("All dogs are animals.")
+            custom_llm = T5_3B_NL2FOL()
+        else:
+            raise ValueError(f"Unknown custom model name `{model_name}`")
+
+        from nl_2_fol.prompting.custom_api.base_chat_model import LocalModelChat
+
+        chat_model = LocalModelChat(llm=custom_llm)
+
+        result = chat_model.invoke("All dogs are animals.")
         if result is None:
             raise Exception(
                 f"Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
             )
-        return llm
+        return chat_model
 
     raise ValueError("Unknown platform")
 
