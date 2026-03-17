@@ -1,4 +1,5 @@
 import argparse
+import ast
 import pickle
 from pathlib import Path
 
@@ -33,6 +34,11 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         print(f"Learned success: {learned_def.learn_success}")
         for his in learned_def.prompts_history:
             print(his)
+
+        content = learned_def.prompts_history["conversation_history"][-1]["content"]
+        parsed_dict = ast.literal_eval(content)
+        if "FOL_formula" in parsed_dict:
+            print(f"Generated FOL formula: {parsed_dict['FOL_formula']}")
         print("---" * 10)
 
     for name, add_def in data.additional_definitions.items():
