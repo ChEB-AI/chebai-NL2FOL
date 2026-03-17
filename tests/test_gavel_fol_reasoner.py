@@ -238,9 +238,13 @@ class TestGavelFOLReasoner:
         mol = Chem.MolFromSmiles(
             "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
         )
-
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
         reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+    def test_model_checking_success(self, reasoner: GavelFOLReasoner):
+        mol = Chem.MolFromSmiles(
+            "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
+        )
 
         formula_str = (
             "triterpenoidSaponin(X) <=> (terpeneGlycoside(X) & triterpenoid(X))"
@@ -257,6 +261,26 @@ class TestGavelFOLReasoner:
         parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
         for pred_name, (vars, formula) in parsed_add_def.items():
             reasoner.add_background_definition(pred_name, vars, formula)
+        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        mol = Chem.MolFromSmiles(
+            "C=1[C@@]2([C@]3(CC[C@]4([C@]([C@@]3(C=CC2=CC(C1)=O)[H])(CCC4=O)[H])C)[H])C"
+        )
+
+        formula_str = "threeOxoSteroid <=> (oxoSteroid & ?[A1, A2]: (c(A1) & o(A2) & bDOUBLE(A1, A2) & steroidPosition3(A1)))"
+
+        add_def_dict = {
+            "oxoSteroid": "oxoSteroid <=> (steroid & hasCarbonylGroup)",
+            "steroidPosition3": "steroidPosition3(X) <=> (c(X) & inRing(X) & has_0_hs(X) & bDOUBLE(X, Y) & o(Y) & ?[A1, A2]: (c(A1) & c(A2) & bSINGLE(X, A1) & bSINGLE(X, A2) & inRing(A1) & inRing(A2) & A1 != A2))",
+            "molecule": "molecule <=> net_charge_neutral",
+            "hasCarbonylGroup": "hasCarbonylGroup <=> ?[C1, O1]: (c(C1) & o(O1) & bDOUBLE(C1, O1))",
+            "steroid": "steroid <=> (molecule & ?[A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16, A17]: (c(A1) & c(A2) & c(A3) & c(A4) & c(A5) & c(A6) & c(A7) & c(A8) & c(A9) & c(A10) & c(A11) & c(A12) & c(A13) & c(A14) & c(A15) & c(A16) & c(A17) & has_bond_to(A1, A2) & has_bond_to(A2, A3) & has_bond_to(A3, A4) & has_bond_to(A4, A5) & has_bond_to(A5, A10) & has_bond_to(A10, A1) & has_bond_to(A5, A6) & has_bond_to(A6, A7) & has_bond_to(A7, A8) & has_bond_to(A8, A9) & has_bond_to(A9, A10) & has_bond_to(A8, A14) & has_bond_to(A14, A15) & has_bond_to(A15, A16) & has_bond_to(A16, A17) & has_bond_to(A17, A13) & has_bond_to(A13, A14) & has_bond_to(A9, A11) & has_bond_to(A11, A12) & has_bond_to(A12, A13)))",
+        }
+        cdef_dict = reasoner.convert_to_background_definitions(add_def_dict)
+        for pred_name, (vars, formula) in cdef_dict.items():
+            reasoner.add_background_definition(pred_name, vars, formula)
+
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
         reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 

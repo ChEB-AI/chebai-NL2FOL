@@ -28,7 +28,9 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
             continue
 
         print(f"Learned definition for predicate: {learned_def.name}")
-        print(f"Pred variables: {learned_def.learned_FOL.pred_variables}")
+        print(
+            f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+        )
         print(f"Metrics: {learned_def.train_metrics}")
         print(f"Formula: {learned_def.learned_FOL.formula}")
         print(f"Learned success: {learned_def.learn_success}")
@@ -45,7 +47,9 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         if class_name != "all" and name != class_name:
             continue
         print(f"Additional definition for predicate: {name}")
-        print(f"Pred variables: {add_def.fol_formula.pred_variables}")
+        print(
+            f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
+        )
         print(f"Formula: {add_def.fol_formula.formula}")
         print(f"Learned success: {add_def.learn_success}")
         print("---" * 10)
