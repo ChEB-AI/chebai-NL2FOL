@@ -85,7 +85,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
         """
 
         if model_name == "t5-3b-nl-to-fol":
-            from nl_2_fol.prompting.custom_api.t5_model import T5_3B_NL2FOL
+            from nl_2_fol.prompting.custom_api.models.t5 import T5_3B_NL2FOL
 
             custom_llm = T5_3B_NL2FOL()
         else:

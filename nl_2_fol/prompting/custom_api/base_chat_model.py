@@ -102,7 +102,7 @@ class LocalModelChat(BaseChatModel):
 
     @property
     def _llm_type(self) -> str:
-        return self.llm.__class__.__name__
+        return self.llm._llm_type
 
     def with_structured_output(
         self,
