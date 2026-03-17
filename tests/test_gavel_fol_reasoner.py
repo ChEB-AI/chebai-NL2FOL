@@ -32,6 +32,23 @@ class TestGavelFOLReasoner:
         with pytest.raises(Exception):
             reasoner.get_tptp_fol_definition(invalid_formula)
 
+    def test_tptp_parsing_numeric_predicate_name(self, reasoner):
+        """Test that TPTP parsing handles numeric predicate names."""
+        formula = "123predicate(X) <=> (p(X) & q(X))"
+        # Raise error if predicate name start with a number
+        with pytest.raises(Exception):
+            reasoner.get_tptp_fol_definition(formula)
+
+        formula = "predicate123(X) <=> (p(X) & q(X))"
+        reasoner.get_tptp_fol_definition(formula)
+
+        formula = "predicate(X) <=> (1p(X) & q(X))"
+        with pytest.raises(Exception):
+            reasoner.get_tptp_fol_definition(formula)
+
+        formula = "predicate(X) <=> (p1(X) & q(X))"
+        reasoner.get_tptp_fol_definition(formula)
+
     def test_tptp_parsing_success(self, reasoner):
         """Test that TPTP parsing handles invalid formulas gracefully."""
         # This test may fail in latest python versions
