@@ -60,7 +60,7 @@ class Mistral_24B(LLM):
         return [self._tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
 
     @torch.inference_mode()
-    def _infer_model(self, input: list[str] | str) -> torch.Tensor:
+    def _infer_model(self, input: list[str] | str):
         device = next(iter(self._model.parameters())).device
         inputs = self._tokenizer(
             input,
@@ -68,8 +68,20 @@ class Mistral_24B(LLM):
             padding=True,
         ).to(device)
 
+        # Generate sequences that include both the input prompt and new tokens
         outputs = self._model.generate(**inputs, max_new_tokens=100)
-        return outputs
+
+        # Compute the true length of each input sequence from the attention mask
+        attention_mask = inputs["attention_mask"]
+        input_lengths = attention_mask.sum(dim=1)
+
+        # Strip the prompt tokens so that only newly generated tokens remain
+        generated_tokens = []
+        for i, seq in enumerate(outputs):
+            input_len = input_lengths[i].item()
+            generated_tokens.append(seq[input_len:])
+
+        return generated_tokens
 
 
 if __name__ == "__main__":
