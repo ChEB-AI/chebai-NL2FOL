@@ -7,14 +7,14 @@ You can use the below command to access one such machine on the cluster:
 srun --partition=gpu --constraint="A100|H100.80gb" --ntasks=1 --cpus-per-task=8 --threads-per-core=1 --mem=80G --time=12:00:00 --gres=gpu:1 --pty bash
 """
 
+import time
 from typing import Any, ClassVar
 
 import torch
 from langchain_core.language_models import LLM
 from peft import PeftModel
 from pydantic import PrivateAttr
-from transformers.models.auto.modeling_auto import AutoModelForCausalLM
-from transformers.models.auto.tokenization_auto import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class Mistral_24B(LLM):
@@ -74,18 +74,22 @@ class Mistral_24B(LLM):
             padding=True,
         ).to(device)
 
+        # print("Context length: ", self._model.config.max_position_embeddings)
+
         # Generate sequences that include both the input prompt and new tokens
-        outputs = self._model.generate(**inputs, max_new_tokens=100)
+        start_time = time.perf_counter()
+        outputs = self._model.generate(**inputs, max_new_tokens=5000)
+        elapsed_seconds = time.perf_counter() - start_time
+        prompt_count = len(input) if isinstance(input, list) else 1
+        print(
+            f"[Mistral_24B] Inference took {elapsed_seconds:.2f}s for {prompt_count} prompt(s)."
+        )
 
-        # Compute the true length of each input sequence from the attention mask
-        attention_mask = inputs["attention_mask"]
-        input_lengths = attention_mask.sum(dim=1)
+        # Get the length of the input sequence
+        input_length = inputs["input_ids"].shape[1]
 
-        # Strip the prompt tokens so that only newly generated tokens remain
-        generated_tokens = []
-        for i, seq in enumerate(outputs):
-            input_len = input_lengths[i].item()
-            generated_tokens.append(seq[input_len:])
+        # Slice the output tensor to keep ONLY the newly generated tokens
+        generated_tokens = outputs[:, input_length:]
 
         return generated_tokens
 
