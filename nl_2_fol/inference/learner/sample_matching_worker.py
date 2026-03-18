@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import queue
+import sys
 import time
 import traceback
 from importlib import import_module
@@ -12,8 +13,9 @@ from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
-__all__ = ["check_if_definition_matches_samples"]
+assert sys.version_info >= (3, 11), "Python 3.11 or newer is required."
 
+__all__ = ["check_if_definition_matches_samples"]
 
 WorkerError = tuple[
     str,
