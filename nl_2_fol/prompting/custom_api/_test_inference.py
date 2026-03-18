@@ -21,7 +21,7 @@ undef_failure_prompt_fp: str = os.path.join(
 )
 
 
-def test_all_custom_models(model_name):
+def infer_on_custom_model(model_name):
     custom_model = ["t5-3b-nl-to-fol", "Mistral-Small-24B-Instruct-nl-to-fol"]
     if model_name not in custom_model:
         raise ValueError(
@@ -93,4 +93,4 @@ def test_all_custom_models(model_name):
 
 
 if __name__ == "__main__":
-    test_all_custom_models("Mistral-Small-24B-Instruct-nl-to-fol")
+    infer_on_custom_model("t5-3b-nl-to-fol")
