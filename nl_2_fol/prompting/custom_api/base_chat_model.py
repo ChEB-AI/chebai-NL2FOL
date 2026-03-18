@@ -155,7 +155,7 @@ class LocalModelChat(BaseChatModel):
         """
         prompt = self._convert_messages_to_prompt(messages)
 
-        response = self.llm._call(prompt)
+        response = self.llm._call(prompt, stop=stop, run_manager=run_manager, **kwargs)
 
         message = AIMessage(content=response)
 

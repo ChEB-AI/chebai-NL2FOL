@@ -26,7 +26,12 @@ class T5_3B_NL2FOL(LLM):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if not torch.cuda.is_available():
+            raise EnvironmentError(
+                "CUDA-enabled GPU is required for inference with T5-3B. "
+                "Please run this on a machine with a compatible GPU."
+            )
+        self._device = torch.device("cuda")
 
         self._tokenizer = T5Tokenizer.from_pretrained(self.HF_MODEL_URL)
         model = T5ForConditionalGeneration.from_pretrained(
@@ -34,7 +39,7 @@ class T5_3B_NL2FOL(LLM):
             torch_dtype=torch.float16,
         )
         self._model = cast(Any, model).to(self._device)
-        self._model = torch.compile(self._model)
+        # self._model = torch.compile(self._model)
         self._model.eval()
 
     @property

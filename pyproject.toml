@@ -31,6 +31,7 @@ custom_host = [
     "sentencepiece",
     "accelerate",
     "safetensors",
+    "peft"
 ]
 
 linters = ["ruff", "isort", "pre-commit"]

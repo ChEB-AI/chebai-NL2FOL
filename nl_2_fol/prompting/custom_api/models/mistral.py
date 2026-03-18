@@ -4,7 +4,7 @@ Model Hugging Face URL: https://huggingface.co/fvossel/Mistral-Small-24B-Instruc
 Inference needs to be run on a GPU-enabled machine.
 You can use the below command to access one such machine on the cluster:
 
-srun --partition=gpu --constraint="A100|H100.80gb" --ntasks=1 --cpus-per-task=8 --threads-per-core=1 --mem=64G --time=12:00:00 --gres=gpu:1 --pty bash
+srun --partition=gpu --constraint="A100|H100.80gb" --ntasks=1 --cpus-per-task=8 --threads-per-core=1 --mem=80G --time=12:00:00 --gres=gpu:1 --pty bash
 """
 
 from typing import Any, ClassVar
@@ -26,6 +26,12 @@ class Mistral_24B(LLM):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        if not torch.cuda.is_available():
+            raise EnvironmentError(
+                "CUDA-enabled GPU is required for inference with Mistral-24B. "
+                "Please run this on a machine with a compatible GPU."
+            )
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.HF_BASE_MODEL, trust_remote_code=True
         )
@@ -36,10 +42,10 @@ class Mistral_24B(LLM):
         model = AutoModelForCausalLM.from_pretrained(
             self.HF_BASE_MODEL, trust_remote_code=True, device_map="auto"
         )
-        model = PeftModel.from_pretrained(
+        self._model = PeftModel.from_pretrained(
             model, self.HF_LORA_WEIGHTS, device_map="auto"
         )
-        self._model = torch.compile(model)
+        # self._model = torch.compile(model)
         self._model.eval()
 
     @property

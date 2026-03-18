@@ -99,11 +99,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
 
         chat_model = LocalModelChat(llm=custom_llm)
 
-        result = chat_model.invoke("All dogs are animals.")
-        if result is None:
-            raise Exception(
-                f"Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
-            )
+        _test_api_with_a_prompt(chat_model)
         return chat_model
 
     raise ValueError("Unknown platform")
