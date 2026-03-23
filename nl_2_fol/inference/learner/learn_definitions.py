@@ -351,7 +351,11 @@ class LearnDefinitions(BaseFOL):
                         self._c3po_slim_data.get_chemical_class_by_name(unknown_pred)
                     )
                 elif unknown_pred not in add_bck_def:
-                    # This means the definition provided for the missing predicate also contains unknown predicates which we don't have definitions for, hence we cannot validate it and we raise an exception to llm to generate a new definition for the main chemical class instead of trying to fix the additional background definition
+                    # This means the definition provided for the missing predicate also
+                    # contains unknown predicates which we don't have definitions for,
+                    # hence we cannot validate it and we raise an exception to llm to
+                    # generate a new definition for the main chemical class instead of
+                    # trying to fix the additional background definition
                     print(
                         "[validate_additional] Unknown nested predicate is not provided "
                         f"in additional definitions: '{unknown_pred}'."
@@ -395,8 +399,9 @@ class LearnDefinitions(BaseFOL):
                     # Let it learn as an additional definition
                     continue
                 print(
-                    "[validate_additional] Triggering learning for main predicate: "
-                    f"'{pred_name}'."
+                    "[validate_additional:recursive] Triggering recursive learning "
+                    f"for main predicate: '{pred_name}'."
+                    "\n--------------------------------------------------------------"
                 )
                 self._learn(self._c3po_slim_data.get_chemical_class_by_name(pred_name))
             else:
@@ -547,6 +552,8 @@ class LearnDefinitions(BaseFOL):
                     formula=scored_def.tptp_def,
                     pred_variables=scored_def.pred_variables,
                 ),
+                # llm may rename `3OxoSteroid` to `threeOxoSteroid` hence use chemical.name
+                # See:  https://github.com/ChEB-AI/chebai-NL2FOL/issues/13
                 name=chemical_class.name,
                 definition=chemical_class.definition
                 if chemical_class.definition
