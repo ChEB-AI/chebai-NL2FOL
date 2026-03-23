@@ -401,7 +401,7 @@ class LearnDefinitions(BaseFOL):
                 print(
                     "[validate_additional:recursive] Triggering recursive learning "
                     f"for main predicate: '{pred_name}'."
-                    "--------------------------------------------------------------"
+                    "\n--------------------------------------------------------------"
                 )
                 self._learn(self._c3po_slim_data.get_chemical_class_by_name(pred_name))
             else:
