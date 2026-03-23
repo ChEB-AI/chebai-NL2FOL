@@ -262,7 +262,16 @@ class TestGavelFOLReasoner:
         for pred_name, (vars, formula) in parsed_add_def.items():
             reasoner.add_background_definition(pred_name, vars, formula)
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
-        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        with pytest.raises(
+            Exception,
+            match=(
+                r"Predicate `triterpenoid` is defined with arity 0 but called with 1 arguments"
+                r"[\s\S]*Predicate `terpenoid` is defined with arity 0 but called with 1 arguments"
+                r"[\s\S]*Predicate `molecule` is defined with arity 0 but called with 1 arguments"
+            ),
+        ):
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
         mol = Chem.MolFromSmiles(
             "C=1[C@@]2([C@]3(CC[C@]4([C@]([C@@]3(C=CC2=CC(C1)=O)[H])(CCC4=O)[H])C)[H])C"
@@ -282,7 +291,14 @@ class TestGavelFOLReasoner:
             reasoner.add_background_definition(pred_name, vars, formula)
 
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
-        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+
+        with pytest.raises(
+            Exception,
+            match=(
+                r"Variable 'Y' is used in the definition of predicate 'steroidPosition3' but is not bound by predicate arguments or quantifiers"
+            ),
+        ):
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
     def test_ambiguous_formula_without_brackets(self, reasoner: GavelFOLReasoner):
         """Test that ambiguous formulas without proper brackets raise an error."""
