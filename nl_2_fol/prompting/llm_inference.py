@@ -3,7 +3,7 @@ from typing import Literal
 
 from nl_2_fol.prompting import ANTHROPIC_API_KEY, GROQ_API_KEY_NAME, OPENAI_API_KEY_NAME
 
-API_PLATFORM = Literal["groq", "anthropic", "openai", "custom"]
+API_PLATFORM = Literal["groq", "anthropic", "openai", "ollama", "custom"]
 
 
 def get_llm_for_inference(platform: API_PLATFORM, model_name):
@@ -70,6 +70,24 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
         llm = ChatOpenAI(
             model=model_name,
             temperature=0.0,
+        )
+        _test_api_with_a_prompt(llm)
+        return llm
+
+    elif platform == "ollama":
+        try:
+            from langchain_ollama import ChatOllama  # type: ignore
+        except ImportError:
+            raise ImportError(
+                "Please install ollama support by using `pip install langchain-ollama`"
+            )
+
+        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+        llm = ChatOllama(
+            model=model_name,
+            temperature=0.0,
+            base_url=base_url,
         )
         _test_api_with_a_prompt(llm)
         return llm
