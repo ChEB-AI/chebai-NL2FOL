@@ -23,7 +23,7 @@ def convert_mistral_to_gguf():
         model, lora_weights, device_map="auto", dtype=torch.bfloat16
     )
 
-    model = model.merge_and_unload()
+    model = model.merge_and_unload()  # type: ignore
 
     model.save_pretrained("mistral-merged")
     tokenizer.save_pretrained("mistral-merged")

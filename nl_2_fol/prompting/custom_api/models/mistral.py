@@ -1,5 +1,6 @@
 """
 Model Hugging Face URL: https://huggingface.co/fvossel/Mistral-Small-24B-Instruct-2501-nl-to-fol
+See env requirements here: https://github.com/fvossel/NL2FOL/blob/main/requirements.txt
 
 Inference needs to be run on a GPU-enabled machine.
 You can use the below command to access one such machine on the cluster:
@@ -40,10 +41,16 @@ class Mistral_24B(LLM):
         self._tokenizer.padding_side = "left"
 
         model = AutoModelForCausalLM.from_pretrained(
-            self.HF_BASE_MODEL, trust_remote_code=True, device_map="auto"
+            self.HF_BASE_MODEL,
+            trust_remote_code=True,
+            device_map="auto",
+            dtype=torch.bfloat16,
         )
         self._model = PeftModel.from_pretrained(
-            model, self.HF_LORA_WEIGHTS, device_map="auto"
+            model,
+            self.HF_LORA_WEIGHTS,
+            device_map="auto",
+            dtype=torch.bfloat16,
         )
         # self._model = torch.compile(model)
         self._model.eval()
