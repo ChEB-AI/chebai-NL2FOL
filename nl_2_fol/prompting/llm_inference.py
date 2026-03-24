@@ -82,12 +82,12 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
                 "Please install ollama support by using `pip install langchain-ollama`"
             )
 
-        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        # base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
         llm = ChatOllama(
             model=model_name,
             temperature=0.0,
-            base_url=base_url,
+            # base_url=base_url,
         )
         _test_api_with_a_prompt(llm)
         return llm
