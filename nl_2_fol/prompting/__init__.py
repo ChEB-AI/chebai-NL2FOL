@@ -1,4 +1,5 @@
 import os
+import warnings
 
 from dotenv import load_dotenv
 
@@ -26,28 +27,56 @@ def validate_any_api_key_present() -> None:
         )
 
 
-tracing = False  # Set to True in debug mode
-if tracing:
-    validate_any_api_key_present()
-    # Refer Tracibility docs: https://docs.langchain.com/langsmith/observability-quickstart
-    # View on trace of the prompting here:
-    # https://smith.langchain.com/public/5dddca10-2d31-4be8-b4c3-caca98504868/r/019b55af-4679-7e31-96f0-516ffad9499d
+def _is_truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _validate_langsmith_tracing_config() -> None:
+    """Validate LangSmith settings only when tracing is explicitly enabled."""
+    # Refer Tracibility docs: https://docs.langchain.com/langsmith/observability-quickstart
     # LANGSMITH_TRACING=true
     # LANGSMITH_PROJECT="nl2fol"
     # LANGSMITH_API_KEY=<your-api-key>
     # LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+    validate_any_api_key_present()
 
-    assert (
-        "LANGSMITH_TRACING" in os.environ and os.environ["LANGSMITH_TRACING"] == "true"
-    )
-    # assert "LANGSMITH_WORKSPACE_ID" in os.environ  # Not necessary, but good to have
-    assert "LANGSMITH_API_KEY" in os.environ
-    assert (
-        "LANGSMITH_ENDPOINT" in os.environ
-        and os.environ["LANGSMITH_ENDPOINT"] == "https://api.smith.langchain.com"
-    )
-    assert (
-        "LANGSMITH_PROJECT" in os.environ
-        and os.environ["LANGSMITH_PROJECT"] == "nl2fol"
-    )
+    required_env = ["LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_PROJECT"]
+    missing = [name for name in required_env if not os.getenv(name)]
+    if missing:
+        raise RuntimeError(
+            "Detailed Error: LangSmith tracing is enabled but required settings are missing: "
+            f"{missing}."
+        )
+
+    endpoint = os.getenv("LANGSMITH_ENDPOINT", "")
+    if endpoint != "https://api.smith.langchain.com":
+        raise RuntimeError(
+            "Detailed Error: LANGSMITH_ENDPOINT must be set to "
+            "'https://api.smith.langchain.com'."
+        )
+
+
+tracing = _is_truthy(os.getenv("LANGSMITH_TRACING"))
+
+# Set LangSmith timeout to 30 seconds (applies when tracing is enabled)
+# This prevents connection timeouts from blocking execution in offline/slow networks
+os.environ.setdefault("LANGSMITH_TIMEOUT", "30")
+
+if tracing:
+    print("LangSmith tracing is enabled. Validating configuration...")
+    try:
+        _validate_langsmith_tracing_config()
+    except RuntimeError as exc:
+        # Fail open for local/offline runs while making misconfiguration obvious.
+        tracing = False
+        warnings.warn(f"LangSmith tracing disabled: {exc}", stacklevel=2)
+else:
+    # Disable LangSmith tracing by removing its environment variables
+    # This prevents automatic client initialization when tracing is not explicitly enabled
+    for key in [
+        "LANGSMITH_API_KEY",
+        "LANGSMITH_TRACING",
+        "LANGSMITH_PROJECT",
+        "LANGSMITH_ENDPOINT",
+    ]:
+        os.environ.pop(key, None)
