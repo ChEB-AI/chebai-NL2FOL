@@ -1,6 +1,5 @@
 import os
 import pickle
-import traceback
 
 import tqdm
 from gavel.logic import logic
@@ -97,7 +96,6 @@ class LearnDefinitions(BaseFOL):
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
         self._attempts = 0
-        attempt_failure_summary = []
 
         # Tracks all the definitions which scored below threshold from all attempts
         # If no generated def pass the threshold, then we accept the one with best score
@@ -125,15 +123,11 @@ class LearnDefinitions(BaseFOL):
             self._on_successful_learning(chemical_class)
             return
         except Exception as e:
-            error_trace = traceback.format_exc()
             raised_exception = e
             if isinstance(e, ce.MissingPredicateException):
                 raised_exception = self._handle_missing_predicates_exception(e)
             elif isinstance(e, ce.StopProgramException):
                 raise e
-            attempt_failure_summary.append(
-                f"Attempt {self._attempts} failed with exception: {raised_exception}\nStacktrace:\n{error_trace}"
-            )
 
         print(
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
@@ -184,16 +178,11 @@ class LearnDefinitions(BaseFOL):
                     )
                     self._validate_additional_predicates(add_bck_def)
                 except Exception as e:
-                    error_trace = traceback.format_exc()
                     # If additional generated definitions for the missing predicates
                     # are not parseable, we return the error to llm.
                     # This will lead generating new FOL formula input chemical class
                     # instead of trying to fix the additional missing predicates definitions
 
-                    attempt_failure_summary.append(
-                        f"Attempt {self._attempts + 2} failed with unparseable additional"
-                        f"definition for out-of-box predicate: {additional_def}. Error: {e}\nStacktrace:\n{error_trace}"
-                    )
                     if curr_outofbox < outofbox_max_attempts:
                         curr_outofbox += 1
                         self._attempts += 1
@@ -229,7 +218,6 @@ class LearnDefinitions(BaseFOL):
                 self._on_successful_learning(chemical_class)
                 return
             except Exception as e:
-                error_trace = traceback.format_exc()
                 raised_exception = e
                 if isinstance(e, ce.MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
@@ -241,9 +229,6 @@ class LearnDefinitions(BaseFOL):
                     f"\tRaised exception: {raised_exception}]\n",
                 )
                 self._attempts += 1
-                attempt_failure_summary.append(
-                    f"Attempt {self._attempts} failed with exception: {raised_exception}\nStacktrace:\n{error_trace}"
-                )
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
         self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)

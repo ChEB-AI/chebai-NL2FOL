@@ -5,6 +5,7 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
+from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
@@ -77,7 +78,10 @@ class GavelFOLReasoner:
                 "conjunctions and disjunctions).\n"
                 f"[IMPORTANT] Critical error details for analysis:\n{e}"
             )
-        print(f"Input formula: {formula}\n\t Parsed Right Side as: {tptp_right_side}")
+        if PRINT_TRACES:
+            print(
+                f"Input formula: {formula}\n\t Parsed Right Side as: {tptp_right_side}"
+            )
         return pred_variables, tptp_right_side
 
     @model_check_exception
@@ -152,7 +156,8 @@ class GavelFOLReasoner:
                     f"  - Predicate with arity 2 (2 arguments): use as 'predicate(x, y)'\n"
                     f"Ensure all predicate calls match their defined arity."
                 )
-                print(f"[WARNING] {logging_msg}")
+                if PRINT_TRACES:
+                    print(f"[WARNING] {logging_msg}")
                 raise Exception(logging_msg)
             else:
                 raise Exception(f"{exception_prefix}{ve}")

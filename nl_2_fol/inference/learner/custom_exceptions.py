@@ -1,6 +1,7 @@
 import traceback
 from functools import wraps
 
+from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.preprocessing import SMILES_STRING
 from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
 
@@ -12,7 +13,8 @@ def tptp_parse_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -27,7 +29,8 @@ def mol_to_fol_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -42,7 +45,8 @@ def model_check_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -62,7 +66,8 @@ def stop_program_upon_failure(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise StopProgramException(str(e)) from e
