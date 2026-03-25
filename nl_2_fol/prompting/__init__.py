@@ -56,16 +56,28 @@ def _validate_langsmith_tracing_config() -> None:
         )
 
 
-tracing = _is_truthy(os.getenv("LANGSMITH_TRACING"))
+def _configure_langsmith_send_timeout(seconds: int = 30) -> None:
+    """Set LangSmith background tracing timeout (connect/read) at runtime."""
+    try:
+        import langsmith.client as langsmith_client  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        warnings.warn(
+            f"Unable to configure LangSmith timeout: {exc}",
+            stacklevel=2,
+        )
+        return
 
-# Set LangSmith timeout to 30 seconds (applies when tracing is enabled)
-# This prevents connection timeouts from blocking execution in offline/slow networks
-os.environ.setdefault("LANGSMITH_TIMEOUT", "30")
+    if hasattr(langsmith_client, "_TRACING_SEND_TIMEOUT"):
+        langsmith_client._TRACING_SEND_TIMEOUT = (seconds, seconds)
+
+
+tracing = _is_truthy(os.getenv("LANGSMITH_TRACING"))
 
 if tracing:
     print("LangSmith tracing is enabled. Validating configuration...")
     try:
         _validate_langsmith_tracing_config()
+        _configure_langsmith_send_timeout(seconds=30)
     except RuntimeError as exc:
         # Fail open for local/offline runs while making misconfiguration obvious.
         tracing = False
@@ -76,7 +88,12 @@ else:
     for key in [
         "LANGSMITH_API_KEY",
         "LANGSMITH_TRACING",
+        "LANGSMITH_TRACING_V2",
         "LANGSMITH_PROJECT",
         "LANGSMITH_ENDPOINT",
+        "LANGCHAIN_API_KEY",
+        "LANGCHAIN_ENDPOINT",
+        "LANGCHAIN_TRACING",
+        "LANGCHAIN_TRACING_V2",
     ]:
         os.environ.pop(key, None)
