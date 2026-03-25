@@ -47,7 +47,6 @@ class LearnDefinitions(BaseFOL):
         self._chebi_name_to_data_map_train = (
             self._entire_chebi_data.get_name_to_data_mapping_train()
         )
-        self._attempts: int = 0
 
     def learn_fol_definitions(self):
         for chemical_class_name in tqdm.tqdm(self._c3po_slim_data.classes.keys()):
@@ -95,7 +94,7 @@ class LearnDefinitions(BaseFOL):
         self._learn(chemical_class)
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
-        self._attempts = 0
+        attempts = 0
 
         # Tracks all the definitions which scored below threshold from all attempts
         # If no generated def pass the threshold, then we accept the one with best score
@@ -136,9 +135,9 @@ class LearnDefinitions(BaseFOL):
         previous_fol_def = result.FOL_formula if result else ""
         outofbox_max_attempts, curr_outofbox = 1, 0
         undef_retry_context: str | None = None
-        while self._attempts < self.max_attempts:
+        while attempts < self.max_attempts:
             print(
-                f"Attempt {self._attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
+                f"Attempt {attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
             )
             add_bck_def = None
             if isinstance(raised_exception, ce.LearnOutOfBoxPredicateException):
@@ -185,9 +184,9 @@ class LearnDefinitions(BaseFOL):
 
                     if curr_outofbox < outofbox_max_attempts:
                         curr_outofbox += 1
-                        self._attempts += 1
+                        attempts += 1
                         print(
-                            f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {self._attempts + 3}"
+                            f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {attempts + 3}"
                         )
                         undef_retry_context = (
                             "[IMPORTANT] Previously generated additional definitions "
@@ -228,7 +227,7 @@ class LearnDefinitions(BaseFOL):
                     f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}\n",
                     f"\tRaised exception: {raised_exception}]\n",
                 )
-                self._attempts += 1
+                attempts += 1
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
         self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
@@ -274,7 +273,7 @@ class LearnDefinitions(BaseFOL):
             f"{self.f1_threshold:.2f}, accepting the definition with the highest F1 "
             f"score {best_scored_def.train_metrics.F1:.2f} "
             f"among {len(low_score_defs_collector)} low threshold defintions generated in "
-            f"{self._attempts} previous attempts."
+            f"all previous attempts."
         )
         learn_success = True
         if best_scored_def.train_metrics.F1 <= 0.0:
@@ -488,7 +487,7 @@ class LearnDefinitions(BaseFOL):
         )
 
         if train_metrics.F1 < self.f1_threshold:
-            low_score_defs_collector[self._attempts] = scored_def
+            low_score_defs_collector[len(low_score_defs_collector)] = scored_def
 
             print(
                 f"F1 score {train_metrics.F1:.2f} is below the threshold of "
