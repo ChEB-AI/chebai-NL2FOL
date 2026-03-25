@@ -166,6 +166,19 @@ class LearnDefinitions(BaseFOL):
                 )
 
                 try:
+                    class_def = additional_def.pop(chemical_class.name, None)
+                    if class_def is not None and result is not None:
+                        # If LLM also returns a new definition for the main chemical class
+                        # along with the missing predicates definitions, we use it directly
+                        # instead of retrying with the same definition, as the new
+                        # definition might have changes
+                        print(
+                            f"LLM returned a new definition for the main chemical "
+                            f"class along with the missing predicates definitions, "
+                            f"using it directly instead of retrying with the same "
+                            f"definition: {class_def}"
+                        )
+                        result.FOL_formula = class_def
                     add_bck_def = self._gavel.convert_to_background_definitions(
                         additional_def
                     )
