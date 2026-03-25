@@ -176,12 +176,11 @@ class LearnDefinitions(BaseFOL):
                     )
                     self._validate_additional_predicates(add_bck_def)
                 except Exception as e:
-                    # If additional generated definitions for the missing predicates
-                    # are not parseable, we return the error to llm.
-                    # This will lead generating new FOL formula input chemical class
-                    # instead of trying to fix the additional missing predicates definitions
-
                     if curr_outofbox < outofbox_max_attempts:
+                        # If the additional definitions generated for out-of-box predicates
+                        # are not parseable, we retry generating them up one more time, as
+                        # we want to give the model a chance to correct them before consuming
+                        # the main attempt for learning the chemical class definition
                         curr_outofbox += 1
                         attempts += 1
                         print(
@@ -195,6 +194,16 @@ class LearnDefinitions(BaseFOL):
                         )
                         continue
 
+                    # If additional generated definitions for the missing predicates
+                    # are not parseable, we return the error to llm.
+                    # This will lead generating new FOL formula input chemical class
+                    # instead of trying to fix the additional missing predicates definitions
+                    raised_exception = e
+                    attempts += 1
+                    print(
+                        f"Failed to validate out-of-box predicate definitions for {chemical_class.name}. "
+                        f"Consuming attempt {attempts + 1}/{self.max_attempts + 1} and retrying."
+                    )
                     continue
             elif isinstance(raised_exception, ce.RetryException):
                 # Retries the result generated from previous attempt
