@@ -119,7 +119,6 @@ class LearnDefinitions(BaseFOL):
                 chemical_class=chemical_class,
                 low_score_defs_collector=low_score_defs_collector,
             )
-            self._on_successful_learning(chemical_class)
             return
         except Exception as e:
             raised_exception = e
@@ -214,7 +213,6 @@ class LearnDefinitions(BaseFOL):
                     temp_additional_defs=add_bck_def,
                     low_score_defs_collector=low_score_defs_collector,
                 )
-                self._on_successful_learning(chemical_class)
                 return
             except Exception as e:
                 raised_exception = e
@@ -231,8 +229,6 @@ class LearnDefinitions(BaseFOL):
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
         self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
-        self._failed_classes.add(chemical_class.name)
-        self._post_cleanup(session_id=chemical_class.name)
 
     def _accept_highest_scoring_def(
         self,
@@ -285,14 +281,6 @@ class LearnDefinitions(BaseFOL):
         self._accept_learned_definition(
             chemical_class, scored_def=best_scored_def, learn_success=learn_success
         )
-
-    def _on_successful_learning(self, chemical_class: dm.ChemicalClass):
-        self._learned_classes.add(chemical_class.name)
-        if chemical_class.name in self._failed_classes:
-            # some recursive calls might lead to re-learning of already failed classes
-            self._failed_classes.remove(chemical_class.name)
-        self._save_definitions()
-        self._post_cleanup(session_id=chemical_class.name)
 
     def _post_cleanup(self, session_id: str):
         # This is to clean up the session history after learning a definition for a chemical
@@ -534,10 +522,13 @@ class LearnDefinitions(BaseFOL):
                             learn_success=learn_success,
                         )
                     )
-                    self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
-                    self._gavel.add_background_definition(
-                        def_name, pred_vars, background_def
-                    )
+                    if learn_success:
+                        self._add_generated_predicates_to_prompt_obj(
+                            def_name, pred_vars
+                        )
+                        self._gavel.add_background_definition(
+                            def_name, pred_vars, background_def
+                        )
 
         prompts_history = self.chebi_prompt_obj.get_full_conversation_context(
             chemical_class.name
@@ -570,6 +561,16 @@ class LearnDefinitions(BaseFOL):
             f"Learned definition for {chemical_class.id}:{chemical_class.name} "
             f"with F1 score: {scored_def.train_metrics.F1:.2f}"
         )
+
+        if not learn_success:
+            self._failed_classes.add(chemical_class.name)
+        else:
+            self._learned_classes.add(chemical_class.name)
+            if chemical_class.name in self._failed_classes:
+                # some recursive calls might lead to re-learning of already failed classes
+                self._failed_classes.remove(chemical_class.name)
+        self._save_definitions()
+        self._post_cleanup(session_id=chemical_class.name)
 
     def _add_generated_predicates_to_prompt_obj(
         self,
