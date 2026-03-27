@@ -678,7 +678,7 @@ class LearnDefinitions(BaseFOL):
             pickle.dump(self.definitions, f)
 
         with open(meta_data_path, "w") as f:
-            f.write(str(self.chebi_prompt_obj))
+            f.write(str(self))
 
     @property
     def definitions_save_path(self) -> str:
@@ -687,3 +687,13 @@ class LearnDefinitions(BaseFOL):
             "learned",
             self.chebi_prompt_obj.model_name,
         )
+
+    def __repr__(self) -> str:
+        return f"""
+        DefinitionLearner(chebi_prompt_obj={self.chebi_prompt_obj}),
+        max_attempts={self.max_attempts},
+        f1_threshold={self.f1_threshold},
+        slim_dataset_path={self.slim_dataset_path},
+        structures_path={self.structures_path},
+        chebi_version={self.chebi_version},
+        """
