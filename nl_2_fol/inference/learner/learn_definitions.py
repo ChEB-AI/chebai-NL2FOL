@@ -174,7 +174,9 @@ class LearnDefinitions(BaseFOL):
                     add_bck_def = self._gavel.convert_to_background_definitions(
                         additional_def
                     )
-                    self._validate_additional_predicates(add_bck_def)
+                    self._validate_additional_predicates(
+                        add_bck_def, current_class_name=chemical_class.name
+                    )
                 except Exception as e:
                     if curr_outofbox < outofbox_max_attempts:
                         # If the additional definitions generated for out-of-box predicates
@@ -297,7 +299,9 @@ class LearnDefinitions(BaseFOL):
         self.chebi_prompt_obj.delete_session_history(session_id=session_id)
 
     def _validate_additional_predicates(
-        self, add_bck_def: dict[str, tuple[list[logic.Variable], QuantifiedFormula]]
+        self,
+        add_bck_def: dict[str, tuple[list[logic.Variable], QuantifiedFormula]],
+        current_class_name: str,
     ):
         # Formula 1: class A -> class B & class C
         # Formula 2: class B -> class D
@@ -315,36 +319,46 @@ class LearnDefinitions(BaseFOL):
                 f"{unknown_predicates}"
             )
             for unknown_pred in unknown_predicates:
-                if unknown_pred in self._failed_classes:
-                    if unknown_pred not in add_bck_def:
+                unknown_pred_name = str(unknown_pred)
+                if unknown_pred_name == current_class_name:
+                    raise Exception(
+                        f"The definition of {pred_name} introduces a circular "
+                        "dependency by referencing the predicate of class currently being "
+                        f"learned ('{current_class_name}')."
+                    )
+
+                if unknown_pred_name in self._failed_classes:
+                    if unknown_pred_name not in add_bck_def:
                         print(
                             "[validate_additional] Failed class predicate has no "
-                            f"definition provided: '{unknown_pred}'."
+                            f"definition provided: '{unknown_pred_name}'."
                         )
                         raise Exception(
-                            f"Predicate {unknown_pred} which is part of the additional "
+                            f"Predicate {unknown_pred_name} which is part of the additional "
                             "background definition is also part of the failed classes list, "
                             "but no definition provided for it in the additional background "
                             "definitions. Hence we cannot validate the main predicate "
                             f"{pred_name} definition."
                         )
-                elif unknown_pred in self._learned_classes:
-                    if unknown_pred in add_bck_def:
+                elif unknown_pred_name in self._learned_classes:
+                    if unknown_pred_name in add_bck_def:
                         # use learned definition instead of provided def
                         print(
                             "[validate_additional] Predicate already learned; removing "
-                            f"redundant additional definition: '{unknown_pred}'."
+                            f"redundant additional definition: '{unknown_pred_name}'."
                         )
-                        add_bck_def.pop(unknown_pred)
-                elif unknown_pred in self._c3po_slim_data.classes:
+                        add_bck_def.pop(unknown_pred_name)
+                elif unknown_pred_name in self._c3po_slim_data.classes:
                     print(
                         "[validate_additional] Predicate is a slim dataset class; "
-                        f"triggering recursive learning: '{unknown_pred}'."
+                        f"triggering recursive learning: '{unknown_pred_name}'."
                     )
                     self._learn(
-                        self._c3po_slim_data.get_chemical_class_by_name(unknown_pred)
+                        self._c3po_slim_data.get_chemical_class_by_name(
+                            unknown_pred_name
+                        )
                     )
-                elif unknown_pred not in add_bck_def:
+                elif unknown_pred_name not in add_bck_def:
                     # This means the definition provided for the missing predicate also
                     # contains unknown predicates which we don't have definitions for,
                     # hence we cannot validate it and we raise an exception to llm to
@@ -352,18 +366,18 @@ class LearnDefinitions(BaseFOL):
                     # trying to fix the additional background definition
                     print(
                         "[validate_additional] Unknown nested predicate is not provided "
-                        f"in additional definitions: '{unknown_pred}'."
+                        f"in additional definitions: '{unknown_pred_name}'."
                     )
                     raise Exception(
                         "Additional background definition provided for missing predicate "
-                        f"{unknown_pred} contains unknown predicates "
+                        f"{unknown_pred_name} contains unknown predicates "
                         f"{self._gavel.extract_unknown_predicates(defn)} which we don't "
                         "have definitions for. Hence we cannot validate it."
                     )
                 else:
                     print(
                         "[validate_additional] Unknown predicate has its own additional "
-                        f"definition: '{unknown_pred}'."
+                        f"definition: '{unknown_pred_name}'."
                     )
 
             if pred_name in self._learned_classes:
@@ -374,6 +388,12 @@ class LearnDefinitions(BaseFOL):
                 )
                 add_bck_def.pop(pred_name)
             elif pred_name in self._c3po_slim_data.classes:
+                if pred_name == current_class_name:
+                    raise Exception(
+                        "Additional predicate validation produced the same class as "
+                        f"the current learning target ('{current_class_name}'), "
+                        "which creates a circular recursive dependency."
+                    )
                 if pred_name in self._failed_classes:
                     # We still might want to attempt learning, now certain predicates
                     # which are part of the additional definition might be learned
