@@ -12,7 +12,7 @@ from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 
 class BaseFOL:
-    _DEFINITION_FILE_NAME = "learned_definitions.pkl"
+    _DEFINITION_FILE_NAME = "learned_definitions_a{max_attempts}.pkl"
     _MAX_NEGATIVE_SAMPLES = 1000
     _SAMPLE_MATCH_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
 

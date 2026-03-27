@@ -14,7 +14,7 @@ from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
 class LearnDefinitions(BaseFOL):
-    _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
+    _MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION = 5
 
     def __init__(
         self,
@@ -517,7 +517,7 @@ class LearnDefinitions(BaseFOL):
                 neg_samples=processed_neg_samples,
                 matched_neg_samples=matched_neg_samples,
                 unmatched_pos_samples=unmatched_pos_samples,
-                max_examples=self._MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION,
+                max_examples=self._MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION,
                 chebi_name_to_data_mapping=self._chebi_name_to_data_map_train,
             )
 
@@ -625,9 +625,8 @@ class LearnDefinitions(BaseFOL):
     ) -> def_model.DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
-        default_path = os.path.join(
-            self.definitions_save_path, self._DEFINITION_FILE_NAME
-        )
+        file_name = self._DEFINITION_FILE_NAME.format(max_attempts=self.max_attempts)
+        default_path = os.path.join(self.definitions_save_path, file_name)
         print(f"Loading definitions from {default_path} if it exists...")
         if os.path.exists(default_path):
             with open(default_path, "rb") as f:
@@ -687,7 +686,8 @@ class LearnDefinitions(BaseFOL):
             path = self.definitions_save_path
             os.makedirs(path, exist_ok=True)
 
-        file_path = os.path.join(path, self._DEFINITION_FILE_NAME)
+        file_name = self._DEFINITION_FILE_NAME.format(max_attempts=self.max_attempts)
+        file_path = os.path.join(path, file_name)
         meta_data_path = os.path.join(path, "__metadata__.txt")
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -716,4 +716,7 @@ class LearnDefinitions(BaseFOL):
         slim_dataset_path={self.slim_dataset_path},
         structures_path={self.structures_path},
         chebi_version={self.chebi_version},
+        Maximum_negative_samples={self._MAX_NEGATIVE_SAMPLES},
+        Sample_match_timeout_seconds={self._SAMPLE_MATCH_TIMEOUT_SECONDS},
+        Max_samples_for_low_threshold_exception={self._MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION}
         """
