@@ -125,6 +125,9 @@ Then run:
 python nl_2_fol/inference/cli.py --api_platform="ollama" --model_name="my-mistral"
 ```
 
+**IMPORTANT:** Ensure `ollama serve` and the inference command run on the same compute node.
+For example, if `ollama serve` starts on `hpc3-52` but the inference command runs on `hpc3-54`, the connection might fail.
+
 Expected result:
 - The CLI connects to your local Ollama instance.
 - The `my-mistral` model is used for NL-to-FOL inference.
