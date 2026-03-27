@@ -91,7 +91,7 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
     between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
     between_04_06 = sum(1 for score in scores if 0.4 <= score < 0.6)
     between_02_04 = sum(1 for score in scores if 0.2 <= score < 0.4)
-    between_00_02 = sum(1 for score in scores if 0.0 <= score < 0.2)
+    between_00_02 = sum(1 for score in scores if 0.0 < score < 0.2)
     equal_to_0 = sum(1 for score in scores if score == 0.0)
 
     print("Score buckets:")
@@ -107,7 +107,7 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
         f"  0.2 <= score < 0.4: {between_02_04} ({(between_02_04 / total) * 100:.2f}%)"
     )
     print(
-        f"  0.0 <= score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
+        f"  0.0 < score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
     )
     print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
 
