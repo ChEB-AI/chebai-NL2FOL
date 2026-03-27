@@ -113,10 +113,8 @@ On some clusters, proxy variables can interfere with localhost routing, so unset
 Open a new terminal and bypass proxy settings for localhost if needed:
 
 ```bash
-unset http_proxy
-unset https_proxy
-unset HTTP_PROXY
-unset HTTPS_PROXY
+export NO_PROXY=127.0.0.1,localhost,.local
+export no_proxy=127.0.0.1,localhost,.local
 ```
 
 Then run:
