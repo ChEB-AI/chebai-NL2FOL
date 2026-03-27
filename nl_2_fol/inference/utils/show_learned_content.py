@@ -63,24 +63,18 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
 
     requested_metric = metric_name.upper()
     scores = []
-    skipped = 0
+    failed = 0
 
     for learned_def in data.learned_definitions.values():
-        metric_value = getattr(learned_def.train_metrics, requested_metric, None)
-        if metric_value is None:
-            skipped += 1
-            continue
-
-        try:
-            scores.append(float(metric_value))
-        except (TypeError, ValueError):
-            skipped += 1
+        metric_value = getattr(learned_def.train_metrics, requested_metric)
+        if not learned_def.learn_success:
+            failed += 1
+        scores.append(float(metric_value))
 
     total = len(scores)
     print(f"Metric: {requested_metric}")
-    print(f"Total learned definitions: {len(data.learned_definitions)}")
-    print(f"Definitions with valid {requested_metric}: {total}")
-    print(f"Definitions skipped (missing/invalid metric): {skipped}")
+    print(f"Total definitions: {len(data.learned_definitions)}")
+    print(f"Definitions failed to learn: {failed}")
 
     if total == 0:
         print("No valid scores found. Nothing to summarize.")
@@ -109,7 +103,9 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
     print(
         f"  0.0 < score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
     )
-    print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
+    print(
+        f"  score == 0.0: {equal_to_0} (out of which {failed} failed to learn) ({(equal_to_0 / total) * 100:.2f}%)"
+    )
 
 
 def delete_class_from_pickle(
