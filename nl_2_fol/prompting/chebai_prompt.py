@@ -1,6 +1,9 @@
 import json
+import os
+from typing import Callable, cast
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -19,6 +22,8 @@ from nl_2_fol.prompting.utils.read_configs import json_to_pyObj, load_yaml_sys_p
 
 
 class ChebiPrompt:
+    MAX_INPUT_TOKENS = 15000
+
     def __init__(
         self,
         platform: API_PLATFORM,
@@ -43,6 +48,35 @@ class ChebiPrompt:
 
         self._conversation_chain = self._get_conversation_chain()
         self._undef_failure_chain = self._get_undef_failure_chain()
+
+    def _count_prompt_tokens(self, text: str) -> int:
+        """Count tokens using model-specific tokenizer when available.
+
+        We intentionally avoid LangChain's BaseLanguageModel.get_num_tokens fallback,
+        which uses a GPT-2 tokenizer and emits a warning for non-GPT-2 models.
+        """
+        get_num_tokens = getattr(self._llm, "get_num_tokens", None)
+        base_fallback = getattr(BaseLanguageModel, "get_num_tokens", None)
+        bound_func = getattr(get_num_tokens, "__func__", None)
+
+        if callable(get_num_tokens) and bound_func is not base_fallback:
+            token_counter = cast(Callable[[str], int], get_num_tokens)
+            return int(token_counter(text))
+
+        # Conservative fallback used only when model tokenizer API is unavailable.
+        # Typical English tokenization is roughly 1 token per 4 chars.
+        return max(1, len(text) // 4)
+
+    def _enforce_input_token_limit(self, *, input_text: str, call_name: str) -> None:
+        if self.MAX_INPUT_TOKENS is None:
+            raise ValueError("MAX_INPUT_TOKENS is not set. Cannot enforce token limit.")
+
+        token_count = self._count_prompt_tokens(input_text)
+        if token_count > self.MAX_INPUT_TOKENS:
+            raise ValueError(
+                "Input token limit exceeded before inference "
+                f"in {call_name}: {token_count} > {self.MAX_INPUT_TOKENS}."
+            )
 
     # -------- Conversation Chain Construction --------------------- ##
     def _get_conversation_chain(self) -> Runnable:
@@ -165,6 +199,11 @@ class ChebiPrompt:
         self, *, input_text: str, session_id: str
     ) -> CHEBIFOLOutput:
         try:
+            self._enforce_input_token_limit(
+                input_text=input_text,
+                call_name="invoke_llm_first_call",
+            )
+
             # Get session history
             history = self.get_session_history(session_id)
 
@@ -192,6 +231,10 @@ class ChebiPrompt:
     ) -> CHEBIFOLOutput:
         try:
             error_prompt = self._get_err_failure_prompt(error_message)
+            self._enforce_input_token_limit(
+                input_text=error_prompt,
+                call_name="invoke_llm_with_error_failure_prompt",
+            )
 
             # Get session history
             history = self.get_session_history(session_id)
@@ -232,6 +275,10 @@ class ChebiPrompt:
             undefined_predicates_text = self._get_undef_failure_prompt(
                 undefined_predicates,
                 retry_context=retry_context,
+            )
+            self._enforce_input_token_limit(
+                input_text=undefined_predicates_text,
+                call_name="invoke_llm_with_undef_failure_prompt",
             )
 
             # Get session history
@@ -380,8 +427,6 @@ class ChebiPrompt:
 if __name__ == "__main__":
     # ------------------- TESTING THE CLASS ------------------#
     # Example usage
-    import os
-
     base_dir = os.path.dirname(os.path.abspath(__file__))
     prompt_dir = os.path.join(base_dir, "prompt_templates")
     chebai_prompt = ChebiPrompt(
