@@ -1,6 +1,7 @@
 import traceback
 from functools import wraps
 
+from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.preprocessing import SMILES_STRING
 from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
 
@@ -12,7 +13,8 @@ def tptp_parse_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -27,7 +29,8 @@ def mol_to_fol_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -42,7 +45,8 @@ def model_check_exception(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise e
@@ -62,7 +66,8 @@ def stop_program_upon_failure(func):
             return func(*args, **kwargs)
         except Exception as e:
             print(f"{func.__name__} failed: {e}")
-            traceback.print_exc()
+            if PRINT_TRACES:
+                traceback.print_exc()
             # Error can be customized here for LLMs feedback,
             # for now we just print the error and return it
             raise StopProgramException(str(e)) from e
@@ -165,16 +170,20 @@ class LowF1ScoreException(Exception):
             return chemical_details
 
         fp_percentage = (
-            len(matched_neg_samples) / len(neg_samples) if neg_samples else 0
+            len(matched_neg_samples) / len(neg_samples) if neg_samples else 0.0
         )
         fn_percentage = (
-            len(unmatched_pos_samples) / len(pos_samples) if pos_samples else 0
+            len(unmatched_pos_samples) / len(pos_samples) if pos_samples else 0.0
         )
-        if fn_percentage < 0.1 and fp_percentage > 0.1:
+        if (fn_percentage < 0.1 and fp_percentage > 0.1) or (
+            fn_percentage == 0.0 and fp_percentage > 0.0
+        ):
             # When FN is less than 10% but FP is more than 10%,
             # we prioritize showing FP examples as they are more prevalent
             error_priority = "FP"
-        elif fn_percentage > 0.1 and fp_percentage < 0.1:
+        elif (fn_percentage > 0.1 and fp_percentage < 0.1) or (
+            fn_percentage > 0.0 and fp_percentage == 0.0
+        ):
             error_priority = "FN"
         else:
             error_priority = "both"

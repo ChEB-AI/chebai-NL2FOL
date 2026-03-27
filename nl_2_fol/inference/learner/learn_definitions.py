@@ -1,6 +1,5 @@
 import os
 import pickle
-import traceback
 
 import tqdm
 from gavel.logic import logic
@@ -48,7 +47,6 @@ class LearnDefinitions(BaseFOL):
         self._chebi_name_to_data_map_train = (
             self._entire_chebi_data.get_name_to_data_mapping_train()
         )
-        self._attempts: int = 0
 
     def learn_fol_definitions(self):
         for chemical_class_name in tqdm.tqdm(self._c3po_slim_data.classes.keys()):
@@ -96,8 +94,7 @@ class LearnDefinitions(BaseFOL):
         self._learn(chemical_class)
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
-        self._attempts = 0
-        attempt_failure_summary = []
+        attempts = 0
 
         # Tracks all the definitions which scored below threshold from all attempts
         # If no generated def pass the threshold, then we accept the one with best score
@@ -122,18 +119,13 @@ class LearnDefinitions(BaseFOL):
                 chemical_class=chemical_class,
                 low_score_defs_collector=low_score_defs_collector,
             )
-            self._on_successful_learning(chemical_class)
             return
         except Exception as e:
-            error_trace = traceback.format_exc()
             raised_exception = e
             if isinstance(e, ce.MissingPredicateException):
                 raised_exception = self._handle_missing_predicates_exception(e)
             elif isinstance(e, ce.StopProgramException):
                 raise e
-            attempt_failure_summary.append(
-                f"Attempt {self._attempts} failed with exception: {raised_exception}\nStacktrace:\n{error_trace}"
-            )
 
         print(
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
@@ -142,9 +134,9 @@ class LearnDefinitions(BaseFOL):
         previous_fol_def = result.FOL_formula if result else ""
         outofbox_max_attempts, curr_outofbox = 1, 0
         undef_retry_context: str | None = None
-        while self._attempts < self.max_attempts:
+        while attempts < self.max_attempts:
             print(
-                f"Attempt {self._attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
+                f"Attempt {attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
             )
             add_bck_def = None
             if isinstance(raised_exception, ce.LearnOutOfBoxPredicateException):
@@ -166,26 +158,35 @@ class LearnDefinitions(BaseFOL):
                 )
 
                 try:
+                    class_def = additional_def.pop(chemical_class.name, None)
+                    if class_def is not None and result is not None:
+                        # If LLM also returns a new definition for the main chemical class
+                        # along with the missing predicates definitions, we use it directly
+                        # instead of retrying with the same definition, as the new
+                        # definition might have changes
+                        print(
+                            f"LLM returned a new definition for the main chemical "
+                            f"class along with the missing predicates definitions, "
+                            f"using it directly instead of retrying with the same "
+                            f"definition: {class_def}"
+                        )
+                        result.FOL_formula = class_def
                     add_bck_def = self._gavel.convert_to_background_definitions(
                         additional_def
                     )
-                    self._validate_additional_predicates(add_bck_def)
-                except Exception as e:
-                    error_trace = traceback.format_exc()
-                    # If additional generated definitions for the missing predicates
-                    # are not parseable, we return the error to llm.
-                    # This will lead generating new FOL formula input chemical class
-                    # instead of trying to fix the additional missing predicates definitions
-
-                    attempt_failure_summary.append(
-                        f"Attempt {self._attempts + 2} failed with unparseable additional"
-                        f"definition for out-of-box predicate: {additional_def}. Error: {e}\nStacktrace:\n{error_trace}"
+                    self._validate_additional_predicates(
+                        add_bck_def, current_class_name=chemical_class.name
                     )
+                except Exception as e:
                     if curr_outofbox < outofbox_max_attempts:
+                        # If the additional definitions generated for out-of-box predicates
+                        # are not parseable, we retry generating them up one more time, as
+                        # we want to give the model a chance to correct them before consuming
+                        # the main attempt for learning the chemical class definition
                         curr_outofbox += 1
-                        self._attempts += 1
+                        attempts += 1
                         print(
-                            f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {self._attempts + 3}"
+                            f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {attempts + 3}"
                         )
                         undef_retry_context = (
                             "[IMPORTANT] Previously generated additional definitions "
@@ -195,6 +196,16 @@ class LearnDefinitions(BaseFOL):
                         )
                         continue
 
+                    # If additional generated definitions for the missing predicates
+                    # are not parseable, we return the error to llm.
+                    # This will lead generating new FOL formula input chemical class
+                    # instead of trying to fix the additional missing predicates definitions
+                    raised_exception = e
+                    attempts += 1
+                    print(
+                        f"Failed to validate out-of-box predicate definitions for {chemical_class.name}. "
+                        f"Consuming attempt {attempts + 1}/{self.max_attempts + 1} and retrying."
+                    )
                     continue
             elif isinstance(raised_exception, ce.RetryException):
                 # Retries the result generated from previous attempt
@@ -213,10 +224,8 @@ class LearnDefinitions(BaseFOL):
                     temp_additional_defs=add_bck_def,
                     low_score_defs_collector=low_score_defs_collector,
                 )
-                self._on_successful_learning(chemical_class)
                 return
             except Exception as e:
-                error_trace = traceback.format_exc()
                 raised_exception = e
                 if isinstance(e, ce.MissingPredicateException):
                     raised_exception = self._handle_missing_predicates_exception(e)
@@ -227,15 +236,10 @@ class LearnDefinitions(BaseFOL):
                     f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}\n",
                     f"\tRaised exception: {raised_exception}]\n",
                 )
-                self._attempts += 1
-                attempt_failure_summary.append(
-                    f"Attempt {self._attempts} failed with exception: {raised_exception}\nStacktrace:\n{error_trace}"
-                )
+                attempts += 1
                 previous_fol_def = result.FOL_formula if result else previous_fol_def
 
         self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
-        self._failed_classes.add(chemical_class.name)
-        self._post_cleanup(session_id=chemical_class.name)
 
     def _accept_highest_scoring_def(
         self,
@@ -276,7 +280,7 @@ class LearnDefinitions(BaseFOL):
             f"{self.f1_threshold:.2f}, accepting the definition with the highest F1 "
             f"score {best_scored_def.train_metrics.F1:.2f} "
             f"among {len(low_score_defs_collector)} low threshold defintions generated in "
-            f"{self._attempts} previous attempts."
+            f"all previous attempts."
         )
         learn_success = True
         if best_scored_def.train_metrics.F1 <= 0.0:
@@ -289,21 +293,15 @@ class LearnDefinitions(BaseFOL):
             chemical_class, scored_def=best_scored_def, learn_success=learn_success
         )
 
-    def _on_successful_learning(self, chemical_class: dm.ChemicalClass):
-        self._learned_classes.add(chemical_class.name)
-        if chemical_class.name in self._failed_classes:
-            # some recursive calls might lead to re-learning of already failed classes
-            self._failed_classes.remove(chemical_class.name)
-        self._save_definitions()
-        self._post_cleanup(session_id=chemical_class.name)
-
     def _post_cleanup(self, session_id: str):
         # This is to clean up the session history after learning a definition for a chemical
         # class or attempts are exhausted, so avoid uncessary runtime memory usage
         self.chebi_prompt_obj.delete_session_history(session_id=session_id)
 
     def _validate_additional_predicates(
-        self, add_bck_def: dict[str, tuple[list[logic.Variable], QuantifiedFormula]]
+        self,
+        add_bck_def: dict[str, tuple[list[logic.Variable], QuantifiedFormula]],
+        current_class_name: str,
     ):
         # Formula 1: class A -> class B & class C
         # Formula 2: class B -> class D
@@ -321,36 +319,46 @@ class LearnDefinitions(BaseFOL):
                 f"{unknown_predicates}"
             )
             for unknown_pred in unknown_predicates:
-                if unknown_pred in self._failed_classes:
-                    if unknown_pred not in add_bck_def:
+                unknown_pred_name = str(unknown_pred)
+                if unknown_pred_name == current_class_name:
+                    raise Exception(
+                        f"The definition of {pred_name} introduces a circular "
+                        "dependency by referencing the predicate of class currently being "
+                        f"learned ('{current_class_name}')."
+                    )
+
+                if unknown_pred_name in self._failed_classes:
+                    if unknown_pred_name not in add_bck_def:
                         print(
                             "[validate_additional] Failed class predicate has no "
-                            f"definition provided: '{unknown_pred}'."
+                            f"definition provided: '{unknown_pred_name}'."
                         )
                         raise Exception(
-                            f"Predicate {unknown_pred} which is part of the additional "
+                            f"Predicate {unknown_pred_name} which is part of the additional "
                             "background definition is also part of the failed classes list, "
                             "but no definition provided for it in the additional background "
                             "definitions. Hence we cannot validate the main predicate "
                             f"{pred_name} definition."
                         )
-                elif unknown_pred in self._learned_classes:
-                    if unknown_pred in add_bck_def:
+                elif unknown_pred_name in self._learned_classes:
+                    if unknown_pred_name in add_bck_def:
                         # use learned definition instead of provided def
                         print(
                             "[validate_additional] Predicate already learned; removing "
-                            f"redundant additional definition: '{unknown_pred}'."
+                            f"redundant additional definition: '{unknown_pred_name}'."
                         )
-                        add_bck_def.pop(unknown_pred)
-                elif unknown_pred in self._c3po_slim_data.classes:
+                        add_bck_def.pop(unknown_pred_name)
+                elif unknown_pred_name in self._c3po_slim_data.classes:
                     print(
                         "[validate_additional] Predicate is a slim dataset class; "
-                        f"triggering recursive learning: '{unknown_pred}'."
+                        f"triggering recursive learning: '{unknown_pred_name}'."
                     )
                     self._learn(
-                        self._c3po_slim_data.get_chemical_class_by_name(unknown_pred)
+                        self._c3po_slim_data.get_chemical_class_by_name(
+                            unknown_pred_name
+                        )
                     )
-                elif unknown_pred not in add_bck_def:
+                elif unknown_pred_name not in add_bck_def:
                     # This means the definition provided for the missing predicate also
                     # contains unknown predicates which we don't have definitions for,
                     # hence we cannot validate it and we raise an exception to llm to
@@ -358,18 +366,18 @@ class LearnDefinitions(BaseFOL):
                     # trying to fix the additional background definition
                     print(
                         "[validate_additional] Unknown nested predicate is not provided "
-                        f"in additional definitions: '{unknown_pred}'."
+                        f"in additional definitions: '{unknown_pred_name}'."
                     )
                     raise Exception(
                         "Additional background definition provided for missing predicate "
-                        f"{unknown_pred} contains unknown predicates "
+                        f"{unknown_pred_name} contains unknown predicates "
                         f"{self._gavel.extract_unknown_predicates(defn)} which we don't "
                         "have definitions for. Hence we cannot validate it."
                     )
                 else:
                     print(
                         "[validate_additional] Unknown predicate has its own additional "
-                        f"definition: '{unknown_pred}'."
+                        f"definition: '{unknown_pred_name}'."
                     )
 
             if pred_name in self._learned_classes:
@@ -380,6 +388,12 @@ class LearnDefinitions(BaseFOL):
                 )
                 add_bck_def.pop(pred_name)
             elif pred_name in self._c3po_slim_data.classes:
+                if pred_name == current_class_name:
+                    raise Exception(
+                        "Additional predicate validation produced the same class as "
+                        f"the current learning target ('{current_class_name}'), "
+                        "which creates a circular recursive dependency."
+                    )
                 if pred_name in self._failed_classes:
                     # We still might want to attempt learning, now certain predicates
                     # which are part of the additional definition might be learned
@@ -490,7 +504,7 @@ class LearnDefinitions(BaseFOL):
         )
 
         if train_metrics.F1 < self.f1_threshold:
-            low_score_defs_collector[self._attempts] = scored_def
+            low_score_defs_collector[len(low_score_defs_collector)] = scored_def
 
             print(
                 f"F1 score {train_metrics.F1:.2f} is below the threshold of "
@@ -537,10 +551,13 @@ class LearnDefinitions(BaseFOL):
                             learn_success=learn_success,
                         )
                     )
-                    self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
-                    self._gavel.add_background_definition(
-                        def_name, pred_vars, background_def
-                    )
+                    if learn_success:
+                        self._add_generated_predicates_to_prompt_obj(
+                            def_name, pred_vars
+                        )
+                        self._gavel.add_background_definition(
+                            def_name, pred_vars, background_def
+                        )
 
         prompts_history = self.chebi_prompt_obj.get_full_conversation_context(
             chemical_class.name
@@ -573,6 +590,16 @@ class LearnDefinitions(BaseFOL):
             f"Learned definition for {chemical_class.id}:{chemical_class.name} "
             f"with F1 score: {scored_def.train_metrics.F1:.2f}"
         )
+
+        if not learn_success:
+            self._failed_classes.add(chemical_class.name)
+        else:
+            self._learned_classes.add(chemical_class.name)
+            if chemical_class.name in self._failed_classes:
+                # some recursive calls might lead to re-learning of already failed classes
+                self._failed_classes.remove(chemical_class.name)
+        self._save_definitions()
+        self._post_cleanup(session_id=chemical_class.name)
 
     def _add_generated_predicates_to_prompt_obj(
         self,
@@ -671,7 +698,7 @@ class LearnDefinitions(BaseFOL):
             pickle.dump(self.definitions, f)
 
         with open(meta_data_path, "w") as f:
-            f.write(str(self.chebi_prompt_obj))
+            f.write(str(self))
 
     @property
     def definitions_save_path(self) -> str:
@@ -680,3 +707,13 @@ class LearnDefinitions(BaseFOL):
             "learned",
             self.chebi_prompt_obj.model_name,
         )
+
+    def __repr__(self) -> str:
+        return f"""
+        DefinitionLearner(chebi_prompt_obj={self.chebi_prompt_obj}),
+        max_attempts={self.max_attempts},
+        f1_threshold={self.f1_threshold},
+        slim_dataset_path={self.slim_dataset_path},
+        structures_path={self.structures_path},
+        chebi_version={self.chebi_version},
+        """

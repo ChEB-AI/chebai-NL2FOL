@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import queue
+import sys
 import time
 import traceback
 from importlib import import_module
@@ -8,12 +9,14 @@ from importlib import import_module
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
+from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
-__all__ = ["check_if_definition_matches_samples"]
+assert sys.version_info >= (3, 11), "Python 3.11 or newer is required."
 
+__all__ = ["check_if_definition_matches_samples"]
 
 WorkerError = tuple[
     str,
@@ -71,7 +74,8 @@ def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
     error_message, error_trace, exc_module, exc_qualname, exc_args, exc_state = (
         worker_error
     )
-    print(error_message, error_trace, sep="\n")
+    if PRINT_TRACES:
+        print(error_message, error_trace, sep="\n")
 
     exception_cls = _resolve_exception_class(exc_module, exc_qualname)
     if exception_cls is not None:
@@ -188,11 +192,12 @@ def check_if_definition_matches_samples(
             elif event_type == "error":
                 pos_worker_error = _parse_error_event(event)
                 error_message = pos_worker_error[0]
-                print(
-                    f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
-                    f"{error_message}",
-                    flush=True,
-                )
+                if PRINT_TRACES:
+                    print(
+                        f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
+                        f"{error_message}",
+                        flush=True,
+                    )
 
     def drain_neg_queue() -> None:
         nonlocal neg_worker_error
@@ -218,11 +223,12 @@ def check_if_definition_matches_samples(
             elif event_type == "error":
                 neg_worker_error = _parse_error_event(event)
                 error_message = neg_worker_error[0]
-                print(
-                    f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
-                    f"{error_message}",
-                    flush=True,
-                )
+                if PRINT_TRACES:
+                    print(
+                        f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
+                        f"{error_message}",
+                        flush=True,
+                    )
 
     pos_worker.start()
     neg_worker.start()

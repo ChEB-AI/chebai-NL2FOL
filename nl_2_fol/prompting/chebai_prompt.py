@@ -1,7 +1,10 @@
 import json
+import os
+from typing import Callable, cast
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.language_models.base import BaseLanguageModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
     FewShotChatMessagePromptTemplate,
@@ -19,6 +22,8 @@ from nl_2_fol.prompting.utils.read_configs import json_to_pyObj, load_yaml_sys_p
 
 
 class ChebiPrompt:
+    MAX_INPUT_TOKENS = 15000
+
     def __init__(
         self,
         platform: API_PLATFORM,
@@ -168,6 +173,12 @@ class ChebiPrompt:
             # Get session history
             history = self.get_session_history(session_id)
 
+            self._enforce_full_prompt_token_limit(
+                input_text=input_text,
+                history_messages=history.messages,
+                call_name="invoke_llm_first_call",
+            )
+
             # Invoke chain with current history
             output = self._conversation_chain.invoke(
                 {
@@ -192,9 +203,14 @@ class ChebiPrompt:
     ) -> CHEBIFOLOutput:
         try:
             error_prompt = self._get_err_failure_prompt(error_message)
-
             # Get session history
             history = self.get_session_history(session_id)
+
+            self._enforce_full_prompt_token_limit(
+                input_text=error_prompt,
+                history_messages=history.messages,
+                call_name="invoke_llm_with_error_failure_prompt",
+            )
 
             # Invoke chain with current history
             output = self._conversation_chain.invoke(
@@ -233,9 +249,14 @@ class ChebiPrompt:
                 undefined_predicates,
                 retry_context=retry_context,
             )
-
             # Get session history
             history = self.get_session_history(session_id)
+
+            self._enforce_full_prompt_token_limit(
+                input_text=undefined_predicates_text,
+                history_messages=history.messages,
+                call_name="invoke_llm_with_undef_failure_prompt",
+            )
 
             # Invoke chain with current history
             output = self._undef_failure_chain.invoke(
@@ -376,12 +397,71 @@ class ChebiPrompt:
 
         print("\n" + "=" * 80)
 
+    def _enforce_full_prompt_token_limit(
+        self,
+        *,
+        input_text: str,
+        history_messages: list[BaseMessage],
+        call_name: str,
+    ) -> None:
+        if self.MAX_INPUT_TOKENS is None:
+            raise ValueError("MAX_INPUT_TOKENS is not set. Cannot enforce token limit.")
+
+        prompt_template = self._get_prompt_template()
+        assembled_messages = prompt_template.format_messages(
+            input=input_text,
+            history=history_messages,
+        )
+        token_count = self._count_prompt_messages_tokens(assembled_messages)
+        if token_count > self.MAX_INPUT_TOKENS:
+            raise ValueError(
+                "Prompt token limit exceeded before inference "
+                f"in {call_name}: {token_count} > {self.MAX_INPUT_TOKENS}. "
+                "Count includes system prompt, few-shot examples, conversation history, and input."
+            )
+
+    def _count_prompt_messages_tokens(self, messages: list[BaseMessage]) -> int:
+        get_num_tokens_from_messages = getattr(
+            self._llm, "get_num_tokens_from_messages", None
+        )
+        if callable(get_num_tokens_from_messages):
+            token_counter = cast(
+                Callable[[list[BaseMessage]], int], get_num_tokens_from_messages
+            )
+            try:
+                return int(token_counter(messages))
+            except Exception:
+                pass
+
+        # Conservative fallback for models that do not expose message-level token counting.
+        serialized_prompt = "\n".join(
+            f"{msg.type}: {msg.content if isinstance(msg.content, str) else str(msg.content)}"
+            for msg in messages
+        )
+        return self._count_prompt_tokens(serialized_prompt)
+
+    def _count_prompt_tokens(self, text: str) -> int:
+        """Count tokens using model-specific tokenizer when available.
+
+        We intentionally avoid LangChain's BaseLanguageModel.get_num_tokens fallback,
+        which uses a GPT-2 tokenizer and emits a warning for non-GPT-2 models.
+        """
+        get_num_tokens = getattr(self._llm, "get_num_tokens", None)
+        base_fallback = getattr(BaseLanguageModel, "get_num_tokens", None)
+        bound_func = getattr(get_num_tokens, "__func__", None)
+
+        if callable(get_num_tokens) and bound_func is not base_fallback:
+            token_counter = cast(Callable[[str], int], get_num_tokens)
+            return int(token_counter(text))
+
+        # Conservative fallback used only when model tokenizer API is unavailable.
+        # Typical English tokenization is roughly 1 token per 4 chars.
+        return max(1, len(text) // 4)
+
 
 if __name__ == "__main__":
     # ------------------- TESTING THE CLASS ------------------#
     # Example usage
-    import os
-
     base_dir = os.path.dirname(os.path.abspath(__file__))
     prompt_dir = os.path.join(base_dir, "prompt_templates")
     chebai_prompt = ChebiPrompt(

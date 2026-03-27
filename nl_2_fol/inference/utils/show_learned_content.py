@@ -20,9 +20,6 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
     with open(pickle_file_path, "rb") as f:
         data: DefinitionLearningResults = pickle.load(f)
 
-    print(f"Number of learned definitions: {len(data.learned_definitions)}")
-    print(f"Number of additional definitions: {len(data.additional_definitions)}")
-
     for _, learned_def in data.learned_definitions.items():
         if class_name != "all" and learned_def.name != class_name:
             continue
@@ -53,6 +50,66 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         print(f"Formula: {add_def.fol_formula.formula}")
         print(f"Learned success: {add_def.learn_success}")
         print("---" * 10)
+
+    print(f"Number of learned definitions: {len(data.learned_definitions)}")
+    print(f"Number of additional definitions: {len(data.additional_definitions)}")
+
+
+def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
+    """Print score distribution statistics for learned definitions."""
+
+    with open(pickle_file_path, "rb") as f:
+        data: DefinitionLearningResults = pickle.load(f)
+
+    requested_metric = metric_name.upper()
+    scores = []
+    skipped = 0
+
+    for learned_def in data.learned_definitions.values():
+        metric_value = getattr(learned_def.train_metrics, requested_metric, None)
+        if metric_value is None:
+            skipped += 1
+            continue
+
+        try:
+            scores.append(float(metric_value))
+        except (TypeError, ValueError):
+            skipped += 1
+
+    total = len(scores)
+    print(f"Metric: {requested_metric}")
+    print(f"Total learned definitions: {len(data.learned_definitions)}")
+    print(f"Definitions with valid {requested_metric}: {total}")
+    print(f"Definitions skipped (missing/invalid metric): {skipped}")
+
+    if total == 0:
+        print("No valid scores found. Nothing to summarize.")
+        return
+
+    perfect = sum(1 for score in scores if score == 1.0)
+    gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
+    between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
+    between_04_06 = sum(1 for score in scores if 0.4 <= score < 0.6)
+    between_02_04 = sum(1 for score in scores if 0.2 <= score < 0.4)
+    between_00_02 = sum(1 for score in scores if 0.0 <= score < 0.2)
+    equal_to_0 = sum(1 for score in scores if score == 0.0)
+
+    print("Score buckets:")
+    print(f"  score == 1.0: {perfect} ({(perfect / total) * 100:.2f}%)")
+    print(f"  0.8 <= score < 1.0: {gt_08} ({(gt_08 / total) * 100:.2f}%)")
+    print(
+        f"  0.6 <= score < 0.8: {between_06_08} ({(between_06_08 / total) * 100:.2f}%)"
+    )
+    print(
+        f"  0.4 <= score < 0.6: {between_04_06} ({(between_04_06 / total) * 100:.2f}%)"
+    )
+    print(
+        f"  0.2 <= score < 0.4: {between_02_04} ({(between_02_04 / total) * 100:.2f}%)"
+    )
+    print(
+        f"  0.0 <= score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
+    )
+    print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
 
 
 def delete_class_from_pickle(
@@ -144,6 +201,15 @@ def _parse_args():
         help="Do not create a backup when editing in place.",
     )
 
+    stats_parser = subparsers.add_parser(
+        "stats", help="Show score statistics for learned definitions."
+    )
+    stats_parser.add_argument(
+        "--metric",
+        default="F1",
+        help="Metric name from train_metrics to summarize (default: F1).",
+    )
+
     return parser.parse_args()
 
 
@@ -159,4 +225,9 @@ if __name__ == "__main__":
             class_name=args.class_name,
             output_file_path=args.output_file,
             create_backup=not args.no_backup,
+        )
+    elif args.command == "stats":
+        print_learned_definition_stats(
+            args.pickle_file,
+            metric_name=args.metric,
         )

@@ -12,29 +12,26 @@ readme = "README.md"
 license = { text = "AGPL-3.0" }
 requires-python = ">=3.11, <3.14"
 dependencies = [
-    "langchain>=1.2.0",
-    "PyYAML",
     "gavel @git+https://github.com/gavel-tool/python-gavel.git",
     "chemlog @git+https://github.com/sfluegel05/chemlog-peptides.git",
     "rdkit",
-    "dotenv",
     "jsonargparse",
 ]
 
 [project.optional-dependencies]
-groq = ["langchain-groq>=1.1.1"]
-anthropic = ["langchain-anthropic>=1.1.0"]
-
-custom_host = [
-    "torch",
-    "transformers",
-    "sentencepiece",
-    "accelerate",
-    "safetensors",
+dev = [
+    "langchain>=1.2.0",
+    "PyYAML",
+    "dotenv",
+    "langchain-anthropic>=1.1.0",
+    "langchain-ollama>=1.0.1",
+    "pytest>=7.0",
+    "ruff",
+    "isort",
+    "pre-commit",
 ]
 
-linters = ["ruff", "isort", "pre-commit"]
-test = ["pytest>=7.0"]
+groq = ["langchain-groq>=1.1.1"]
 
 
 [tool.setuptools]
