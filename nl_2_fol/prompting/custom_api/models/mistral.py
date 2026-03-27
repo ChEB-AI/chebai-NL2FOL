@@ -8,6 +8,7 @@ You can use the below command to access one such machine on the cluster:
 srun --partition=gpu --constraint="A100|H100.80gb" --ntasks=1 --cpus-per-task=8 --threads-per-core=1 --mem=80G --time=12:00:00 --gres=gpu:1 --pty bash
 """
 
+import logging
 import time
 from typing import Any, ClassVar
 
@@ -16,6 +17,11 @@ from langchain_core.language_models import LLM
 from peft import PeftModel
 from pydantic import PrivateAttr
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from nl_2_fol.inference import PRINT_TRACES
+
+
+logger = logging.getLogger(__name__)
 
 
 class Mistral_24B(LLM):
@@ -88,9 +94,12 @@ class Mistral_24B(LLM):
         outputs = self._model.generate(**inputs, max_new_tokens=5000)
         elapsed_seconds = time.perf_counter() - start_time
         prompt_count = len(input) if isinstance(input, list) else 1
-        print(
-            f"[Mistral_24B] Inference took {elapsed_seconds:.2f}s for {prompt_count} prompt(s)."
-        )
+        if PRINT_TRACES:
+            logger.info(
+                "[Mistral_24B] Inference took %.2fs for %d prompt(s).",
+                elapsed_seconds,
+                prompt_count,
+            )
 
         # Get the length of the input sequence
         input_length = inputs["input_ids"].shape[1]

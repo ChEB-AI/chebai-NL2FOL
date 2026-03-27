@@ -185,13 +185,6 @@ class LowF1ScoreException(Exception):
             fn_percentage > 0.0 and fp_percentage == 0.0
         ):
             error_priority = "FN"
-
-        elif fn_percentage == 0.0 and fp_percentage == 0.0:
-            raise ValueError(
-                "Both false positive and false negative percentages are zero, which is "
-                "unexpected when F1 score is low. Please check the input data and "
-                "calculations."
-            )
         else:
             error_priority = "both"
 

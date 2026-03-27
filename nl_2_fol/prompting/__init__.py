@@ -12,6 +12,9 @@ load_dotenv("./api_keys.env")  # This loads the .env file
 # Get groq api key from : https://console.groq.com/keys
 # Get openai api key from: https://openai.com/api/
 
+# Avoid tokenizers parallelism + fork warning/deadlock risk unless user explicitly overrides.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 
 def _is_truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in {"1", "true", "yes", "on"}
