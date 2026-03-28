@@ -396,11 +396,16 @@ class LearnDefinitions(BaseFOL):
                 add_bck_def.pop(pred_name)
             elif pred_name in self._c3po_slim_data.classes:
                 if pred_name == current_class_name:
-                    raise Exception(
-                        "Additional predicate validation produced the same class as "
-                        f"the current learning target ('{current_class_name}'), "
-                        "which creates a circular recursive dependency."
+                    # This block is unreachable because we already remove and use the
+                    # definition corresponding to the class being currently learned from
+                    # the additional definitions before calling this function, but we keep
+                    # this check for safety to avoid any possible circular dependency
+                    # which can lead to infinite recursion.
+                    raise ce.StopProgramException(
+                        f"The main predicate '{pred_name}' is the same as the current class being learned, "
+                        "which is not allowed as it will lead to circular dependency."
                     )
+
                 if pred_name in self._failed_classes:
                     # We still might want to attempt learning, now certain predicates
                     # which are part of the additional definition might be learned
