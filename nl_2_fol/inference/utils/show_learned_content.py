@@ -62,50 +62,66 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
         data: DefinitionLearningResults = pickle.load(f)
 
     requested_metric = metric_name.upper()
-    scores = []
+    scores, val_scores = [], []
     failed = 0
 
     for learned_def in data.learned_definitions.values():
-        metric_value = getattr(learned_def.train_metrics, requested_metric)
+        train_metric_value = getattr(learned_def.train_metrics, requested_metric)
         if not learned_def.learn_success:
             failed += 1
-        scores.append(float(metric_value))
+        scores.append(float(train_metric_value))
 
-    total = len(scores)
+        if learned_def.val_metrics is not None:
+            val_metric_value = getattr(learned_def.val_metrics, requested_metric)
+            val_scores.append(float(val_metric_value))
+
+    def print_stats(scores, total, dataset_name):
+        perfect = sum(1 for score in scores if score == 1.0)
+        gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
+        between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
+        between_04_06 = sum(1 for score in scores if 0.4 <= score < 0.6)
+        between_02_04 = sum(1 for score in scores if 0.2 <= score < 0.4)
+        between_00_02 = sum(1 for score in scores if 0.0 < score < 0.2)
+        equal_to_0 = sum(1 for score in scores if score == 0.0)
+
+        print("------------ Score buckets for " + dataset_name, "-------------")
+        print(f"  score == 1.0: {perfect} ({(perfect / total) * 100:.2f}%)")
+        print(f"  0.8 <= score < 1.0: {gt_08} ({(gt_08 / total) * 100:.2f}%)")
+        print(
+            f"  0.6 <= score < 0.8: {between_06_08} ({(between_06_08 / total) * 100:.2f}%)"
+        )
+        print(
+            f"  0.4 <= score < 0.6: {between_04_06} ({(between_04_06 / total) * 100:.2f}%)"
+        )
+        print(
+            f"  0.2 <= score < 0.4: {between_02_04} ({(between_02_04 / total) * 100:.2f}%)"
+        )
+        print(
+            f"  0.0 < score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
+        )
+        if dataset_name == "training set":
+            print(
+                f"  score == 0.0: {equal_to_0} (out of which {failed} failed to learn) ({(equal_to_0 / total) * 100:.2f}%)"
+            )
+        elif dataset_name == "validation set":
+            print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
+        else:
+            raise ValueError("Unexpected dataset name for stats printing.")
+        print("-------------------------------------------------------")
+
+    train_total = len(scores)
     print(f"Metric: {requested_metric}")
     print(f"Total definitions: {len(data.learned_definitions)}")
-    print(f"Definitions failed to learn: {failed}")
+    print(f"Definitions failed to learn: {failed} during learning process.")
 
-    if total == 0:
+    if train_total == 0:
         print("No valid scores found. Nothing to summarize.")
         return
+    print_stats(scores, train_total, "training set")
 
-    perfect = sum(1 for score in scores if score == 1.0)
-    gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
-    between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
-    between_04_06 = sum(1 for score in scores if 0.4 <= score < 0.6)
-    between_02_04 = sum(1 for score in scores if 0.2 <= score < 0.4)
-    between_00_02 = sum(1 for score in scores if 0.0 < score < 0.2)
-    equal_to_0 = sum(1 for score in scores if score == 0.0)
-
-    print("Score buckets:")
-    print(f"  score == 1.0: {perfect} ({(perfect / total) * 100:.2f}%)")
-    print(f"  0.8 <= score < 1.0: {gt_08} ({(gt_08 / total) * 100:.2f}%)")
-    print(
-        f"  0.6 <= score < 0.8: {between_06_08} ({(between_06_08 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  0.4 <= score < 0.6: {between_04_06} ({(between_04_06 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  0.2 <= score < 0.4: {between_02_04} ({(between_02_04 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  0.0 < score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  score == 0.0: {equal_to_0} (out of which {failed} failed to learn) ({(equal_to_0 / total) * 100:.2f}%)"
-    )
+    if val_scores:
+        val_total = len(val_scores)
+        print_stats(val_scores, val_total, "validation set")
 
 
 def delete_class_from_pickle(
@@ -211,7 +227,9 @@ def _parse_args():
 
 if __name__ == "__main__":
     args = _parse_args()
-
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> show --class-name=hopanoid
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> delete hopanoid
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> stats
     if args.command in (None, "show"):
         class_name = args.class_name if args.command == "show" else "all"
         print_pickle_contents(args.pickle_file, class_name=class_name)
