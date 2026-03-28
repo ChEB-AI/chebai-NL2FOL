@@ -26,10 +26,11 @@ class PerformValidation(BaseFOL):
 
     def validate(self):
         for _, learned_def in self._loaded_defs.learned_definitions.items():
-            self.validate_class(learned_def.name)
+            if learned_def.learn_success:
+                self.validate_class(learned_def.name)
 
     def validate_class(self, class_name: str):
-        print(f"Validating definition for {class_name}...")
+        print("-" * 10, f"Validating definition for {class_name}...", "-" * 10)
         chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
         if chemical_class.id not in self._loaded_defs.learned_definitions:
             print(
@@ -39,6 +40,14 @@ class PerformValidation(BaseFOL):
             return
 
         learned_def = self._loaded_defs.learned_definitions[chemical_class.id]
+        if not learned_def.learn_success:
+            print(
+                f"Learned definition for class {class_name} with id {chemical_class.id} "
+                f"was not successful learned during learning process. "
+                f"Skipping validation for this class."
+            )
+            return
+
         val_metrics = self._score_definition(
             chemical_class=chemical_class,
             tptp_def=learned_def.learned_FOL.formula,
@@ -81,7 +90,7 @@ class PerformValidation(BaseFOL):
 
         counter = 0
         for _, learned_def in new_definitions.learned_definitions.items():
-            if learned_def.learned_FOL:
+            if learned_def.learn_success:
                 self._gavel.add_background_definition(
                     learned_def.name,
                     learned_def.learned_FOL.pred_variables,
@@ -101,4 +110,5 @@ class PerformValidation(BaseFOL):
                 )
                 counter += 1
         print(f"Loaded {counter} additional definitions")
+
         return new_definitions
