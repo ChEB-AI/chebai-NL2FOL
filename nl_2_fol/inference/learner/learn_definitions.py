@@ -545,9 +545,10 @@ class LearnDefinitions(BaseFOL):
         scored_def: def_model.ScoredDefinition,
         learn_success: bool,
     ):
-        # TODO: What if the additonal defintions are changed in next attempt
-        # and both are valid which to use? rn the earliest
-        if scored_def.temp_additional_defs:
+        # TODO: What if a chemical class wants to use differnt additional definition
+        # for the same predicate, than the one used by another chemical class?
+        # Rn we only keep the earliest valid additional definition
+        if scored_def.temp_additional_defs and learn_success:
             # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
             for def_name, (
                 pred_vars,
@@ -563,13 +564,10 @@ class LearnDefinitions(BaseFOL):
                             learn_success=learn_success,
                         )
                     )
-                    if learn_success:
-                        self._add_generated_predicates_to_prompt_obj(
-                            def_name, pred_vars
-                        )
-                        self._gavel.add_background_definition(
-                            def_name, pred_vars, background_def
-                        )
+                    self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
+                    self._gavel.add_background_definition(
+                        def_name, pred_vars, background_def
+                    )
 
         prompts_history = self.chebi_prompt_obj.get_full_conversation_context(
             chemical_class.name
@@ -589,6 +587,7 @@ class LearnDefinitions(BaseFOL):
                 else "",
                 prompts_history=prompts_history,
                 learn_success=learn_success,
+                additional_defs_used=scored_def.temp_additional_defs,
             )
         )
         if learn_success:
