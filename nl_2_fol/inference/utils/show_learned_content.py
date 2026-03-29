@@ -323,8 +323,8 @@ def _parse_args():
     upsert_additional_parser.add_argument(
         "--learn-success",
         action="store_true",
-        default=True,
-        help="Mark definition as successful (default: True).",
+        default=False,
+        help="Mark definition as successful (default: False).",
     )
     upsert_additional_parser.add_argument(
         "--replace-used-for",

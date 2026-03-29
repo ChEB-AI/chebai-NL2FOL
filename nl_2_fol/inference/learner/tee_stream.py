@@ -1,3 +1,4 @@
+import os
 import sys
 from contextlib import contextmanager
 from typing import TextIO
@@ -24,6 +25,7 @@ class TeeStream:
     @contextmanager
     def capture_learning_output(learning_log_path: str):
         # Keep console behavior while persisting all learning prints to a text log.
+        os.makedirs(learning_log_path, exist_ok=True)
         with open(learning_log_path, "a", encoding="utf-8") as log_file:
             original_stdout = sys.stdout
             original_stderr = sys.stderr
