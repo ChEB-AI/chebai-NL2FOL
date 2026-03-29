@@ -8,13 +8,15 @@ from gavel.logic.logic import QuantifiedFormula
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
+from nl_2_fol.inference.learner.tee_stream import TeeStream
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
 
 class LearnDefinitions(BaseFOL):
-    _MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION = 5
+    _MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION = 5
+    _LEARNING_LOG_FILE_NAME = "learning_output_a{max_attempts}.txt"
 
     def __init__(
         self,
@@ -40,7 +42,6 @@ class LearnDefinitions(BaseFOL):
         self._failed_classes: set = set()
 
         # Tracks the classes for which definitions have been learned,
-        # TODO: check this var if needed
         self._learned_classes: set[str] = set()
         self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
@@ -49,49 +50,55 @@ class LearnDefinitions(BaseFOL):
         )
 
     def learn_fol_definitions(self):
-        for chemical_class_name in tqdm.tqdm(self._c3po_slim_data.classes.keys()):
-            if chemical_class_name in self._failed_classes:
-                continue
-            if chemical_class_name in self._learned_classes:
-                # This class could have been learned duing recursive learning
-                # when handling missing predicate exception, so we skip it in the main loop
-                continue
-            chemical_class = self._c3po_slim_data.classes[chemical_class_name]
-            if chemical_class.definition is None:
-                continue
-            if chemical_class.id in self.definitions.learned_definitions:
-                continue
-            self._learn(chemical_class)
+        with TeeStream.capture_learning_output(self.learning_log_path):
+            for chemical_class_name in tqdm.tqdm(self._c3po_slim_data.classes.keys()):
+                if chemical_class_name in self._failed_classes:
+                    continue
+                if chemical_class_name in self._learned_classes:
+                    # This class could have been learned duing recursive learning
+                    # when handling missing predicate exception, so we skip it in the main loop
+                    continue
+                chemical_class = self._c3po_slim_data.classes[chemical_class_name]
+                if chemical_class.definition is None:
+                    continue
+                if chemical_class.id in self.definitions.learned_definitions:
+                    continue
+                self._learn(chemical_class)
 
     def learn_class(self, class_name: str):
-        if class_name not in self._c3po_slim_data.classes:
-            print(f"{class_name} not found in the dataset.")
-            return
-        chemical_class = self._c3po_slim_data.classes[class_name]
-        if chemical_class.definition is None:
-            print(f"No definition available for {class_name}, skipping learning.")
-            return
-        if chemical_class.id in self.definitions.learned_definitions:
-            print(f"Definition already learned for {class_name}, skipping learning.")
-            return
-        if class_name in self._failed_classes:
-            print(
-                f"{class_name} is in the list of classes which failed to learn in "
-                "previous runs, skipping learning to avoid unnecessary attempts."
-            )
-            while True:
-                retry_choice = (
-                    input(f"Do you want to retry learning '{class_name}'? (yes/no): ")
-                    .strip()
-                    .lower()
+        with TeeStream.capture_learning_output(self.learning_log_path):
+            if class_name not in self._c3po_slim_data.classes:
+                print(f"{class_name} not found in the dataset.")
+                return
+            chemical_class = self._c3po_slim_data.classes[class_name]
+            if chemical_class.definition is None:
+                print(f"No definition available for {class_name}, skipping learning.")
+                return
+            if chemical_class.id in self.definitions.learned_definitions:
+                print(
+                    f"Definition already learned for {class_name}, skipping learning."
                 )
-                if retry_choice in {"yes", "y"}:
-                    break
-                if retry_choice in {"no", "n"}:
-                    print(f"Skipping retry for {class_name}.")
-                    return
-                print("Please answer with 'yes' or 'no'.")
-        self._learn(chemical_class)
+                return
+            if class_name in self._failed_classes:
+                print(
+                    f"{class_name} is in the list of classes which failed to learn in "
+                    "previous runs, skipping learning to avoid unnecessary attempts."
+                )
+                while True:
+                    retry_choice = (
+                        input(
+                            f"Do you want to retry learning '{class_name}'? (yes/no): "
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if retry_choice in {"yes", "y"}:
+                        break
+                    if retry_choice in {"no", "n"}:
+                        print(f"Skipping retry for {class_name}.")
+                        return
+                    print("Please answer with 'yes' or 'no'.")
+            self._learn(chemical_class)
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> None:
         attempts = 0
@@ -389,11 +396,16 @@ class LearnDefinitions(BaseFOL):
                 add_bck_def.pop(pred_name)
             elif pred_name in self._c3po_slim_data.classes:
                 if pred_name == current_class_name:
-                    raise Exception(
-                        "Additional predicate validation produced the same class as "
-                        f"the current learning target ('{current_class_name}'), "
-                        "which creates a circular recursive dependency."
+                    # This block is unreachable because we already remove and use the
+                    # definition corresponding to the class being currently learned from
+                    # the additional definitions before calling this function, but we keep
+                    # this check for safety to avoid any possible circular dependency
+                    # which can lead to infinite recursion.
+                    raise ce.StopProgramException(
+                        f"The main predicate '{pred_name}' is the same as the current class being learned, "
+                        "which is not allowed as it will lead to circular dependency."
                     )
+
                 if pred_name in self._failed_classes:
                     # We still might want to attempt learning, now certain predicates
                     # which are part of the additional definition might be learned
@@ -408,7 +420,6 @@ class LearnDefinitions(BaseFOL):
                     #     "Cannot use predicate `{pred_name}` as its not possible to learn"
                     #     "a reliable first order logic defintion at the moment"
                     # )
-                    # TODO
 
                     # Let it learn as an additional definition
                     continue
@@ -517,7 +528,7 @@ class LearnDefinitions(BaseFOL):
                 neg_samples=processed_neg_samples,
                 matched_neg_samples=matched_neg_samples,
                 unmatched_pos_samples=unmatched_pos_samples,
-                max_examples=self._MAX_SAMPLES_FOR_UNDEFINED_PREDICATE_EXCEPTION,
+                max_examples=self._MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION,
                 chebi_name_to_data_mapping=self._chebi_name_to_data_map_train,
             )
 
@@ -533,9 +544,10 @@ class LearnDefinitions(BaseFOL):
         scored_def: def_model.ScoredDefinition,
         learn_success: bool,
     ):
-        # TODO: What if the additonal defintions are changed in next attempt
-        # and both are valid which to use? rn the earliest
-        if scored_def.temp_additional_defs:
+        # TODO: What if a chemical class wants to use differnt additional definition
+        # for the same predicate, than the one used by another chemical class?
+        # Rn we only keep the earliest valid additional definition
+        if scored_def.temp_additional_defs and learn_success:
             # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
             for def_name, (
                 pred_vars,
@@ -551,13 +563,10 @@ class LearnDefinitions(BaseFOL):
                             learn_success=learn_success,
                         )
                     )
-                    if learn_success:
-                        self._add_generated_predicates_to_prompt_obj(
-                            def_name, pred_vars
-                        )
-                        self._gavel.add_background_definition(
-                            def_name, pred_vars, background_def
-                        )
+                    self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
+                    self._gavel.add_background_definition(
+                        def_name, pred_vars, background_def
+                    )
 
         prompts_history = self.chebi_prompt_obj.get_full_conversation_context(
             chemical_class.name
@@ -577,6 +586,7 @@ class LearnDefinitions(BaseFOL):
                 else "",
                 prompts_history=prompts_history,
                 learn_success=learn_success,
+                additional_defs_used=scored_def.temp_additional_defs,
             )
         )
         if learn_success:
@@ -625,9 +635,8 @@ class LearnDefinitions(BaseFOL):
     ) -> def_model.DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
-        default_path = os.path.join(
-            self.definitions_save_path, self._DEFINITION_FILE_NAME
-        )
+        file_name = self._DEFINITION_FILE_NAME.format(max_attempts=self.max_attempts)
+        default_path = os.path.join(self.definitions_save_path, file_name)
         print(f"Loading definitions from {default_path} if it exists...")
         if os.path.exists(default_path):
             with open(default_path, "rb") as f:
@@ -687,7 +696,8 @@ class LearnDefinitions(BaseFOL):
             path = self.definitions_save_path
             os.makedirs(path, exist_ok=True)
 
-        file_path = os.path.join(path, self._DEFINITION_FILE_NAME)
+        file_name = self._DEFINITION_FILE_NAME.format(max_attempts=self.max_attempts)
+        file_path = os.path.join(path, file_name)
         meta_data_path = os.path.join(path, "__metadata__.txt")
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -716,4 +726,16 @@ class LearnDefinitions(BaseFOL):
         slim_dataset_path={self.slim_dataset_path},
         structures_path={self.structures_path},
         chebi_version={self.chebi_version},
+        Maximum_negative_samples={self._MAX_NEGATIVE_SAMPLES},
+        Sample_match_timeout_seconds={self._SAMPLE_MATCH_TIMEOUT_SECONDS},
+        Max_samples_for_low_threshold_exception={self._MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION}
         """
+
+    @property
+    def learning_log_path(self) -> str:
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "learned",
+            self.chebi_prompt_obj.model_name,
+            self._LEARNING_LOG_FILE_NAME.format(max_attempts=self.max_attempts),
+        )

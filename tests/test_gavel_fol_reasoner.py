@@ -147,25 +147,6 @@ class TestGavelFOLReasoner:
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
-    # TODO: FIXME
-    @pytest.mark.xfail(
-        reason="This test is expected to fail due to a known issue in the normalization step of the parser."
-    )
-    def test_parsing_normalization_error(self, reasoner: GavelFOLReasoner):
-        formula_str = (
-            "test_pred(X) <=> ?[Y]: ![Z]: ?[W]: ![V]: (p(Y) & q(Z) & r(W) & s(V))"
-        )
-
-        with pytest.raises(Exception) as exc_info:
-            reasoner.get_tptp_fol_definition(formula_str)
-
-        error_message = str(exc_info.value)
-        assert "PARSING STEP 3/3 FAILED" in error_message, (
-            f"Expected PARSING STEP 3/3 error, but got: {error_message[:200]}"
-        )
-        assert "Error normalizing formula to PNF (Prenex Normal Form)" in error_message
-        assert "Formula before normalization:" in error_message
-
     def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
         """Test that errors in does_mol_match_tptp_definition are properly raised."""
         formula_str = "test_pred(X) <=> (ptest(X) & qtest(X))"

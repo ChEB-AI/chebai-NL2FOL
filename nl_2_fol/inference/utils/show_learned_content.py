@@ -3,7 +3,12 @@ import ast
 import pickle
 from pathlib import Path
 
-from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
+from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.learner.definition_model import (
+    AdditionalDefinition,
+    DefinitionLearningResults,
+    FOLFormula,
+)
 
 DEFAULT_PICKLE_FILE = (
     Path(__file__).resolve().parent.parent
@@ -62,54 +67,66 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
         data: DefinitionLearningResults = pickle.load(f)
 
     requested_metric = metric_name.upper()
-    scores = []
-    skipped = 0
+    scores, val_scores = [], []
+    failed = 0
 
     for learned_def in data.learned_definitions.values():
-        metric_value = getattr(learned_def.train_metrics, requested_metric, None)
-        if metric_value is None:
-            skipped += 1
-            continue
+        train_metric_value = getattr(learned_def.train_metrics, requested_metric)
+        if not learned_def.learn_success:
+            failed += 1
+        scores.append(float(train_metric_value))
 
-        try:
-            scores.append(float(metric_value))
-        except (TypeError, ValueError):
-            skipped += 1
+        if learned_def.val_metrics is not None:
+            val_metric_value = getattr(learned_def.val_metrics, requested_metric)
+            val_scores.append(float(val_metric_value))
 
-    total = len(scores)
+    def print_stats(scores, total, dataset_name):
+        perfect = sum(1 for score in scores if score == 1.0)
+        gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
+        between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
+        between_04_06 = sum(1 for score in scores if 0.4 <= score < 0.6)
+        between_02_04 = sum(1 for score in scores if 0.2 <= score < 0.4)
+        between_00_02 = sum(1 for score in scores if 0.0 < score < 0.2)
+        equal_to_0 = sum(1 for score in scores if score == 0.0)
+
+        print("------------ Score buckets for " + dataset_name, "-------------")
+        print(f"  score == 1.0: {perfect} ({(perfect / total) * 100:.2f}%)")
+        print(f"  0.8 <= score < 1.0: {gt_08} ({(gt_08 / total) * 100:.2f}%)")
+        print(
+            f"  0.6 <= score < 0.8: {between_06_08} ({(between_06_08 / total) * 100:.2f}%)"
+        )
+        print(
+            f"  0.4 <= score < 0.6: {between_04_06} ({(between_04_06 / total) * 100:.2f}%)"
+        )
+        print(
+            f"  0.2 <= score < 0.4: {between_02_04} ({(between_02_04 / total) * 100:.2f}%)"
+        )
+        print(
+            f"  0.0 < score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
+        )
+        if dataset_name == "training set":
+            print(
+                f"  score == 0.0: {equal_to_0} (out of which {failed} failed to learn) ({(equal_to_0 / total) * 100:.2f}%)"
+            )
+        elif dataset_name == "validation set":
+            print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
+        else:
+            raise ValueError("Unexpected dataset name for stats printing.")
+        print("-------------------------------------------------------")
+
+    train_total = len(scores)
     print(f"Metric: {requested_metric}")
-    print(f"Total learned definitions: {len(data.learned_definitions)}")
-    print(f"Definitions with valid {requested_metric}: {total}")
-    print(f"Definitions skipped (missing/invalid metric): {skipped}")
+    print(f"Total definitions: {len(data.learned_definitions)}")
+    print(f"Definitions failed to learn: {failed} during learning process.")
 
-    if total == 0:
+    if train_total == 0:
         print("No valid scores found. Nothing to summarize.")
         return
+    print_stats(scores, train_total, "training set")
 
-    perfect = sum(1 for score in scores if score == 1.0)
-    gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
-    between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
-    between_04_06 = sum(1 for score in scores if 0.4 <= score < 0.6)
-    between_02_04 = sum(1 for score in scores if 0.2 <= score < 0.4)
-    between_00_02 = sum(1 for score in scores if 0.0 <= score < 0.2)
-    equal_to_0 = sum(1 for score in scores if score == 0.0)
-
-    print("Score buckets:")
-    print(f"  score == 1.0: {perfect} ({(perfect / total) * 100:.2f}%)")
-    print(f"  0.8 <= score < 1.0: {gt_08} ({(gt_08 / total) * 100:.2f}%)")
-    print(
-        f"  0.6 <= score < 0.8: {between_06_08} ({(between_06_08 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  0.4 <= score < 0.6: {between_04_06} ({(between_04_06 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  0.2 <= score < 0.4: {between_02_04} ({(between_02_04 / total) * 100:.2f}%)"
-    )
-    print(
-        f"  0.0 <= score < 0.2: {between_00_02} ({(between_00_02 / total) * 100:.2f}%)"
-    )
-    print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
+    if val_scores:
+        val_total = len(val_scores)
+        print_stats(val_scores, val_total, "validation set")
 
 
 def delete_class_from_pickle(
@@ -164,6 +181,79 @@ def delete_class_from_pickle(
     return True
 
 
+def _parse_used_for_ids(used_for: str) -> list[int]:
+    if not used_for.strip():
+        return []
+
+    ids: list[int] = []
+    for value in used_for.split(","):
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        ids.append(int(cleaned))
+    return ids
+
+
+def upsert_additional_definition_in_pickle(
+    pickle_file_path: str,
+    predicate_name: str,
+    fol_definition: str,
+    used_for_ids: list[int],
+    learn_success=True,
+    output_file_path=None,
+    create_backup=True,
+    replace_used_for=False,
+):
+    """Add or update an additional definition in a DefinitionLearningResults pickle."""
+
+    if not predicate_name.strip():
+        raise ValueError("predicate_name cannot be empty.")
+
+    input_path = Path(pickle_file_path)
+    original_pickle_bytes = input_path.read_bytes()
+    data: DefinitionLearningResults = pickle.loads(original_pickle_bytes)
+
+    reasoner = GavelFOLReasoner()
+    pred_variables, parsed_formula = reasoner.get_tptp_fol_definition(fol_definition)
+
+    predicate_name = predicate_name.strip()
+    normalized_used_for = list(dict.fromkeys(int(x) for x in used_for_ids))
+
+    if (
+        predicate_name in data.additional_definitions
+        and not replace_used_for
+        and data.additional_definitions[predicate_name].used_for
+    ):
+        merged = [
+            *data.additional_definitions[predicate_name].used_for,
+            *normalized_used_for,
+        ]
+        normalized_used_for = list(dict.fromkeys(int(x) for x in merged))
+
+    data.additional_definitions[predicate_name] = AdditionalDefinition(
+        fol_formula=FOLFormula(
+            formula=parsed_formula,
+            pred_variables=pred_variables,
+        ),
+        used_for=normalized_used_for,
+        learn_success=learn_success,
+    )
+
+    output_path = Path(output_file_path) if output_file_path else input_path
+
+    if create_backup and output_path.resolve() == input_path.resolve():
+        backup_path = input_path.with_suffix(input_path.suffix + ".bak")
+        backup_path.write_bytes(original_pickle_bytes)
+        print(f"Backup written to: {backup_path}")
+
+    with open(output_path, "wb") as f:
+        pickle.dump(data, f)
+
+    print(f"Upserted additional definition for predicate: {predicate_name}")
+    print(f"Updated pickle written to: {output_path}")
+    return True
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Show or delete class definitions from learned_definitions pickle."
@@ -210,12 +300,58 @@ def _parse_args():
         help="Metric name from train_metrics to summarize (default: F1).",
     )
 
+    upsert_additional_parser = subparsers.add_parser(
+        "upsert-additional",
+        help="Add or update an additional definition.",
+    )
+    upsert_additional_parser.add_argument(
+        "predicate_name",
+        help="Predicate name for the additional definition.",
+    )
+    upsert_additional_parser.add_argument(
+        "fol_definition",
+        help=(
+            'FOL definition string (e.g. "twoPlusCarbonCompound <=> ?[X, Y]: '
+            '(c(X) & c(Y) & has_bond_to(X, Y) & X != Y)").'
+        ),
+    )
+    upsert_additional_parser.add_argument(
+        "--used-for",
+        default="",
+        help="Comma-separated CHEBI IDs where this additional definition is used.",
+    )
+    upsert_additional_parser.add_argument(
+        "--learn-success",
+        action="store_true",
+        default=False,
+        help="Mark definition as successful (default: False).",
+    )
+    upsert_additional_parser.add_argument(
+        "--replace-used-for",
+        action="store_true",
+        help="Replace existing used_for list instead of merging.",
+    )
+    upsert_additional_parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=None,
+        help="Optional output pickle path. Defaults to in-place update.",
+    )
+    upsert_additional_parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Do not create a backup when editing in place.",
+    )
+
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
-
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> show --class-name=hopanoid
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> delete hopanoid
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> stats
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> upsert-additional twoPlusCarbonCompound "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)" --used-for=12345,56645
     if args.command in (None, "show"):
         class_name = args.class_name if args.command == "show" else "all"
         print_pickle_contents(args.pickle_file, class_name=class_name)
@@ -230,4 +366,16 @@ if __name__ == "__main__":
         print_learned_definition_stats(
             args.pickle_file,
             metric_name=args.metric,
+        )
+    elif args.command == "upsert-additional":
+        used_for_ids = _parse_used_for_ids(args.used_for)
+        upsert_additional_definition_in_pickle(
+            args.pickle_file,
+            predicate_name=args.predicate_name,
+            fol_definition=args.fol_definition,
+            used_for_ids=used_for_ids,
+            learn_success=args.learn_success,
+            output_file_path=args.output_file,
+            create_backup=not args.no_backup,
+            replace_used_for=args.replace_used_for,
         )

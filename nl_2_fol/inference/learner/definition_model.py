@@ -46,6 +46,15 @@ class LearnedDefinition(BaseModel):
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
     definition: str = Field(..., description="definition of the structure from CHEBI")
 
+    additional_defs_used: (
+        dict[str, tuple[list[logic.Variable], QuantifiedFormula]] | None
+    ) = Field(
+        default=None,
+        description="[Field Only for Record, NOT added to Gavel] Additional definitions "
+        "used in the learned definition, if any. "
+        "Keeps record additional defs used, even though learning is not sucessful with them",
+    )
+
     learn_success: bool = Field(
         default=True,
         description="If False, indicates definition could not be learned "

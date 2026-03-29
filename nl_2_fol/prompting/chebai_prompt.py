@@ -111,10 +111,10 @@ class ChebiPrompt:
     def _get_predicates_section(self) -> str:
         """Generate the predicates list section dynamically."""
         # Only add predicates section if list is not empty
-        # TODO: Check if needed, as list of predicates can be long and may overwhelm the prompt.
-        # Maybe only add if there are less than N predicates?
         # Advanced models (Claude Sonnet 4.5/4.6, Claude Opus 4) support a 1,000,000-token
-        # context window, other models handles 200,000 and 1,000,000 tokens
+        # context window, other models handles from 200,000 to 1,000,000 tokens
+        # There are around 367 c3p0 slim classes, so there can be at most 367 predicates,
+        # And consider another 100 predicates as an additional predicates, hence managable
         if len(self.generated_predicates_names) > 0:
             return (
                 "\nAlso, here is the list of predicates along with their arguments that "
