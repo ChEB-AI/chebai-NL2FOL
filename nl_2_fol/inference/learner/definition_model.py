@@ -50,7 +50,8 @@ class LearnedDefinition(BaseModel):
         dict[str, tuple[list[logic.Variable], QuantifiedFormula]] | None
     ) = Field(
         default=None,
-        description="Additional definitions used in the learned definition, if any. "
+        description="[Field Only for Record, NOT added to Gavel] Additional definitions "
+        "used in the learned definition, if any. "
         "Keeps record additional defs used, even though learning is not sucessful with them",
     )
 
