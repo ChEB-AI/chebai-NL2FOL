@@ -20,7 +20,7 @@ class NL2FOLChebiClassifier:
             if mol is None:
                 raise ValueError("")
         except Exception:
-            return {"error": ["Invalid SMILES string"]}
+            return None  # TODO
 
         classification = []
 
@@ -51,7 +51,7 @@ class NL2FOLChebiClassifier:
     def _load_background_defs_from_pmodel(
         self, new_definitions: def_model.DefinitionLearningResults
     ) -> dict[CHEBI_ID, def_model.LearnedDefinition]:
-        """Load back the state from from learned definitions."""
+        """Load back the state from learned definitions."""
         counter = 0
         successful_learned_definitions: dict[CHEBI_ID, def_model.LearnedDefinition] = {}
         for chebi_id, learned_def in new_definitions.learned_definitions.items():
@@ -62,10 +62,11 @@ class NL2FOLChebiClassifier:
                     learned_def.learned_FOL.formula,
                 )
                 successful_learned_definitions[chebi_id] = learned_def
-            counter += 1
+                counter += 1
 
         print(f"Loaded {counter} definitions")
 
+        counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
                 self._gavel.add_background_definition(
@@ -73,6 +74,7 @@ class NL2FOLChebiClassifier:
                     add_def.fol_formula.pred_variables,
                     add_def.fol_formula.formula,
                 )
+                counter += 1
 
         print(f"Loaded {counter} additional definitions")
 

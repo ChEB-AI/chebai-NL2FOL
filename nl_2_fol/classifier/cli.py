@@ -56,6 +56,7 @@ def _parse_args() -> argparse.Namespace:
         "--definitions-file",
         type=Path,
         help="Path to learned_definitions pickle file.",
+        required=True,
     )
     parser.add_argument(
         "--smiles",
