@@ -1,7 +1,6 @@
 from gavel.logic.logic import QuantifiedFormula
-from rdkit import Chem
-
 from nl_2_fol.inference.model_check_molecule import molecule_matches_definition
+from rdkit import Chem
 
 
 # TODO: rectify
@@ -10,8 +9,6 @@ class NL2FOLChebiClassifier:
         self.definitions_path = definitions_path
         self.definitions_to_match: list[dict[str, QuantifiedFormula]] = []
         self.background_definitions: dict[str, tuple[list, QuantifiedFormula]] = {}
-        # TODO: cache mechanism needs to be included here or can be
-        # handled by chebifier (as it does currently)
 
     def classify_smiles(self, smiles: str) -> dict[str, list]:
         try:

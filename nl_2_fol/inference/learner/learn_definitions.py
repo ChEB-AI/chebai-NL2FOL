@@ -420,7 +420,6 @@ class LearnDefinitions(BaseFOL):
                     #     "Cannot use predicate `{pred_name}` as its not possible to learn"
                     #     "a reliable first order logic defintion at the moment"
                     # )
-                    # TODO
 
                     # Let it learn as an additional definition
                     continue
