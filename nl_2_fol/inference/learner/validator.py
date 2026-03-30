@@ -26,7 +26,7 @@ class PerformValidation(BaseFOL):
 
     def validate(self):
         for _, learned_def in self._loaded_defs.learned_definitions.items():
-            if learned_def.learn_success:
+            if learned_def.learn_success and learned_def.val_metrics is None:
                 self.validate_class(learned_def.name)
 
     def validate_class(self, class_name: str):
