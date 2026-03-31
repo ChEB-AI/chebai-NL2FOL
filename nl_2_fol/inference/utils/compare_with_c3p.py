@@ -11,17 +11,14 @@ def _load_c3p_trust(c3p_path: Path) -> dict[int, dict[str, float]]:
     with open(c3p_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    def _safe_div(numerator: float, denominator: float) -> float:
-        if denominator == 0:
-            return 0.0
-        return numerator / denominator
+    def safe_divide(numerator: float, denominator: float) -> float:
+        return numerator / denominator if denominator > 0 else 0.0
 
     def _f1_from_counts(tp: float, fp: float, fn: float) -> float:
-        precision = _safe_div(tp, tp + fp)
-        recall = _safe_div(tp, tp + fn)
-        if precision + recall == 0:
-            return 0.0
-        return 2 * precision * recall / (precision + recall)
+        return safe_divide(
+            2 * tp,
+            2 * tp + fp + fn,
+        )
 
     parsed: dict[int, dict[str, float]] = {}
     for chebi_id, metrics in raw.items():
