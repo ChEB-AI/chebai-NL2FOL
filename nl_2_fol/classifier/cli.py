@@ -33,7 +33,12 @@ def _collect_smiles(smiles_args: list[str], smiles_file: Path | None) -> list[st
 def _print_human_readable(results: list[dict[str, list | None]]) -> None:
     for result in results:
         smiles = next(iter(result.keys()))
-        classifications = result[smiles]
+        classifications: list | None = result[smiles]
+
+        if classifications is None:
+            # To makes invalid inputs indistinguishable from valid-but-no-match cases.
+            print(f"{smiles}: invalid SMILES")
+            continue
 
         if not classifications:
             print(f"{smiles}: no matching classes")
