@@ -23,15 +23,15 @@ dev = [
     "langchain>=1.2.0",
     "PyYAML",
     "dotenv",
-    "langchain-anthropic>=1.1.0",
-    "langchain-ollama>=1.0.1",
     "pytest>=7.0",
-    "ruff",
-    "isort",
-    "pre-commit",
-    "tqdm"
+    "tqdm",
 ]
 
+linter = [ "ruff",
+    "isort",
+    "pre-commit"]
+anthropic = ["langchain-anthropic>=1.1.0"]
+ollama = ["langchain-ollama>=1.0.1"]
 groq = ["langchain-groq>=1.1.1"]
 
 
