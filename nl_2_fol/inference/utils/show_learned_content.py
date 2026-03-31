@@ -1,5 +1,4 @@
 import argparse
-import ast
 import pickle
 from pathlib import Path
 
@@ -10,16 +9,13 @@ from nl_2_fol.inference.learner.definition_model import (
     FOLFormula,
 )
 
-DEFAULT_PICKLE_FILE = (
-    Path(__file__).resolve().parent.parent
-    / "learner"
-    / "learned"
-    / "claude-opus-4-6"
-    / "learned_definitions.pkl"
-)
 
-
-def print_pickle_contents(pickle_file_path, class_name="all"):
+def print_pickle_contents(
+    pickle_file_path,
+    class_name="all",
+    show_system_prompt=False,
+    show_conversation_history=False,
+):
     """Print the contents of a pickle file containing DefinitionLearningResults."""
 
     with open(pickle_file_path, "rb") as f:
@@ -36,13 +32,14 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         print(f"Metrics: {learned_def.train_metrics}")
         print(f"Formula: {learned_def.learned_FOL.formula}")
         print(f"Learned success: {learned_def.learn_success}")
-        for his in learned_def.prompts_history:
-            print(his)
+        if show_system_prompt:
+            print("System prompt:")
+            print(learned_def.prompts_history["system_prompt"])
 
-        content = learned_def.prompts_history["conversation_history"][-1]["content"]
-        parsed_dict = ast.literal_eval(content)
-        if "FOL_formula" in parsed_dict:
-            print(f"Generated FOL formula: {parsed_dict['FOL_formula']}")
+        if show_conversation_history:
+            print("Conversation history:")
+            for c_his in learned_def.prompts_history["conversation_history"]:
+                print(c_his)
         print("---" * 10)
 
     for name, add_def in data.additional_definitions.items():
@@ -54,6 +51,7 @@ def print_pickle_contents(pickle_file_path, class_name="all"):
         )
         print(f"Formula: {add_def.fol_formula.formula}")
         print(f"Learned success: {add_def.learn_success}")
+        print(f"Used for CHEBI IDs: {add_def.used_for}")
         print("---" * 10)
 
     print(f"Number of learned definitions: {len(data.learned_definitions)}")
@@ -261,7 +259,7 @@ def _parse_args():
     parser.add_argument(
         "--pickle-file",
         type=Path,
-        default=DEFAULT_PICKLE_FILE,
+        required=True,
         help="Path to learned_definitions pickle file.",
     )
 
@@ -272,6 +270,16 @@ def _parse_args():
         "--class-name",
         default="all",
         help="Class name to filter (default: all).",
+    )
+    show_parser.add_argument(
+        "--system-prompt",
+        action="store_true",
+        help="Show system prompt from prompts history if available (default: False).",
+    )
+    show_parser.add_argument(
+        "--conversation-history",
+        action="store_true",
+        help="Show conversation history from prompts history if available (default: False).",
     )
 
     delete_parser = subparsers.add_parser("delete", help="Delete a class.")
@@ -351,10 +359,19 @@ if __name__ == "__main__":
     # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> show --class-name=hopanoid
     # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> delete hopanoid
     # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> stats
-    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> upsert-additional twoPlusCarbonCompound "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)" --used-for=12345,56645
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> upsert-additional twoPlusCarbonCompound "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)" --used-for=12345,56645 --learn-success
     if args.command in (None, "show"):
         class_name = args.class_name if args.command == "show" else "all"
-        print_pickle_contents(args.pickle_file, class_name=class_name)
+        show_system_prompt = args.system_prompt if args.command == "show" else False
+        show_conversation_history = (
+            args.conversation_history if args.command == "show" else False
+        )
+        print_pickle_contents(
+            args.pickle_file,
+            class_name=class_name,
+            show_system_prompt=show_system_prompt,
+            show_conversation_history=show_conversation_history,
+        )
     elif args.command == "delete":
         delete_class_from_pickle(
             args.pickle_file,
