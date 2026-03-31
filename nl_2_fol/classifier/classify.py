@@ -14,13 +14,13 @@ class NL2FOLChebiClassifier:
         self._gavel = GavelFOLReasoner()
         self.class_definitions = self._load_definitions(definitions_path)
 
-    def classify_smiles(self, smiles: str) -> dict[str, list]:
+    def classify_smiles(self, smiles: str) -> dict[str, list | None]:
         try:
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 raise ValueError("")
         except Exception:
-            return None  # TODO
+            return {smiles: None}
 
         classification = []
 
@@ -32,7 +32,9 @@ class NL2FOLChebiClassifier:
 
         return {smiles: classification}
 
-    def classify_smiles_list(self, smiles_list: list[str]) -> list[dict]:
+    def classify_smiles_list(
+        self, smiles_list: list[str]
+    ) -> list[dict[str, list | None]]:
         return [self.classify_smiles(smiles) for smiles in smiles_list]
 
     def _load_definitions(

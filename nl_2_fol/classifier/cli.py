@@ -30,14 +30,10 @@ def _collect_smiles(smiles_args: list[str], smiles_file: Path | None) -> list[st
     return list(dict.fromkeys(smiles))
 
 
-def _print_human_readable(results: list[dict]) -> None:
+def _print_human_readable(results: list[dict[str, list | None]]) -> None:
     for result in results:
         smiles = next(iter(result.keys()))
         classifications = result[smiles]
-
-        if isinstance(classifications, dict) and "error" in classifications:
-            print(f"{smiles}: ERROR - {', '.join(classifications['error'])}")
-            continue
 
         if not classifications:
             print(f"{smiles}: no matching classes")
