@@ -35,9 +35,9 @@ def print_pickle_contents(
 
         if learned_def.additional_defs_used:
             print("Additional definitions used:")
-            for name, (vars, add_def) in learned_def.additional_defs_used.items():
+            for name, (def_vars, add_def) in learned_def.additional_defs_used.items():
                 print(
-                    f"  {name} with variables {[str(var) for var in vars]} and formula: {add_def.formula}"
+                    f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
                 )
         if show_system_prompt:
             print("System prompt:")

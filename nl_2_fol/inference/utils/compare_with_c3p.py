@@ -57,7 +57,7 @@ def write_comparison_csv(
     c3p_metrics = _load_c3p_trust(c3p_path)
     learned_data = _load_learned_definitions(learned_pickle_path)
 
-    learned_rows: dict[str, dict[str, float | bool]] = {}
+    learned_rows: dict[str, dict[str, float]] = {}
     for chebi_id, metrics in c3p_metrics.items():
         learned_def = learned_data.learned_definitions[chebi_id]
 
