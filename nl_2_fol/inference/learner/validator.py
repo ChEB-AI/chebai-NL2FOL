@@ -4,6 +4,7 @@ import pickle
 from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
+import tqdm
 
 
 class PerformValidation(BaseFOL):
@@ -25,7 +26,7 @@ class PerformValidation(BaseFOL):
         self._loaded_defs = self._load_definitions(defs_file_path)
 
     def validate(self):
-        for _, learned_def in self._loaded_defs.learned_definitions.items():
+        for _, learned_def in tqdm.tqdm(self._loaded_defs.learned_definitions.items()):
             if learned_def.learn_success and learned_def.val_metrics is None:
                 self.validate_class(learned_def.name)
 
@@ -61,12 +62,15 @@ class PerformValidation(BaseFOL):
         self._save_validated_definitions()
 
     def _save_validated_definitions(self):
-        base_path, extension = os.path.splitext(self.defs_file_path)
-        output_path = (
-            f"{base_path}_with_val{extension}"
-            if extension
-            else f"{self.defs_file_path}_with_val"
-        )
+        if "_with_val" not in self.defs_file_path:
+            base_path, extension = os.path.splitext(self.defs_file_path)
+            output_path = (
+                f"{base_path}_with_val{extension}"
+                if extension
+                else f"{self.defs_file_path}_with_val"
+            )
+        else:
+            output_path = self.defs_file_path
         with open(output_path, "wb") as f:
             pickle.dump(self._loaded_defs, f)
 
