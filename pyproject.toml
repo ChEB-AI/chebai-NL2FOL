@@ -29,6 +29,7 @@ dev = [
     "ruff",
     "isort",
     "pre-commit",
+    "tqdm"
 ]
 
 groq = ["langchain-groq>=1.1.1"]
