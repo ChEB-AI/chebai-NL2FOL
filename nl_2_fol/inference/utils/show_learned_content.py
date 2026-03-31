@@ -32,6 +32,13 @@ def print_pickle_contents(
         print(f"Metrics: {learned_def.train_metrics}")
         print(f"Formula: {learned_def.learned_FOL.formula}")
         print(f"Learned success: {learned_def.learn_success}")
+
+        if learned_def.additional_defs_used:
+            print("Additional definitions used:")
+            for name, (def_vars, add_def) in learned_def.additional_defs_used.items():
+                print(
+                    f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
+                )
         if show_system_prompt:
             print("System prompt:")
             print(learned_def.prompts_history["system_prompt"])
