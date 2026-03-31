@@ -60,11 +60,16 @@ def write_comparison_csv(
     learned_rows: dict[str, dict[str, float | bool]] = {}
     for chebi_id, metrics in c3p_metrics.items():
         learned_def = learned_data.learned_definitions[chebi_id]
-        assert learned_def.val_metrics is not None
+
+        val_f1 = (
+            float(learned_def.val_metrics.F1)
+            if learned_def.val_metrics is not None
+            else 0.0
+        )
         learned_rows[str(chebi_id)] = {
             "c3p_f1_score": metrics["F1"],
             "model_train_f1": float(learned_def.train_metrics.F1),
-            "model_val_f1": float(learned_def.val_metrics.F1),
+            "model_val_f1": val_f1,
         }
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
