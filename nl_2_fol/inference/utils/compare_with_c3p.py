@@ -123,12 +123,12 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    row_count = write_comparison_csv(
+    write_comparison_csv(
         c3p_path=args.c3p_json,
         learned_pickle_path=args.learned_pickle,
         output_csv_path=args.output_csv,
     )
-    print(f"Wrote {row_count} comparison rows to {args.output_csv}")
+    print(f"Wrote comparison rows to {args.output_csv}")
     return 0
 
 
