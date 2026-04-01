@@ -4,6 +4,7 @@ import pickle
 import tqdm
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
+from langchain_core.messages import HumanMessage
 
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
@@ -138,7 +139,6 @@ class LearnDefinitions(BaseFOL):
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
             f"\tRaised exception: {raised_exception}]\n",
         )
-        previous_fol_def = result.FOL_formula if result else ""
         outofbox_max_attempts, curr_outofbox = 1, 0
         undef_retry_context: str | None = None
         while attempts < self.max_attempts:
@@ -244,7 +244,15 @@ class LearnDefinitions(BaseFOL):
                     f"\tRaised exception: {raised_exception}]\n",
                 )
                 attempts += 1
-                previous_fol_def = result.FOL_formula if result else previous_fol_def
+
+        if raised_exception is not None:
+            # Keep traceability in prompt history even when no more retries are made.
+            final_error_prompt = (
+                "[MAX ATTEMPTS EXHAUSTED] Unable to learn a"
+                f"definition due to following error: {raised_exception}"
+            )
+            history = self.chebi_prompt_obj.get_session_history(chemical_class.name)
+            history.add_message(HumanMessage(content=final_error_prompt))
 
         self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
 

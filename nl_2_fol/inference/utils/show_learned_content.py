@@ -33,7 +33,10 @@ def print_pickle_contents(
         print(f"Formula: {learned_def.learned_FOL.formula}")
         print(f"Learned success: {learned_def.learn_success}")
 
-        if learned_def.additional_defs_used:
+        if (
+            hasattr(learned_def, "additional_defs_used")
+            and learned_def.additional_defs_used
+        ):
             print("Additional definitions used:")
             for name, (def_vars, add_def) in learned_def.additional_defs_used.items():
                 print(
