@@ -552,9 +552,6 @@ class LearnDefinitions(BaseFOL):
         scored_def: def_model.ScoredDefinition,
         learn_success: bool,
     ):
-        # TODO: What if a chemical class wants to use differnt additional definition
-        # for the same predicate, than the one used by another chemical class?
-        # Rn we only keep the earliest valid additional definition
         if scored_def.temp_additional_defs and learn_success:
             # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
             for def_name, (
@@ -575,6 +572,14 @@ class LearnDefinitions(BaseFOL):
                     self._gavel.add_background_definition(
                         def_name, pred_vars, background_def
                     )
+                else:
+                    # Already learned valid predicate definition is used and
+                    # the redudant defintion is removed in `_validate_additional_predicates`
+
+                    # TODO: What if a chemical class wants to use differnt additional definition
+                    # for the same predicate, than the one used by another chemical class?
+                    # Rn we only keep the earliest valid additional definition
+                    pass
 
         prompts_history = self.chebi_prompt_obj.get_full_conversation_context(
             chemical_class.name
