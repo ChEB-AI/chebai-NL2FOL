@@ -353,7 +353,7 @@ class LearnDefinitions(BaseFOL):
                         )
                         raise Exception(
                             f"No FOL definition available for predicate {unknown_pred_name}, "
-                            f"which is used in definition of predicate {pred_name}."
+                            f"which is used in definition of predicate {pred_name}. "
                             "Hence we cannot validate the definition of the main predicate "
                         )
                 elif unknown_pred_name in self._learned_classes:
