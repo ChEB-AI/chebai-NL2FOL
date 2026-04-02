@@ -326,11 +326,13 @@ class LearnDefinitions(BaseFOL):
             f"{len(add_bck_def)} candidate(s)."
         )
         for pred_name, (vars, defn) in list(add_bck_def.items()):
-            print(f"[validate_additional] Checking predicate '{pred_name}'")
+            print(
+                f"[validate_additional] Checking definition of predicate '{pred_name}'"
+            )
             # first extract the unknown predicates from the formula
             unknown_predicates = self._gavel.extract_unknown_predicates(defn)
             print(
-                f"[validate_additional] Unknown predicates in '{pred_name}': "
+                f"[validate_additional] Unknown predicates found in definition of predicate '{pred_name}': "
                 f"{unknown_predicates}"
             )
             for unknown_pred in unknown_predicates:
@@ -345,28 +347,27 @@ class LearnDefinitions(BaseFOL):
                 if unknown_pred_name in self._failed_classes:
                     if unknown_pred_name not in add_bck_def:
                         print(
-                            "[validate_additional] Failed class predicate has no "
-                            f"definition provided: '{unknown_pred_name}'."
+                            f"[validate_additional] Predicate '{unknown_pred_name}' has no "
+                            f"definition provided. This predicate is also part of the "
+                            "failed classes list"
                         )
                         raise Exception(
-                            f"Predicate {unknown_pred_name} which is part of the additional "
-                            "background definition is also part of the failed classes list, "
-                            "but no definition provided for it in the additional background "
-                            "definitions. Hence we cannot validate the main predicate "
-                            f"{pred_name} definition."
+                            f"No FOL definition available for predicate {unknown_pred_name}, "
+                            f"which is used in definition of predicate {pred_name}."
+                            "Hence we cannot validate the definition of the main predicate "
                         )
                 elif unknown_pred_name in self._learned_classes:
                     if unknown_pred_name in add_bck_def:
                         # use learned definition instead of provided def
                         print(
-                            "[validate_additional] Predicate already learned; removing "
-                            f"redundant additional definition: '{unknown_pred_name}'."
+                            f"[validate_additional] Predicate '{unknown_pred_name}' already learned; "
+                            "removing redundant additional definition."
                         )
                         add_bck_def.pop(unknown_pred_name)
                 elif unknown_pred_name in self._c3po_slim_data.classes:
                     print(
-                        "[validate_additional] Predicate is a slim dataset class; "
-                        f"triggering recursive learning: '{unknown_pred_name}'."
+                        f"[validate_additional] Predicate '{unknown_pred_name}' is a slim dataset class; "
+                        "triggering recursive learning."
                     )
                     self._learn(
                         self._c3po_slim_data.get_chemical_class_by_name(
@@ -380,8 +381,8 @@ class LearnDefinitions(BaseFOL):
                     # generate a new definition for the main chemical class instead of
                     # trying to fix the additional background definition
                     print(
-                        "[validate_additional] Unknown nested predicate is not provided "
-                        f"in additional definitions: '{unknown_pred_name}'."
+                        f"[validate_additional] Predicate '{unknown_pred_name}' is an unknown nested predicate "
+                        "not provided in additional definitions."
                     )
                     raise Exception(
                         "Additional background definition provided for missing predicate "
@@ -391,15 +392,15 @@ class LearnDefinitions(BaseFOL):
                     )
                 else:
                     print(
-                        "[validate_additional] Unknown predicate has its own additional "
-                        f"definition: '{unknown_pred_name}'."
+                        f"[validate_additional] Predicate '{unknown_pred_name}' is unknown but has its own "
+                        "additional definition."
                     )
 
             if pred_name in self._learned_classes:
                 # Use definition which is already learned instead of provided def
                 print(
-                    "[validate_additional] Main predicate already learned; removing "
-                    f"redundant additional definition: '{pred_name}'."
+                    f"[validate_additional] Main Predicate '{pred_name}' already learned; removing "
+                    f"redundant additional definition provided."
                 )
                 add_bck_def.pop(pred_name)
             elif pred_name in self._c3po_slim_data.classes:
@@ -432,15 +433,14 @@ class LearnDefinitions(BaseFOL):
                     # Let it learn as an additional definition
                     continue
                 print(
-                    "[validate_additional:recursive] Triggering recursive learning "
-                    f"for main predicate: '{pred_name}'."
+                    f"[validate_additional:recursive] Main predicate '{pred_name}' triggering recursive learning."
                     "\n--------------------------------------------------------------"
                 )
                 self._learn(self._c3po_slim_data.get_chemical_class_by_name(pred_name))
             else:
                 print(
-                    "[validate_additional] Main predicate is out-of-box and remains as "
-                    f"an additional definition: '{pred_name}'."
+                    f"[validate_additional] Main predicate '{pred_name}' is out-of-box and remains as "
+                    "an additional definition."
                 )
 
         print("[validate_additional] Validation pass complete.")
