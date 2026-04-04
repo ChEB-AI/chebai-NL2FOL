@@ -50,6 +50,10 @@ if tracing:
     print("LangSmith tracing is enabled. Validating configuration...")
     _validate_langsmith_tracing_config()
 else:
+    print(
+        "LangSmith tracing is disabled. To enable, set `LANGSMITH_TRACING`"
+        " to a truthy value and provide necessary configuration in environment variables."
+    )
     # Disable LangSmith tracing by removing its environment variables
     # This prevents automatic client initialization when tracing is not explicitly enabled
     for key in [

@@ -214,3 +214,6 @@ data/
 
 mistral-merged/
 nl_2_fol/inference/learner/learned
+*.sh
+*.log
+*.err

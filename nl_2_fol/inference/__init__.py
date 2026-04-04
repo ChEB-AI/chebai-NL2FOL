@@ -9,6 +9,7 @@ def _should_print_traces() -> bool:
 
 
 PRINT_TRACES = _should_print_traces()
-print(
-    f"PRINT_TRACES is set to {PRINT_TRACES} based on environment variable '{STACK_TRACE_ENV_VAR}'."
-)
+if PRINT_TRACES:
+    print(
+        f"PRINT_TRACES is set to {PRINT_TRACES} based on environment variable '{STACK_TRACE_ENV_VAR}'."
+    )
