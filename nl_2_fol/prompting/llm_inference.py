@@ -54,7 +54,7 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
             model_name=model_name,  # "claude-opus-4-6",
             temperature=0.0,
         )  # pyright: ignore[reportCallIssue]
-        _test_api_with_a_prompt(llm)
+        # _test_api_with_a_prompt(llm)
         return llm
     elif platform == "openai":
         try:
