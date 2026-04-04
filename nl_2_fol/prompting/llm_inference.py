@@ -82,12 +82,23 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
                 "Please install ollama support by using `pip install langchain-ollama`"
             )
 
-        # base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        assert "OLLAMA_HOST" in os.environ, (
+            "Please set the OLLAMA_HOST environment variable to point to your Ollama server. "
+            "For example: `export OLLAMA_HOST=http://localhost:11435`"
+            "If on cluster, prefer to start ollama on custom port to avoid conflicts with system ollama "
+        )
+        assert "OLLAMA_TIMEOUT" in os.environ, (
+            "Please set the OLLAMA_TIMEOUT environment variable to specify the timeout for API calls to your Ollama server. "
+            "For example: `export OLLAMA_TIMEOUT=600` (timeout in seconds)"
+        )
+        base_url = os.environ["OLLAMA_HOST"]
+        timeout = float(os.environ["OLLAMA_TIMEOUT"])
 
         llm = ChatOllama(
             model=model_name,
             temperature=0.0,
-            # base_url=base_url,
+            base_url=base_url,
+            client_kwargs={"timeout": timeout},
         )
         _test_api_with_a_prompt(llm)
         return llm
