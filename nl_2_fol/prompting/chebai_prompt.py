@@ -49,6 +49,10 @@ class ChebiPrompt:
         self._conversation_chain = self._get_conversation_chain()
         self._undef_failure_chain = self._get_undef_failure_chain()
 
+        if self.platform == "ollama" or self.platform == "custom":
+            # For custom hosted models, set higher token limit as we don't incur a direct cost
+            self.MAX_INPUT_TOKENS = 50000
+
     # -------- Conversation Chain Construction --------------------- ##
     def _get_conversation_chain(self) -> Runnable:
         prompt = self._get_prompt_template()
