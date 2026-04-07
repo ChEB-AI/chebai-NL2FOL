@@ -49,6 +49,10 @@ class ChebiPrompt:
         self._conversation_chain = self._get_conversation_chain()
         self._undef_failure_chain = self._get_undef_failure_chain()
 
+        if self.platform == "ollama" or self.platform == "custom":
+            # For self hosted models, set no token limit as we don't incur a direct cost
+            self.MAX_INPUT_TOKENS = None
+
     # -------- Conversation Chain Construction --------------------- ##
     def _get_conversation_chain(self) -> Runnable:
         prompt = self._get_prompt_template()
@@ -405,7 +409,7 @@ class ChebiPrompt:
         call_name: str,
     ) -> None:
         if self.MAX_INPUT_TOKENS is None:
-            raise ValueError("MAX_INPUT_TOKENS is not set. Cannot enforce token limit.")
+            return None  # No token limit for this platform/model
 
         prompt_template = self._get_prompt_template()
         assembled_messages = prompt_template.format_messages(

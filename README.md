@@ -72,15 +72,23 @@ Expected result:
 
 ## 4. Start Ollama server
 
-Run the Ollama server in a dedicated terminal so it keeps running while you execute inference from another terminal.
+Run the Ollama server in background using below command, so it keeps running while you execute your script or commands in same terminal.
+
+
 
 ```bash
-ollama serve
+export OLLAMA_HOST=http://localhost:<your_custom_port>
+export OLLAMA_TIMEOUT=180 # in seconds
+ollama serve > ollama.log 2>&1 &
+OLLAMA_PID=$!
 ```
 
-Expected result:
-- The terminal stays active and Ollama listens locally for requests.
-- Keep this terminal open during inference.
+After you are done with ollama, cleanly stop ollama server using below commands
+
+```bash
+kill $OLLAMA_PID 2>/dev/null
+wait $OLLAMA_PID 2>/dev/null
+```
 
 ## 5. Register the model in Ollama
 
@@ -110,8 +118,6 @@ Expected result:
 This final step sends requests from your project CLI to the locally running Ollama server.
 On some clusters, proxy variables can interfere with localhost routing, so unset them first if needed.
 
-Open a new terminal and bypass proxy settings for localhost if needed:
-
 ```bash
 export NO_PROXY=127.0.0.1,localhost,.local
 export no_proxy=127.0.0.1,localhost,.local
@@ -123,8 +129,8 @@ Then run:
 python nl_2_fol/inference/cli.py --api_platform="ollama" --model_name="my-mistral"
 ```
 
-**IMPORTANT:** Ensure `ollama serve` and the inference command run on the same compute node.
-For example, if `ollama serve` starts on `hpc3-52` but the inference command runs on `hpc3-54`, the connection might fail.
+**IMPORTANT:** Ensure `ollama serve` and the inference command run on the same compute node or same allocated job/session if applicable.
+For example, if `ollama serve` started on `hpc3-52` but the inference command runs on `hpc3-54`, the connection might fail.
 
 Expected result:
 - The CLI connects to your local Ollama instance.

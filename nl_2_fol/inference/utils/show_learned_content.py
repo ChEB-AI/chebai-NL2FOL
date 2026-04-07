@@ -259,6 +259,15 @@ def upsert_additional_definition_in_pickle(
 
     print(f"Upserted additional definition for predicate: {predicate_name}")
     print(f"Updated pickle written to: {output_path}")
+
+    print("Current content for the upserted predicate:")
+    print_pickle_contents(
+        output_path,
+        class_name=predicate_name,
+        show_system_prompt=False,
+        show_conversation_history=False,
+    )
+
     return True
 
 
