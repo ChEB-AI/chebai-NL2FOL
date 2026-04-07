@@ -178,6 +178,12 @@ class LearnDefinitions(BaseFOL):
                             f"definition: {class_def}"
                         )
                         result.FOL_formula = class_def
+                    additional_def = {
+                        pred_name: self.chebi_prompt_obj.normalize_formula_for_validation(
+                            formula
+                        )
+                        for pred_name, formula in additional_def.items()
+                    }
                     add_bck_def = self._gavel.convert_to_background_definitions(
                         additional_def
                     )
@@ -498,8 +504,11 @@ class LearnDefinitions(BaseFOL):
         Raises an exception if parsing or validation fails, otherwise returns None.
         """
 
-        pred_variables, tptp_def = self._gavel.get_tptp_fol_definition(
+        formula_for_validation = self.chebi_prompt_obj.normalize_formula_for_validation(
             result.FOL_formula
+        )
+        pred_variables, tptp_def = self._gavel.get_tptp_fol_definition(
+            formula_for_validation
         )
 
         (

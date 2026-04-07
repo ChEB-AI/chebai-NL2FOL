@@ -13,6 +13,12 @@ from langchain_core.prompts import (
 from langchain_core.runnables import Runnable
 
 from nl_2_fol.inference.learner import custom_exceptions as ce
+from nl_2_fol.prompting.fol_syntax import (
+    get_math_fol_instruction_suffix,
+    math_fol_to_tptp,
+    should_use_math_fol_syntax,
+    tptp_to_math_fol,
+)
 from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
 from nl_2_fol.prompting.prompt_models import (
     CHEBIFOLOutput,
@@ -43,6 +49,9 @@ class ChebiPrompt:
         self.generated_predicates_names: set[str] = set()
         self._memory_store = {}
         self._current_session_id: str | None = None  # Track current session
+        self._use_math_fol_syntax: bool = should_use_math_fol_syntax(
+            self.platform, self.model_name
+        )
 
         self._llm = get_llm_for_inference(self.platform, self.model_name)
 
@@ -108,6 +117,8 @@ class ChebiPrompt:
     # -------- System Prompt and Predicates List Management --------- ##
     def _get_system_prompt(self) -> SystemMessage:
         system_prompt_text = load_yaml_sys_prompt(self.system_prompt_fp)
+        if self._use_math_fol_syntax:
+            system_prompt_text += get_math_fol_instruction_suffix()
         predicates_list_text = self._get_predicates_section()
         full_system_prompt_text = system_prompt_text + predicates_list_text
         return SystemMessage(content=full_system_prompt_text)
@@ -141,6 +152,10 @@ class ChebiPrompt:
                 ai_payload["FOL_formula"] = " ".join(
                     part.strip() for part in fol_formula if part.strip()
                 )
+                fol_formula = ai_payload["FOL_formula"]
+            if self._use_math_fol_syntax and isinstance(fol_formula, str):
+                ai_payload = dict(ai_payload)
+                ai_payload["FOL_formula"] = tptp_to_math_fol(fol_formula)
             return ai_payload
 
         processed_examples = [
@@ -312,6 +327,12 @@ class ChebiPrompt:
         err_failure_prompt_fp={self.err_failure_prompt_fp},
         undef_failure_prompt_fp={self.undef_failure_prompt_fp})
         """
+
+    def normalize_formula_for_validation(self, formula: str) -> str:
+        """Convert model-preferred formula notation to TPTP before parsing/validation."""
+        if self._use_math_fol_syntax:
+            return math_fol_to_tptp(formula)
+        return formula
 
     @ce.stop_program_upon_failure
     def get_full_conversation_context(self, session_id: str = "default") -> dict:
