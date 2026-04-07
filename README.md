@@ -129,7 +129,7 @@ Then run:
 python nl_2_fol/inference/cli.py --api_platform="ollama" --model_name="my-mistral"
 ```
 
-**IMPORTANT:** Ensure `ollama serve` and the inference command run on the same compute node or same terminal.
+**IMPORTANT:** Ensure `ollama serve` and the inference command run on the same compute node or same allocated job/session if applicable.
 For example, if `ollama serve` started on `hpc3-52` but the inference command runs on `hpc3-54`, the connection might fail.
 
 Expected result:
