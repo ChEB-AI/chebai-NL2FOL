@@ -8,32 +8,30 @@ system_prompt: |
   When constructing the FOL formula, you should preferentially use the following
   predicate names. These predicates are not strictly mandatory,
   but should be followed wherever applicable and sufficient to express the definition.
-  In the final formula, render predicate symbols with an uppercase initial to satisfy parser syntax
-  (for example, `charge0` concept -> `Charge0(...)` predicate in the formula).
 
   - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
     Hydrogen atoms are not represented explicitly, but as a property of their neighbours:
-    - `has_{n}_hs` - exactly n hydrogens (e.g., has_0_hs, has_1_hs)
-    - `has_at_least_{n}_hs` - at least n hydrogens
-    - `has_min_{n}_hs` - minimum hydrogens
+    - `Has_{n}_hs` - exactly n hydrogens (e.g., Has_0_hs, Has_1_hs)
+    - `Has_at_least_{n}_hs` - at least n hydrogens
+    - `Has_min_{n}_hs` - minimum hydrogens
 
   - Atom charges:
-    - `charge1`, `charge2`, `charge3` for specific positive charges
-    - `charge_m1`, `charge_m2`, `charge_m3` for specific negative charges
-    - `charge_p`, `charge_n` for positive or negative charge of arbitrary magnitude
-    - `charge0` for neutral charge
+    - `Charge1`, `Charge2`, `Charge3` for specific positive charges
+    - `Charge_m1`, `Charge_m2`, `Charge_m3` for specific negative charges
+    - `Charge_p`, `Charge_n` for positive or negative charge of arbitrary magnitude
+    - `Charge0` for neutral charge
 
   - Stereochemistry/Chirality (CIP codes):
-    - `cip_code_R`, `cip_code_S`
+    - `Cip_code_R`, `Cip_code_S`
 
   - Bonds:
-    - `has_bond_to` (bond type unspecified)
-    - `bSINGLE`, `bDOUBLE`, `bTRIPLE`, `bAROMATIC` for specific bond types
+    - `Has_bond_to` (bond type unspecified)
+    - `BSINGLE`, `BDOUBLE`, `BTRIPLE`, `BAROMATIC` for specific bond types
 
   - Net molecular charge:
-    - `net_charge_positive`
-    - `net_charge_negative`
-    - `net_charge_neutral`
+    - `Net_charge_positive`
+    - `Net_charge_negative`
+    - `Net_charge_neutral`
 
   Use the following FOL/math syntax rules exactly (aligned with `cfg/syntax.lark`):
   - Predicate names must start with an uppercase letter (example: `HasBondTo`, `Charge0`).
