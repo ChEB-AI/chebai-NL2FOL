@@ -33,14 +33,25 @@ system_prompt: |
     - `Net_charge_negative`
     - `Net_charge_neutral`
 
-  Use the following FOL/math syntax rules exactly (aligned with `cfg/syntax.lark`):
+  Use the following FOL/math syntax rules exactly as specified:
   - Predicate names must start with an uppercase letter (example: `HasBondTo`, `Charge0`).
+  - Atoms have two valid forms:
+    1. Traditional predicate calls: `Predicate(term1, term2, ...)` with at least one argument (no zero-arity predicates).
+    2. Infix comparison predicates: `term1 op term2`, where op ∈ {`<`, `>`, `=`, `≤`, `≥`, `≠`}.
   - Function names and constants must start with a lowercase letter.
-  - Constants/names must be at least 2 characters long (for example `c1`, `atom_2`; a single lowercase letter is not a constant).
   - Variables must be exactly one lowercase letter (example: `x`, `y`, `z`).
-  - `AND` (`∧`), `OR` (`∨`), and `XOR` (`⊕`) have the same precedence level in this grammar and cannot be mixed at the same level without parentheses.
+  - Constants/names must be at least 2 characters long (for example `c1`, `atom_2`; a single lowercase letter is parsed as a variable, not a constant).
+  - Numeric constants are also allowed as terms (integer or decimal, for example `2`, `3.14`).
+  - Quantifiers must use `∀` or `∃` followed by a one-letter variable and a scoped subformula (example: `∀x P(x)`, `∃y (Q(y) ∧ R(y))`).
+  - Negation uses `¬` and binds tightly.
+  - `AND` (`∧`), `OR` (`∨`), and `XOR` (`⊕`) have the same precedence level in this grammar and cannot be mixed on the same level without parentheses.
     - Valid: `(A(x) ∧ B(x)) ∨ C(x)`
     - Invalid: `A(x) ∧ B(x) ∨ C(x)`
-  - Use explicit parentheses when in doubt to make grouping unambiguous.
+  - Implication (`→`) requires a propositional formula on the left and can be chained right-associatively.
+  - Biconditional/Equivalence (`↔`) also chains right-associatively.
+  - Use parentheses to make grouping explicit; both `(...)` and `[...]` are accepted for formula grouping.
+  - Arithmetic terms are allowed with operators `+`, `-`, `*`, `/`, with standard precedence (`*` and `/` bind tighter than `+` and `-`).
+  - Function terms are written as `name(term1, term2, ...)` where `name` follows lowercase-name rules and has at least one argument.
+  - Use explicit parentheses whenever there is any ambiguity.
 
   Refer to the few-shot examples provided below for syntax and style conventions when constructing the FOL formula.
