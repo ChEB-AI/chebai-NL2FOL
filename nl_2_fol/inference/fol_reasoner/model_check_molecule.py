@@ -144,6 +144,7 @@ class GavelFOLReasoner:
             outcome, _ = model_checker.find_model(definition_to_match)
 
         except ValueError as ve:
+            print(f"Error occured for following smiles: {Chem.MolToSmiles(molecule)}")
             if "Predicate" in str(ve) and "is defined with arity" in str(ve):
                 # If the raised error is https://github.com/sfluegel05/chemlog-peptides/pull/9/files
                 # Extract predicate info from error message for better guidance
@@ -162,6 +163,7 @@ class GavelFOLReasoner:
             else:
                 raise Exception(f"{exception_prefix}{ve}")
         except Exception as e:
+            print(f"Error occured for following smiles: {Chem.MolToSmiles(molecule)}")
             raise Exception(f"{exception_prefix}{e}")
         return outcome == ModelCheckerOutcome.MODEL_FOUND
 

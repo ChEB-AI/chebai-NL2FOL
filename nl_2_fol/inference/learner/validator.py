@@ -1,10 +1,11 @@
 import os
 import pickle
 
+import tqdm
+
 from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
-import tqdm
 
 
 class PerformValidation(BaseFOL):
@@ -48,14 +49,26 @@ class PerformValidation(BaseFOL):
                 f"Skipping validation for this class."
             )
             return
+        try:
+            val_metrics = self._score_definition(
+                chemical_class=chemical_class,
+                tptp_def=learned_def.learned_FOL.formula,
+                sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
+                max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
+                temp_additional_defs=None,
+            )[0]
+        except Exception as e:
+            print(f"Parsed Definition: {learned_def.learned_FOL.formula}")
+            print("Variables:", learned_def.learned_FOL.pred_variables)
 
-        val_metrics = self._score_definition(
-            chemical_class=chemical_class,
-            tptp_def=learned_def.learned_FOL.formula,
-            sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
-            max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
-            temp_additional_defs=None,
-        )[0]
+            if learned_def.additional_defs_used:
+                print("Additional definitions used during learning:")
+                for add_def_name, (
+                    def_vars,
+                    add_def,
+                ) in learned_def.additional_defs_used.items():
+                    print(f"\t{add_def_name}: {add_def} \n\tVariables: {def_vars}")
+            raise e
         self._loaded_defs.learned_definitions[
             chemical_class.id
         ].val_metrics = val_metrics
