@@ -48,8 +48,12 @@ def print_pickle_contents(
 
         if show_conversation_history:
             print("Conversation history:")
-            for c_his in learned_def.prompts_history["conversation_history"]:
-                print(c_his)
+            conv_his = learned_def.prompts_history["conversation_history"]
+            if conv_his is None or len(conv_his) == 0:
+                print("\tNo conversation history available.")
+            else:
+                for c_his in conv_his:
+                    print(c_his)
         print("---" * 10)
 
     for name, add_def in data.additional_definitions.items():
