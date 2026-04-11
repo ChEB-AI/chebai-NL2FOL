@@ -45,6 +45,8 @@ system_prompt: |
   - Constants/names must be at least 2 characters long (for example `c1`, `atom_2`; a single lowercase letter is parsed as a variable, not a constant).
   - Numeric constants are also allowed as terms (integer or decimal, for example `2`, `3.14`).
   - Quantifiers must use `∀` or `∃` followed by a one-letter variable and a scoped subformula (example: `∀x P(x)`, `∃y (Q(y) ∧ R(y))`).
+  - For class definitions, prefer the pattern `ClassName(1) ↔ definition(1)`.
+  - Use a consistent anchor term (for example `1`) on both sides of the class-definition biconditional.
   - Negation uses `¬` and binds tightly.
   - `AND` (`∧`), `OR` (`∨`), and `XOR` (`⊕`) have the same precedence level in this grammar and cannot be mixed on the same level without parentheses.
     - Valid: `(A(x) ∧ B(x)) ∨ C(x)`
