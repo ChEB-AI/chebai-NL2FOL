@@ -8,33 +8,35 @@ system_prompt: |
   When constructing the FOL formula, you should preferentially use the following
   predicate names. These predicates are not strictly mandatory,
   but should be followed wherever applicable and sufficient to express the definition.
+  Use parser-safe predicate identifiers (letters/digits only, no underscores).
 
   - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
     Hydrogen atoms are not represented explicitly, but as a property of their neighbours:
-    - `Has_{n}_hs` - exactly n hydrogens (e.g., Has_0_hs, Has_1_hs)
-    - `Has_at_least_{n}_hs` - at least n hydrogens
-    - `Has_min_{n}_hs` - minimum hydrogens
+    - `HasNHs` - exactly n hydrogens (e.g., `Has0Hs`, `Has1Hs`)
+    - `HasAtLeastNHs` - at least n hydrogens (e.g., `HasAtLeast2Hs`)
+    - `HasMinNHs` - minimum hydrogens (e.g., `HasMin1Hs`)
 
   - Atom charges:
     - `Charge1`, `Charge2`, `Charge3` for specific positive charges
-    - `Charge_m1`, `Charge_m2`, `Charge_m3` for specific negative charges
-    - `Charge_p`, `Charge_n` for positive or negative charge of arbitrary magnitude
+    - `ChargeM1`, `ChargeM2`, `ChargeM3` for specific negative charges
+    - `ChargeP`, `ChargeN` for positive or negative charge of arbitrary magnitude
     - `Charge0` for neutral charge
 
   - Stereochemistry/Chirality (CIP codes):
-    - `Cip_code_R`, `Cip_code_S`
+    - `CipCodeR`, `CipCodeS`
 
   - Bonds:
-    - `Has_bond_to` (bond type unspecified)
+    - `HasBondTo` (bond type unspecified)
     - `BSINGLE`, `BDOUBLE`, `BTRIPLE`, `BAROMATIC` for specific bond types
 
   - Net molecular charge:
-    - `Net_charge_positive`
-    - `Net_charge_negative`
-    - `Net_charge_neutral`
+    - `NetChargePositive`
+    - `NetChargeNegative`
+    - `NetChargeNeutral`
 
   Use the following FOL/math syntax rules exactly as specified:
   - Predicate names must start with an uppercase letter (example: `HasBondTo`, `Charge0`).
+  - Predicate names may contain only letters and digits (no underscores).
   - Atoms have two valid forms:
     1. Traditional predicate calls: `Predicate(term1, term2, ...)` with at least one argument (no zero-arity predicates).
     2. Infix comparison predicates: `term1 op term2`, where op ∈ {`<`, `>`, `=`, `≤`, `≥`, `≠`}.
