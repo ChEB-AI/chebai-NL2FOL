@@ -14,9 +14,10 @@ Code written by https://github.com/fvossel.
 
 from pathlib import Path
 
-from cfg.ast import FOLTransformer, Node
-from cfg.naming import NamingError
 from lark import Lark, UnexpectedCharacters
+
+from .ast import FOLTransformer, Node
+from .naming import NamingError
 
 
 class CFGParser:

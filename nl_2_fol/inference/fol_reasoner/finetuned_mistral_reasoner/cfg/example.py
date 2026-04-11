@@ -23,7 +23,7 @@ if __package__ is None or __package__ == "":
     project_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(project_root))
 
-from cfg.cfgparser import CFGParser
+from .cfgparser import CFGParser
 
 parser = CFGParser()
 

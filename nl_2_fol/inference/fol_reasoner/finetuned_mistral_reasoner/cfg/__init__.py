@@ -11,3 +11,7 @@ Code written by https://github.com/fvossel.
     url={https://arxiv.org/abs/2509.22338},
 }
 """
+
+from .cfgparser import CFGParser
+
+__all__ = ["CFGParser"]
