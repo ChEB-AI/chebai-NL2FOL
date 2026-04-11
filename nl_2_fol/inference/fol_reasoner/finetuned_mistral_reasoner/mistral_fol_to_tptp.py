@@ -55,29 +55,7 @@ class MistralCustomFOLReasoner(GavelFOLReasoner):
             fixed,
         )
 
-        custom_to_chemlog_predicate_map = {
-            "Charge0": "charge0",
-            "Charge1": "charge1",
-            "Charge2": "charge2",
-            "Charge3": "charge3",
-            "ChargeM1": "charge_m1",
-            "ChargeM2": "charge_m2",
-            "ChargeM3": "charge_m3",
-            "ChargeP": "charge_p",
-            "ChargeN": "charge_n",
-            "CipCodeR": "cip_code_R",
-            "CipCodeS": "cip_code_S",
-            "HasBondTo": "has_bond_to",
-            "BSINGLE": "bSINGLE",
-            "BDOUBLE": "bDOUBLE",
-            "BTRIPLE": "bTRIPLE",
-            "BAROMATIC": "bAROMATIC",
-            "NetChargePositive": "net_charge_positive",
-            "NetChargeNegative": "net_charge_negative",
-            "NetChargeNeutral": "net_charge_neutral",
-        }
-
-        for src, dst in custom_to_chemlog_predicate_map.items():
+        for src, dst in _CUSTOM_TO_CHEMLOG_PREDICATE_MAP.items():
             fixed = re.sub(rf"\b{re.escape(src)}\b", dst, fixed)
 
         # If a predicate's lowercase form is an atom predicate, force lowercase.
@@ -95,6 +73,28 @@ class MistralCustomFOLReasoner(GavelFOLReasoner):
 
         return fixed
 
+
+_CUSTOM_TO_CHEMLOG_PREDICATE_MAP = {
+    "Charge0": "charge0",
+    "Charge1": "charge1",
+    "Charge2": "charge2",
+    "Charge3": "charge3",
+    "ChargeM1": "charge_m1",
+    "ChargeM2": "charge_m2",
+    "ChargeM3": "charge_m3",
+    "ChargeP": "charge_p",
+    "ChargeN": "charge_n",
+    "CipCodeR": "cip_code_R",
+    "CipCodeS": "cip_code_S",
+    "HasBondTo": "has_bond_to",
+    "BSINGLE": "bSINGLE",
+    "BDOUBLE": "bDOUBLE",
+    "BTRIPLE": "bTRIPLE",
+    "BAROMATIC": "bAROMATIC",
+    "NetChargePositive": "net_charge_positive",
+    "NetChargeNegative": "net_charge_negative",
+    "NetChargeNeutral": "net_charge_neutral",
+}
 
 if __name__ == "__main__":
     reasoner = MistralCustomFOLReasoner()
