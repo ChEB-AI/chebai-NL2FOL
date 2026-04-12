@@ -24,7 +24,7 @@ class TestMistralCustomFOLReasoner:
         thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
 
         # Logical definition to match (I removed `OneCarbonCompound` for simplicity)
-        definition_str = "CarbonMonoxide(1) ↔ (∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
+        definition_str = "CarbonMonoxide ↔ (∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
         definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
@@ -34,24 +34,24 @@ class TestMistralCustomFOLReasoner:
         )
         matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
         assert matches is True, (
-            "Expected ethanol to match the definition, but it did not. This is because the definition is very broad and only requires the presence of a carbon atom bonded to an oxygen atom, which is true for ethanol as well."
+            "Expected ethanol to match the definition, but it did not. "
         )
         matches = reasoner.does_mol_match_tptp_definition(
             thionitrousAcid, definition_to_match
         )
         assert matches is False, (
-            "Expected thionitrous acid to not match the definition, but it did. This is because thionitrous acid does not contain a carbon atom bonded to an oxygen atom."
+            "Expected thionitrous acid to not match the definition, but it did."
         )
 
         # Now test with a more accurate definition that includes `OneCarbonCompound`,
         # and provide background definitions for `OneCarbonCompound` and
         # `TwoPlusCarbonCompound`. This should allow carbon monoxide to match, but not
         # ethanol or thionitrous acid.
-        definition_str = "CarbonMonoxide(1) ↔ (∃m ∃y (OneCarbonCompound(m) ∧ O(y) ∧ HasBondTo(m, y)))"
+        definition_str = "CarbonMonoxide ↔ (∃x ∃y (OneCarbonCompound ∧ C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
         definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
         add_defs_dict = {
-            "onecarboncompound": "OneCarbonCompound(m) ↔ (C(m) ∧ ¬TwoPlusCarbonCompound(m))",
-            "twopluscarboncompound": "TwoPlusCarbonCompound(m) ↔ (C(m) ∧ ∃y (C(y) ∧ HasBondTo(m, y) ∧ m ≠ y))",
+            "onecarboncompound": "OneCarbonCompound ↔ (∃x (C(x) ∧ ¬TwoPlusCarbonCompound))",
+            "twopluscarboncompound": "TwoPlusCarbonCompound ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))",
         }
         parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
         for pred_name, (vars, formula) in parsed_add_def.items():
@@ -79,10 +79,10 @@ class TestMistralCustomFOLReasoner:
     ):
         """Test few-shot examples from nl_2_fol/prompting/prompt_templates/few_shots/mistral_fol_math_syntax.json."""
         # Test carboxylic acid formula
-        few_shot_formula_1 = "CarboxylicAcid(1) ↔ (CarbonOxoacid(1) ∧ ∃x ∃y ∃z (C(x) ∧ O(y) ∧ O(z) ∧ Has1Hs(z) ∧ BDOUBLE(x, y) ∧ BSINGLE(x, z)))"
+        few_shot_formula_1 = "CarboxylicAcid ↔ (CarbonOxoacid ∧ ∃x ∃y ∃z (C(x) ∧ O(y) ∧ O(z) ∧ Has1Hs(z) ∧ BDOUBLE(x, y) ∧ BSINGLE(x, z)))"
 
         # Add background definitions for carboxylic acid test
-        add_defs_dict_1 = {"carbonoxoacid": "CarbonOxoacid(1) ↔ (∃x ∃y (C(x) ∧ O(y)))"}
+        add_defs_dict_1 = {"carbonoxoacid": "CarbonOxoacid ↔ (∃x ∃y (C(x) ∧ O(y)))"}
         parsed_add_def_1 = reasoner.convert_to_background_definitions(add_defs_dict_1)
         for pred_name, (vars, formula) in parsed_add_def_1.items():
             reasoner.add_background_definition(pred_name, vars, formula)
@@ -112,11 +112,11 @@ class TestMistralCustomFOLReasoner:
         )
 
         # Test azide formula
-        few_shot_formula_2 = "Azide(1) ↔ (NitrogenMolecularEntity(1) ∧ ∃x ∃y ∃z (N(x) ∧ Charge0(x) ∧ N(y) ∧ Charge1(y) ∧ N(z) ∧ ChargeM1(z) ∧ BDOUBLE(x, y) ∧ BDOUBLE(y, z)))"
+        few_shot_formula_2 = "Azide ↔ (NitrogenMolecularEntity ∧ ∃x ∃y ∃z (N(x) ∧ Charge0(x) ∧ N(y) ∧ Charge1(y) ∧ N(z) ∧ ChargeM1(z) ∧ BDOUBLE(x, y) ∧ BDOUBLE(y, z)))"
 
         # Add background definitions for azide test
         add_defs_dict_2 = {
-            "nitrogenmolecularentity": "NitrogenMolecularEntity(1) ↔ (∃x N(x))"
+            "nitrogenmolecularentity": "NitrogenMolecularEntity ↔ (∃x N(x))"
         }
         parsed_add_def_2 = reasoner.convert_to_background_definitions(add_defs_dict_2)
         for pred_name, (vars, formula) in parsed_add_def_2.items():

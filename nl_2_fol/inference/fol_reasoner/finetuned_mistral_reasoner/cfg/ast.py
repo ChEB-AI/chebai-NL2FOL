@@ -301,6 +301,9 @@ class Atom(Node):
             op = self.INFIX_PREDS_P9[self.predicate]
             return f"({left} {op} {right})"
 
+        if not self.args:
+            return f"{self.predicate}"
+
         args_str = ", ".join(a.to_prover9() for a in self.args)
         return f"{self.predicate}({args_str})"
 
@@ -326,6 +329,9 @@ class Atom(Node):
             right = self.args[1].to_tptp()
             op = self.INFIX_PREDS_TPTP[self.predicate]
             return f"({left} {op} {right})"
+
+        if not self.args:
+            return f"{self.predicate.lower()}"
 
         args_str = ",".join(a.to_tptp() for a in self.args)
         return f"{self.predicate.lower()}({args_str})"
@@ -700,6 +706,11 @@ class FOLTransformer(Transformer):
         else:
             args = items[1]
         return Atom(pred, args)
+
+    def atom0_(self, items):
+        """Transform bare predicate symbol into a zero-arity Atom node."""
+        pred = str(items[0])
+        return Atom(pred, [])
 
     def lt_(self, items):
         """Transform less-than comparison into Atom node."""

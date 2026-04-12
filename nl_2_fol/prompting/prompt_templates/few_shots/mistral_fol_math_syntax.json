@@ -7,7 +7,7 @@
         "superclass": "carbon oxoacid",
         "explanation": "The class is defined by its superclass and the -C(=O)OH group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
       },
-      "FOL_formula": "CarboxylicAcid(1) ↔ (CarbonOxoacid(1) ∧ ∃x ∃y ∃z (C(x) ∧ O(y) ∧ O(z) ∧ Has1Hs(z) ∧ BDOUBLE(x, y) ∧ BSINGLE(x, z)))"
+      "FOL_formula": "CarboxylicAcid ↔ (CarbonOxoacid ∧ ∃x ∃y ∃z (C(x) ∧ O(y) ∧ O(z) ∧ Has1Hs(z) ∧ BDOUBLE(x, y) ∧ BSINGLE(x, z)))"
     }
   },
   {
@@ -18,7 +18,7 @@
         "superclass": "nitrogen molecular entity",
         "explanation": "The class is defined by its superclass and the -N3 group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
       },
-      "FOL_formula": "Azide(1) ↔ (NitrogenMolecularEntity(1) ∧ ∃x ∃y ∃z (N(x) ∧ Charge0(x) ∧ N(y) ∧ Charge1(y) ∧ N(z) ∧ ChargeM1(z) ∧ BDOUBLE(x, y) ∧ BDOUBLE(y, z)))"
+      "FOL_formula": "Azide ↔ (NitrogenMolecularEntity ∧ ∃x ∃y ∃z (N(x) ∧ Charge0(x) ∧ N(y) ∧ Charge1(y) ∧ N(z) ∧ ChargeM1(z) ∧ BDOUBLE(x, y) ∧ BDOUBLE(y, z)))"
     }
   }
 ]

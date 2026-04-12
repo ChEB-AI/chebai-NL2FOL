@@ -9,12 +9,12 @@ failure_prompt: |
   Here is an example of how to define undefined predicates in FOL:
 
   Example FOL definition for carbon monoxide:
-  CarbonMonoxide(1) ↔ (OneCarbonCompound(1) ∧ ∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))
+  CarbonMonoxide ↔ (OneCarbonCompound ∧ ∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))
 
   If the predicate `OneCarbonCompound` is undefined, define it using FOL:
   {{
-    "OneCarbonCompound": "OneCarbonCompound(1) ↔ (∃x C(x) ∧ ¬TwoPlusCarbonCompound(1))",
-    "TwoPlusCarbonCompound": "TwoPlusCarbonCompound(1) ↔ ∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y)"
+    "OneCarbonCompound": "OneCarbonCompound ↔ (∃x (C(x) ∧ ¬TwoPlusCarbonCompound))",
+    "TwoPlusCarbonCompound": "TwoPlusCarbonCompound ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))"
   }}
 
   Refer to the above examples and few-shot examples provided earlier for syntax and style conventions when constructing the FOL formula.

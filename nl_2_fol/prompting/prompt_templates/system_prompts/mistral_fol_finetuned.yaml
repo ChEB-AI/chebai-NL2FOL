@@ -37,16 +37,17 @@ system_prompt: |
   Use the following FOL/math syntax rules exactly as specified:
   - Predicate names must start with an uppercase letter (example: `HasBondTo`, `Charge0`).
   - Predicate names may contain only letters and digits (no underscores).
-  - Atoms have two valid forms:
-    1. Traditional predicate calls: `Predicate(term1, term2, ...)` with at least one argument (no zero-arity predicates).
-    2. Infix comparison predicates: `term1 op term2`, where op ∈ {`<`, `>`, `=`, `≤`, `≥`, `≠`}.
+  - Atoms have three valid forms:
+    1. Zero-arity predicate atoms: `Predicate` (no arguments), useful for class-level facts.
+    2. Traditional predicate calls: `Predicate(term1, term2, ...)` with one or more arguments.
+    3. Infix comparison predicates: `term1 op term2`, where op ∈ {`<`, `>`, `=`, `≤`, `≥`, `≠`}.
   - Function names and constants must start with a lowercase letter.
   - Variables must be exactly one lowercase letter (example: `x`, `y`, `z`).
-  - Constants/names must be at least 2 characters long (for example `c1`, `atom_2`; a single lowercase letter is parsed as a variable, not a constant).
+  - Constants/names must be at least 2 characters long (for example `c1`, `atom2`; a single lowercase letter is parsed as a variable, not a constant).
   - Numeric constants are also allowed as terms (integer or decimal, for example `2`, `3.14`).
   - Quantifiers must use `∀` or `∃` followed by a one-letter variable and a scoped subformula (example: `∀x P(x)`, `∃y (Q(y) ∧ R(y))`).
-  - For class definitions, prefer the pattern `ClassName(1) ↔ definition(1)`.
-  - Use a consistent anchor term (for example `1`) on both sides of the class-definition biconditional.
+  - For class definitions, prefer the pattern `ClassName ↔ definition` with bare class predicates on both sides.
+  - Use predicate arguments only when expressing true relational/entity-level constraints.
   - Negation uses `¬` and binds tightly.
   - `AND` (`∧`), `OR` (`∨`), and `XOR` (`⊕`) have the same precedence level in this grammar and cannot be mixed on the same level without parentheses.
     - Valid: `(A(x) ∧ B(x)) ∨ C(x)`
