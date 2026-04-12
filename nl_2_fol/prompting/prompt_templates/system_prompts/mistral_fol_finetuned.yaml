@@ -10,7 +10,7 @@ system_prompt: |
   but should be followed wherever applicable and sufficient to express the definition.
   Use parser-safe predicate identifiers (letters/digits only, no underscores).
 
-  - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
+  - Atom symbols: e.g. `C` for carbon atoms, `O` for oxygen atoms, `Cl` for chlorine atoms.
     Hydrogen atoms are not represented explicitly, but as a property of their neighbours:
     - `HasNHs` - exactly n hydrogens (e.g., `Has0Hs`, `Has1Hs`)
     - `HasAtLeastNHs` - at least n hydrogens (e.g., `HasAtLeast2Hs`)

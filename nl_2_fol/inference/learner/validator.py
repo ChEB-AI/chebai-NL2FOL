@@ -57,7 +57,7 @@ class PerformValidation(BaseFOL):
                 max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
                 temp_additional_defs=None,
             )[0]
-        except Exception as e:
+        except Exception:
             print(f"Parsed Definition: {learned_def.learned_FOL.formula}")
             print("Variables:", learned_def.learned_FOL.pred_variables)
 
@@ -68,7 +68,7 @@ class PerformValidation(BaseFOL):
                     add_def,
                 ) in learned_def.additional_defs_used.items():
                     print(f"\t{add_def_name}: {add_def} \n\tVariables: {def_vars}")
-            raise e
+            raise
         self._loaded_defs.learned_definitions[
             chemical_class.id
         ].val_metrics = val_metrics
