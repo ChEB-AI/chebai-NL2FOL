@@ -1,0 +1,69 @@
+?start: formula
+
+?formula: biimplication
+
+?biimplication: implication
+    | implication "↔" biimplication         -> iff_
+
+?implication: same_level_ops
+    | same_level_ops "→" implication        -> implies_
+
+?same_level_ops: only_and
+    | only_or
+    | only_xor
+    | negation
+
+?only_and: negation ("∧" negation)+         -> and_
+
+?only_or: negation ("∨" negation)+          -> or_
+
+?only_xor: negation ("⊕" negation)+         -> xor_
+
+?negation: "¬" negation                     -> not_
+    | quantifier
+    | atom
+    | "(" formula ")"
+    | "[" formula "]"
+
+?quantifier: (FORALL | EXISTS) VARIABLE negation   -> quantifier_
+
+?atom: infix_predicate
+     | PREDICATE "(" termlist ")"           -> atom_
+
+?infix_predicate: term "<"  term            -> lt_
+                | term ">"  term            -> gt_
+                | term "="  term            -> eq_
+                | term "≤" term            -> le_
+                | term "≥" term            -> ge_
+                | term "≠" term            -> ne_
+
+?termlist: term ("," term)*
+
+?term: sum
+
+?sum: product
+    | sum "+" product                      -> add_
+    | sum "-" product                      -> sub_
+
+?product: atom_term
+    | product "*" atom_term                -> mul_
+    | product "/" atom_term                -> div_
+
+?atom_term: VARIABLE
+    | NAME "(" termlist ")"                -> function_
+    | NAME
+    | "(" term ")"
+
+PREDICATE: /[A-Z][a-zA-Z0-9]*/
+
+VARIABLE.2: /[a-z]/
+
+NAME.1: /[0-9]+(\.[0-9]+)?|[a-z][a-zA-Z0-9_.]+/
+
+FORALL: "∀"
+
+EXISTS: "∃"
+
+%import common.WS
+
+%ignore WS
