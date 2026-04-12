@@ -310,3 +310,62 @@ class TestGavelFOLReasoner:
 
         assert isinstance(parsed_formula, logic.QuantifiedFormula)
         assert len(pred_vars) == 0
+
+    def test_model_checking_success_consistency(self, reasoner: GavelFOLReasoner):
+        carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
+        ethanol = Chem.MolFromSmiles("CCO")
+        thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
+
+        # Logical definition to match (I removed the `oneCarbonCompound` predicate for simplicity)
+        definition_str = (
+            "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
+        )
+        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        matches = reasoner.does_mol_match_tptp_definition(
+            carbonMonoxide, definition_to_match
+        )
+        assert matches is True, (
+            "Expected carbon monoxide to match the definition, but it did not."
+        )
+
+        matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
+        # returns model found (which contradicts the chemistry)
+        assert matches is True, (
+            "Expected ethanol to match the definition, but it did not. "
+        )
+
+        matches = reasoner.does_mol_match_tptp_definition(
+            thionitrousAcid, definition_to_match
+        )
+        assert matches is False, (
+            "Expected thionitrous acid to not match the definition, but it did."
+        )
+
+        # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
+        definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
+        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+
+        add_defs_dict = {
+            "oneCarbonCompound": "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)",
+            "twoPlusCarbonCompound": "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)",
+        }
+        parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
+        for pred_name, (vars, formula) in parsed_add_def.items():
+            reasoner.add_background_definition(pred_name, vars, formula)
+
+        matches = reasoner.does_mol_match_tptp_definition(
+            carbonMonoxide, definition_to_match
+        )
+        assert matches is True, (
+            "Expected carbon monoxide to match the definition, but it did not."
+        )
+        matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
+        assert matches is False, (
+            "Expected ethanol to not match the definition, but it did."
+        )
+        matches = reasoner.does_mol_match_tptp_definition(
+            thionitrousAcid, definition_to_match
+        )
+        assert matches is False, (
+            "Expected thionitrous acid to not match the definition, but it did."
+        )

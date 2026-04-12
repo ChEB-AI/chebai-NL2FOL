@@ -14,7 +14,7 @@ class TestMistralCustomFOLReasoner:
         """Create a MistralCustomFOLReasoner instance for testing."""
         return MistralCustomFOLReasoner()
 
-    def test_model_checking_success(self, reasoner):
+    def test_model_checking_success(self, reasoner: MistralCustomFOLReasoner):
         """Test that the reasoner can successfully parse and model check a formula."""
 
         carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
@@ -47,21 +47,14 @@ class TestMistralCustomFOLReasoner:
         # ethanol or thionitrous acid.
         definition_str = "CarbonMonoxide(1) ↔ (OneCarbonCompound(1) ∧ ∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
         definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
-        assert not isinstance(definition_to_match, Exception)
-        reasoner.background_definitions = {
-            "onecarboncompound": (
-                [],
-                reasoner.get_tptp_fol_definition(
-                    "OneCarbonCompound(1) ↔ (∃x C(x) ∧ ¬TwoPlusCarbonCompound(1))"
-                ),
-            ),
-            "twopluscarboncompound": (
-                [],
-                reasoner.get_tptp_fol_definition(
-                    "TwoPlusCarbonCompound(1) ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))"
-                ),
-            ),
+        add_defs_dict = {
+            "onecarboncompound": "OneCarbonCompound(1) ↔ (∃x C(x) ∧ ¬TwoPlusCarbonCompound(1))",
+            "twopluscarboncompound": "TwoPlusCarbonCompound(1) ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))",
         }
+        parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
+        for pred_name, (vars, formula) in parsed_add_def.items():
+            reasoner.add_background_definition(pred_name, vars, formula)
+
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
