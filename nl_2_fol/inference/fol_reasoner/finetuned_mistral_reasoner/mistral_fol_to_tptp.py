@@ -2,7 +2,6 @@ import re
 
 from gavel.logic import logic
 
-from nl_2_fol.inference.fol_reasoner.base_predicates import get_atom_predicates
 from nl_2_fol.inference.fol_reasoner.finetuned_mistral_reasoner.cfg import (
     CFGParser,
 )
@@ -14,7 +13,6 @@ class MistralCustomFOLReasoner(GavelFOLReasoner):
     def __init__(self):
         super().__init__()
         self.math_to_tptp_parser = CFGParser()
-        self._atom_predicates = set(get_atom_predicates().keys())
 
     @tptp_parse_exception
     def get_tptp_fol_definition(
@@ -40,36 +38,28 @@ class MistralCustomFOLReasoner(GavelFOLReasoner):
         fixed = formula
 
         # Has1Hs -> has_1_hs,  Has2Hs -> has_2_hs, etc.
-        fixed = re.sub(r"\bHas(\d+)Hs\b", r"has_\1_hs", fixed)  #
+        fixed = re.sub(r"\bHas(\d+)Hs\b", r"has_\1_hs", fixed, flags=re.IGNORECASE)
 
         # HasAtLeast1Hs -> has_at_least_1_hs,  HasAtLeast2Hs -> has_at_least_2_hs, etc.
         fixed = re.sub(
             r"\bHasAtLeast(\d+)Hs\b",
             r"has_at_least_\1_hs",
             fixed,
+            flags=re.IGNORECASE,
         )
         # HasMin1Hs -> has_min_1_hs,  HasMin2Hs -> has_min_2_hs, etc.
         fixed = re.sub(
             r"\bHasMin(\d+)Hs\b",
             r"has_min_\1_hs",
             fixed,
+            flags=re.IGNORECASE,
         )
 
         for src, dst in _CUSTOM_TO_CHEMLOG_PREDICATE_MAP.items():
-            fixed = re.sub(rf"\b{re.escape(src)}\b", dst, fixed)
+            fixed = re.sub(rf"\b{re.escape(src)}\b", dst, fixed, flags=re.IGNORECASE)
 
         # If a predicate's lowercase form is an atom predicate, force lowercase.
-        def lowercase_atom_predicate(match: re.Match) -> str:
-            predicate = match.group(1)
-            return (
-                predicate.lower()
-                if predicate.lower() in self._atom_predicates
-                else predicate
-            )
-
-        fixed = re.sub(
-            r"\b([A-Za-z][A-Za-z0-9_]*)\b(?=\()", lowercase_atom_predicate, fixed
-        )
+        # The above is not needed as cfg parser should already have converted predicate tokens to lowercase,
 
         return fixed
 
