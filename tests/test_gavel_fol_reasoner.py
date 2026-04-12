@@ -371,6 +371,7 @@ class TestGavelFOLReasoner:
         )
 
     def test_few_shots_examples_model_checking(self, reasoner: GavelFOLReasoner):
+        """Test few-shot examples from nl_2_fol/prompting/prompt_templates/few_shots/with_DL_style.json"""
         # Test carboxylic acid formula
         few_shot_formula_1 = "carboxylicAcid <=> (carbonOxoacid & ?[A1, A2, A3]: (c(A1) & o(A2) & o(A3) & has_1_hs(A3) & bDOUBLE(A1, A2) & bSINGLE(A1, A3)))"
 
