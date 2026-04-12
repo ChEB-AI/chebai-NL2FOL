@@ -29,7 +29,7 @@ def sample_learning_results():
         ),
         prompts_history={},
         name="carbon compound",
-        description="A compound containing at least one carbon atom.",
+        definition="A compound containing at least one carbon atom.",
         learn_success=True,
     )
 
@@ -41,7 +41,7 @@ def sample_learning_results():
         ),
         prompts_history={},
         name="failed compound",
-        description="A compound that failed to learn.",
+        definition="A compound that failed to learn.",
         learn_success=False,
     )
 

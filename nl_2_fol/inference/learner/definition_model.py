@@ -44,7 +44,7 @@ class LearnedDefinition(BaseModel):
         ..., description="History of prompts used to learn this definition"
     )
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
-    description: str = Field(..., description="description of the structure from CHEBI")
+    definition: str = Field(..., description="definition of the structure from CHEBI")
 
     additional_defs_used: (
         dict[str, tuple[list[logic.Variable], QuantifiedFormula]] | None
@@ -133,7 +133,7 @@ if __name__ == "__main__":
                     "List the properties of CHEBI:12345.": "Properties of CHEBI:12345.",
                 },
                 name="Example Chemical Class",
-                description="A chemical class used for demonstration purposes.",
+                definition="A chemical class used for demonstration purposes.",
             ),
             56645: LearnedDefinition(
                 train_metrics=DefinitionMetrics(
@@ -147,7 +147,7 @@ if __name__ == "__main__":
                     "List the properties of CHEBI:56645.": "Properties of CHEBI:56645.",
                 },
                 name="Another Example Chemical Class",
-                description="Another chemical class used for demonstration purposes.",
+                definition="Another chemical class used for demonstration purposes.",
             ),
         },
         additional_definitions={
