@@ -38,7 +38,7 @@ class BaseFOL:
         self.undirected_chebi_graph = (
             self._entire_chebi_data.get_undirected_hierarchy_graph()
         )
-        self._gavel = self.get_reasoner()
+        self._fol_reasoner = self.get_reasoner()
 
     def get_reasoner(self):
         if self.fol_reasoner == "gavel":
@@ -79,7 +79,7 @@ class BaseFOL:
             processed_pos_samples,
             processed_neg_samples,
         ) = check_if_definition_matches_samples(
-            self._gavel,
+            self._fol_reasoner,
             sample_match_timeout_seconds,
             chemical_class,
             tptp_def,

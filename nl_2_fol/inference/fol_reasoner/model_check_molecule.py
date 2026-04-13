@@ -254,29 +254,15 @@ class GavelFOLReasoner:
             converted[name] = (pred_vars, fol_formula)
         return converted
 
+    @property
+    def dummy_formula(self) -> str:
+        return "failed_placeholder_predicate(X) <=> (c(X) & ~c(X))"
+
 
 if __name__ == "__main__":
     # Example usage
 
     fol_parser = GavelFOLReasoner()
-    # with open("nl_2_fol/inference/learned/learned_definitions.pkl", "rb") as f:
-    #     new_definitions = pickle.load(f)
-    # for _, learned_def in new_definitions.learned_definitions.items():
-    #     print(
-    #         f"Adding background definition for `{learned_def.name}`: {learned_def.learned_FOL}"
-    #     )
-    #     fol_parser.add_background_definition(
-    #         learned_def.name,
-    #         learned_def.learned_FOL.pred_variables,
-    #         learned_def.learned_FOL.formula,
-    #     )
-
-    # for name, add_def in new_definitions.additional_definitions.items():
-    #     print(f"Adding background definition for `{name}`: {add_def}")
-    #     fol_parser.add_background_definition(
-    #         name, add_def.pred_variables, add_def.formula
-    #     )
-
     llm_for = "tripeptide <=> (oligopeptide & ?[C1, O1, N1, C2, O2, N2]: (c(C1) & o(O1) & bDOUBLE(C1, O1) & n(N1) & bSINGLE(C1, N1) & has_1_hs(N1) & c(C2) & o(O2) & bDOUBLE(C2, O2) & n(N2) & bSINGLE(C2, N2) & has_1_hs(N2) & C1 != C2 & O1 != O2 & N1 != N2 & ![C3, O3, N3]: ((c(C3) & o(O3) & bDOUBLE(C3, O3) & n(N3) & bSINGLE(C3, N3) & has_1_hs(N3) & peptide(C3, O3, N3)) => ((C3 = C1 & O3 = O1 & N3 = N1) | (C3 = C2 & O3 = O2 & N3 = N2)))))"
     fol_parser.get_tptp_fol_definition(llm_for)
     mol = Chem.MolFromSmiles(
@@ -286,60 +272,3 @@ if __name__ == "__main__":
         mol, fol_parser.get_tptp_fol_definition(llm_for)[1]
     )
     print(f"Tripeptide matches definition: {matches}")
-    exit()
-
-    carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
-    ethanol = Chem.MolFromSmiles("CCO")
-    thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
-
-    # Logical definition to match (I removed the `oneCarbonCompound` predicate for simplicity)
-    definition_str = (
-        "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
-    )
-    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)[1]
-
-    # Background definitions (none needed here)
-    background_definitions = {}
-    matches = fol_parser.does_mol_match_tptp_definition(
-        carbonMonoxide, definition_to_match
-    )
-    print(f"Carbon monoxide matches definition: {matches}")
-    matches = fol_parser.does_mol_match_tptp_definition(ethanol, definition_to_match)
-    print(
-        f"Ethanol matches definition: {matches}"
-    )  # returns model found (which contradicts the chemistry)
-    matches = fol_parser.does_mol_match_tptp_definition(
-        thionitrousAcid, definition_to_match
-    )
-    print(f"Thionitrous acid matches definition: {matches}")
-
-    # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
-    definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
-    definition_to_match = fol_parser.get_tptp_fol_definition(definition_str)[1]
-    assert not isinstance(definition_to_match, Exception)
-    fol_parser.background_definitions = {
-        "oneCarbonCompound": (
-            [],
-            fol_parser.get_tptp_fol_definition(
-                "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)"
-            ),
-        ),
-        "twoPlusCarbonCompound": (
-            [],
-            fol_parser.get_tptp_fol_definition(
-                "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
-            ),
-        ),
-    }
-    matches = fol_parser.does_mol_match_tptp_definition(
-        carbonMonoxide, definition_to_match
-    )
-    print(f"Carbon monoxide matches definition: {matches}")
-    matches = fol_parser.does_mol_match_tptp_definition(ethanol, definition_to_match)
-    print(
-        f"Ethanol matches definition: {matches}"
-    )  # now, no model found because we added the oneCarbonCompound definition
-    matches = fol_parser.does_mol_match_tptp_definition(
-        thionitrousAcid, definition_to_match
-    )
-    print(f"Thionitrous acid matches definition: {matches}")

@@ -63,6 +63,10 @@ class MistralCustomFOLReasoner(GavelFOLReasoner):
 
         return fixed
 
+    @property
+    def dummy_formula(self) -> str:
+        return "FailedPlaceholderPredicate ↔ (∃x (C(x) ∧ ¬C(x)))"
+
 
 _CUSTOM_TO_CHEMLOG_PREDICATE_MAP = {
     "Charge0": "charge0",
