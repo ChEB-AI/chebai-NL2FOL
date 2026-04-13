@@ -191,7 +191,9 @@ class GavelFOLReasoner:
         )
         if temp_additional_defs:
             missing_predicates = missing_predicates - temp_additional_defs.keys()
-        return missing_predicates
+
+        # {Token('LOWER_WORD', 'predicate_name')} -> {'predicate_name'}
+        return {str(pred) for pred in missing_predicates}
 
     def _extract_predicates(self, formula: logic.QuantifiedFormula) -> set[str]:
         """Extract all predicates from a parsed TPTP formula."""

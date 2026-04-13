@@ -147,6 +147,26 @@ class TestGavelFOLReasoner:
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
+    def test_extract_unknown_predicates_respects_all_definition_sources(
+        self, reasoner: GavelFOLReasoner
+    ):
+        """Test unknown predicates exclude base, background, and temporary defs."""
+        bg_vars, bg_formula = reasoner.get_tptp_fol_definition("bg_pred(X) <=> c(X)")
+        reasoner.add_background_definition("bg_pred", bg_vars, bg_formula)
+
+        temp_vars, temp_formula = reasoner.get_tptp_fol_definition(
+            "temp_pred(X) <=> o(X)"
+        )
+        temp_defs = {"temp_pred": (temp_vars, temp_formula)}
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(
+            "test_pred(X) <=> (c(X) & bg_pred(X) & temp_pred(X) & unknown_pred(X))"
+        )
+
+        missing = reasoner.extract_unknown_predicates(parsed_formula, temp_defs)
+
+        assert missing == {"unknown_pred"}
+
     def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
         """Test that errors in does_mol_match_tptp_definition are properly raised."""
         formula_str = "test_pred(X) <=> (ptest(X) & qtest(X))"
