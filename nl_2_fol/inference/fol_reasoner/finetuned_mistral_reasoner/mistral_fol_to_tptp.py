@@ -88,7 +88,7 @@ _CUSTOM_TO_CHEMLOG_PREDICATE_MAP = {
 
 if __name__ == "__main__":
     reasoner = MistralCustomFOLReasoner()
-    formula = "Azide(1) ↔ (NitrogenMolecularEntity(1) ∧ ∃x ∃y ∃z (N(x) ∧ Charge0(x) ∧ N(y) ∧ Charge1(y) ∧ N(z) ∧ ChargeM1(z) ∧ BDOUBLE(x, y) ∧ BDOUBLE(y, z)))"
+    formula = "Azide ↔ (NitrogenMolecularEntity ∧ ∃x ∃y ∃z (N(x) ∧ Charge0(x) ∧ N(y) ∧ Charge1(y) ∧ N(z) ∧ ChargeM1(z) ∧ BDOUBLE(x, y) ∧ BDOUBLE(y, z)))"
     print("Testing math_fol_to_tptp_fol:")
     tptp_formula = reasoner.math_fol_to_tptp_fol(formula)
     print(type(tptp_formula))
