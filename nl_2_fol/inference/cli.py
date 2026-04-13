@@ -56,6 +56,7 @@ class Main:
             structures_path=structures_data_path,
             max_attempts=max_attempts,
             f1_threshold=f1_threshold,
+            fol_reasoner="gavel",
         )
         if class_name == "all":
             learner.learn_fol_definitions()
@@ -80,6 +81,52 @@ class Main:
             validator.validate()
         else:
             validator.validate_class(class_name=class_name)
+
+    @staticmethod
+    def learn_mistral(
+        class_name: str = "all",
+        api_platform: API_PLATFORM = "ollama",
+        model_name: str = "my-mistral",
+        system_prompt_fp: str = os.path.join(
+            PROMPT_TEMPLATES_DIR, "system_prompts", "mistral_fol_finetuned.yaml"
+        ),
+        few_shot_prompt_fp: str = os.path.join(
+            PROMPT_TEMPLATES_DIR, "few_shots", "mistral_fol_math_syntax.json"
+        ),
+        err_failure_prompt_fp: str = os.path.join(
+            PROMPT_TEMPLATES_DIR, "failure", "error_prompt.yaml"
+        ),
+        undef_failure_prompt_fp: str = os.path.join(
+            PROMPT_TEMPLATES_DIR, "failure", "mistral_fol_undefined.yaml"
+        ),
+        # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
+        slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
+        # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
+        structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
+        max_attempts: int = 3,
+        f1_threshold: float = 0.8,
+    ):
+        chebai_prompt = ChebiPrompt(
+            platform=api_platform,
+            model_name=model_name,
+            system_prompt_fp=system_prompt_fp,
+            few_shot_prompt_fp=few_shot_prompt_fp,
+            err_failure_prompt_fp=err_failure_prompt_fp,
+            undef_failure_prompt_fp=undef_failure_prompt_fp,
+        )
+
+        learner = LearnDefinitions(
+            chebi_prompt_obj=chebai_prompt,
+            slim_dataset_path=slim_dataset_path,
+            structures_path=structures_data_path,
+            max_attempts=max_attempts,
+            f1_threshold=f1_threshold,
+            fol_reasoner="mistral",
+        )
+        if class_name == "all":
+            learner.learn_fol_definitions()
+        else:
+            learner.learn_class(class_name=class_name)
 
 
 if __name__ == "__main__":

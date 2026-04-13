@@ -2,7 +2,7 @@ import queue
 
 from gavel.logic import logic
 
-from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner, MistralCustomFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.sample_matching_worker import (
@@ -22,11 +22,13 @@ class BaseFOL:
         structures_path: str,
         chebi_version: int,
         split: str,
+        fol_reasoner="gavel",
     ):
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_version = chebi_version
         self.split = split
+        self.fol_reasoner = fol_reasoner
         self._c3po_slim_data, self._entire_chebi_data = dm.load_c3po_slim_dataset(
             slim_dataset_path=self.slim_dataset_path,
             structures_path=self.structures_path,
@@ -36,7 +38,17 @@ class BaseFOL:
         self.undirected_chebi_graph = (
             self._entire_chebi_data.get_undirected_hierarchy_graph()
         )
-        self._gavel = GavelFOLReasoner()
+        self._gavel = self.get_reasoner()
+
+    def get_reasoner(self):
+        if self.fol_reasoner == "gavel":
+            print("Using `GavelFOLReasoner` as the FOL reasoner.")
+            return GavelFOLReasoner()
+        elif self.fol_reasoner == "mistral":
+            print("Using `MistralCustomFOLReasoner` as the FOL reasoner.")
+            return MistralCustomFOLReasoner()
+        else:
+            raise ValueError(f"Unsupported FOL reasoner: {self.fol_reasoner}")
 
     def _score_definition(
         self,

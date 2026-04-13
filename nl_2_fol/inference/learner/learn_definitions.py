@@ -27,12 +27,14 @@ class LearnDefinitions(BaseFOL):
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
         chebi_version: int = 244,
+        fol_reasoner="gavel",
     ):
         super().__init__(
             slim_dataset_path=slim_dataset_path,
             structures_path=structures_path,
             chebi_version=chebi_version,
             split="train",
+            fol_reasoner=fol_reasoner,
         )
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
@@ -747,8 +749,6 @@ class LearnDefinitions(BaseFOL):
     @property
     def learning_log_path(self) -> str:
         return os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "learned",
-            self.chebi_prompt_obj.model_name,
+            self.definitions_save_path,
             self._LEARNING_LOG_FILE_NAME.format(max_attempts=self.max_attempts),
         )
