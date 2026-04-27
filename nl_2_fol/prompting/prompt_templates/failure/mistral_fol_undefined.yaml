@@ -1,0 +1,22 @@
+failure_prompt: |
+  Your previous attempt to convert the CHEBI class definition into first-order logic (FOL) was unsuccessful.
+  Let's analyze the failure and try again.
+
+  In the previous FOL definition, the following predicates have no FOL formulas defined:
+  {undefined_predicates_details}
+  {retry_context_section}
+
+  Here is an example of how to define undefined predicates in FOL:
+
+  Example FOL definition for carbon monoxide:
+  CarbonMonoxide ↔ (OneCarbonCompound ∧ ∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))
+
+  If the predicate `OneCarbonCompound` is undefined, define it using FOL:
+  {{
+    "OneCarbonCompound": "OneCarbonCompound ↔ (∃x (C(x) ∧ ¬TwoPlusCarbonCompound))",
+    "TwoPlusCarbonCompound": "TwoPlusCarbonCompound ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))"
+  }}
+
+  Refer to the above examples and few-shot examples provided earlier for syntax and style conventions when constructing the FOL formula.
+
+  Please provide FOL formulas for all undefined predicates.

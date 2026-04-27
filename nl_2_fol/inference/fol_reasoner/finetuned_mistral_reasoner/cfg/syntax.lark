@@ -28,7 +28,8 @@
 ?quantifier: (FORALL | EXISTS) VARIABLE negation   -> quantifier_
 
 ?atom: infix_predicate
-     | PREDICATE "(" termlist ")"           -> atom_
+    | PREDICATE "(" termlist ")"           -> atom_
+    | PREDICATE                              -> atom0_
 
 ?infix_predicate: term "<"  term            -> lt_
                 | term ">"  term            -> gt_

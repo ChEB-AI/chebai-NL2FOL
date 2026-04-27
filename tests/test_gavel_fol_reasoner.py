@@ -147,6 +147,26 @@ class TestGavelFOLReasoner:
         with pytest.raises(MissingPredicateException):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
+    def test_extract_unknown_predicates_respects_all_definition_sources(
+        self, reasoner: GavelFOLReasoner
+    ):
+        """Test unknown predicates exclude base, background, and temporary defs."""
+        bg_vars, bg_formula = reasoner.get_tptp_fol_definition("bg_pred(X) <=> c(X)")
+        reasoner.add_background_definition("bg_pred", bg_vars, bg_formula)
+
+        temp_vars, temp_formula = reasoner.get_tptp_fol_definition(
+            "temp_pred(X) <=> o(X)"
+        )
+        temp_defs = {"temp_pred": (temp_vars, temp_formula)}
+
+        _, parsed_formula = reasoner.get_tptp_fol_definition(
+            "test_pred(X) <=> (c(X) & bg_pred(X) & temp_pred(X) & unknown_pred(X))"
+        )
+
+        missing = reasoner.extract_unknown_predicates(parsed_formula, temp_defs)
+
+        assert missing == {"unknown_pred"}
+
     def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
         """Test that errors in does_mol_match_tptp_definition are properly raised."""
         formula_str = "test_pred(X) <=> (ptest(X) & qtest(X))"
@@ -310,3 +330,130 @@ class TestGavelFOLReasoner:
 
         assert isinstance(parsed_formula, logic.QuantifiedFormula)
         assert len(pred_vars) == 0
+
+    def test_model_checking_success_consistency(self, reasoner: GavelFOLReasoner):
+        carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
+        ethanol = Chem.MolFromSmiles("CCO")
+        thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
+
+        # Logical definition to match (I removed the `oneCarbonCompound` predicate for simplicity)
+        definition_str = (
+            "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
+        )
+        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        matches = reasoner.does_mol_match_tptp_definition(
+            carbonMonoxide, definition_to_match
+        )
+        assert matches is True, (
+            "Expected carbon monoxide to match the definition, but it did not."
+        )
+
+        matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
+        # returns model found (which contradicts the chemistry)
+        assert matches is True, (
+            "Expected ethanol to match the definition, but it did not. "
+        )
+
+        matches = reasoner.does_mol_match_tptp_definition(
+            thionitrousAcid, definition_to_match
+        )
+        assert matches is False, (
+            "Expected thionitrous acid to not match the definition, but it did."
+        )
+
+        # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
+        definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
+        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+
+        add_defs_dict = {
+            "oneCarbonCompound": "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)",
+            "twoPlusCarbonCompound": "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)",
+        }
+        parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
+        for pred_name, (vars, formula) in parsed_add_def.items():
+            reasoner.add_background_definition(pred_name, vars, formula)
+
+        matches = reasoner.does_mol_match_tptp_definition(
+            carbonMonoxide, definition_to_match
+        )
+        assert matches is True, (
+            "Expected carbon monoxide to match the definition, but it did not."
+        )
+        matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
+        assert matches is False, (
+            "Expected ethanol to not match the definition, but it did."
+        )
+        matches = reasoner.does_mol_match_tptp_definition(
+            thionitrousAcid, definition_to_match
+        )
+        assert matches is False, (
+            "Expected thionitrous acid to not match the definition, but it did."
+        )
+
+    def test_few_shots_examples_model_checking(self, reasoner: GavelFOLReasoner):
+        """Test few-shot examples from nl_2_fol/prompting/prompt_templates/few_shots/with_DL_style.json"""
+        # Test carboxylic acid formula
+        few_shot_formula_1 = "carboxylicAcid <=> (carbonOxoacid & ?[A1, A2, A3]: (c(A1) & o(A2) & o(A3) & has_1_hs(A3) & bDOUBLE(A1, A2) & bSINGLE(A1, A3)))"
+
+        # Add background definitions for carboxylic acid test
+        add_defs_dict_1 = {
+            "carbonOxoacid": "carbonOxoacid <=> ?[C1, O1]: (c(C1) & o(O1))"
+        }
+        parsed_add_def_1 = reasoner.convert_to_background_definitions(add_defs_dict_1)
+        for pred_name, (vars, formula) in parsed_add_def_1.items():
+            reasoner.add_background_definition(pred_name, vars, formula)
+
+        # Create and test carboxylic acid molecule
+        _, parsed_formula_1 = reasoner.get_tptp_fol_definition(few_shot_formula_1)
+
+        # Test molecule that matches carboxylic acid pattern
+        carboxylic_acid_mol = Chem.MolFromSmiles("CC(=O)O")  # Acetic acid
+        result_1_match = reasoner.does_mol_match_tptp_definition(
+            carboxylic_acid_mol, parsed_formula_1
+        )
+        # Verify model checking completes without error
+        assert result_1_match is True, (
+            "Acetic acid should match carboxylic acid formula"
+        )
+
+        # Test molecule that does NOT match carboxylic acid pattern
+        ethanol_mol = Chem.MolFromSmiles(
+            "CCO"
+        )  # Ethanol - has C and O but not carboxylic acid structure
+        result_1_no_match = reasoner.does_mol_match_tptp_definition(
+            ethanol_mol, parsed_formula_1
+        )
+        assert result_1_no_match is False, (
+            "Ethanol should not match carboxylic acid formula"
+        )
+
+        # Test azide formula
+        few_shot_formula_2 = "azide <=> (nitrogenMolecularEntity & ?[A1, A2, A3]: (n(A1) & charge0(A1) & n(A2) & charge1(A2) & n(A3) & charge_m1(A3) & bDOUBLE(A1, A2) & bDOUBLE(A2, A3)))"
+
+        # Add background definitions for azide test
+        add_defs_dict_2 = {
+            "nitrogenMolecularEntity": "nitrogenMolecularEntity <=> ?[N1]: (n(N1))"
+        }
+        parsed_add_def_2 = reasoner.convert_to_background_definitions(add_defs_dict_2)
+        for pred_name, (vars, formula) in parsed_add_def_2.items():
+            reasoner.add_background_definition(pred_name, vars, formula)
+
+        # Create and test azide molecules
+        _, parsed_formula_2 = reasoner.get_tptp_fol_definition(few_shot_formula_2)
+
+        # Test molecule that matches azide pattern
+        azide_mol = Chem.MolFromSmiles("[N-][N+]#N")  # Azide group
+        result_2_match = reasoner.does_mol_match_tptp_definition(
+            azide_mol, parsed_formula_2
+        )
+        # Verify model checking completes without error
+        assert result_2_match is not None
+
+        # Test molecule that does NOT match azide pattern
+        aniline_mol = Chem.MolFromSmiles(
+            "Nc1ccccc1"
+        )  # Aniline - has nitrogen but not azide structure
+        result_2_no_match = reasoner.does_mol_match_tptp_definition(
+            aniline_mol, parsed_formula_2
+        )
+        assert result_2_no_match is False, "Aniline should not match azide formula"

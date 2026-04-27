@@ -27,12 +27,14 @@ class LearnDefinitions(BaseFOL):
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
         chebi_version: int = 244,
+        fol_reasoner="gavel",
     ):
         super().__init__(
             slim_dataset_path=slim_dataset_path,
             structures_path=structures_path,
             chebi_version=chebi_version,
             split="train",
+            fol_reasoner=fol_reasoner,
         )
         self.chebi_prompt_obj = chebi_prompt_obj
         self.max_attempts = max_attempts
@@ -178,7 +180,7 @@ class LearnDefinitions(BaseFOL):
                             f"definition: {class_def}"
                         )
                         result.FOL_formula = class_def
-                    add_bck_def = self._gavel.convert_to_background_definitions(
+                    add_bck_def = self._fol_reasoner.convert_to_background_definitions(
                         additional_def
                     )
                     self._validate_additional_predicates(
@@ -268,8 +270,10 @@ class LearnDefinitions(BaseFOL):
             )
             # If no generated FOL could be parsed/scored, persist a safe parsed
             # placeholder definition along with prompt history for traceability.
-            pred_variables, placeholder_tptp_def = self._gavel.get_tptp_fol_definition(
-                "failed_placeholder_predicate(X) <=> (c(X) & ~c(X))"
+            pred_variables, placeholder_tptp_def = (
+                self._fol_reasoner.get_tptp_fol_definition(
+                    self._fol_reasoner.dummy_formula
+                )
             )
             best_scored_def = def_model.ScoredDefinition(
                 pred_variables=pred_variables,
@@ -330,7 +334,7 @@ class LearnDefinitions(BaseFOL):
                 f"[validate_additional] Checking definition of predicate '{pred_name}'"
             )
             # first extract the unknown predicates from the formula
-            unknown_predicates = self._gavel.extract_unknown_predicates(defn)
+            unknown_predicates = self._fol_reasoner.extract_unknown_predicates(defn)
             print(
                 f"[validate_additional] Unknown predicates found in definition of predicate '{pred_name}': "
                 f"{unknown_predicates}"
@@ -387,7 +391,7 @@ class LearnDefinitions(BaseFOL):
                     raise Exception(
                         "Additional background definition provided for missing predicate "
                         f"{unknown_pred_name} contains unknown predicates "
-                        f"{self._gavel.extract_unknown_predicates(defn)} which we don't "
+                        f"{self._fol_reasoner.extract_unknown_predicates(defn)} which we don't "
                         "have definitions for. Hence we cannot validate it."
                     )
                 else:
@@ -498,7 +502,7 @@ class LearnDefinitions(BaseFOL):
         Raises an exception if parsing or validation fails, otherwise returns None.
         """
 
-        pred_variables, tptp_def = self._gavel.get_tptp_fol_definition(
+        pred_variables, tptp_def = self._fol_reasoner.get_tptp_fol_definition(
             result.FOL_formula
         )
 
@@ -569,7 +573,7 @@ class LearnDefinitions(BaseFOL):
                         )
                     )
                     self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
-                    self._gavel.add_background_definition(
+                    self._fol_reasoner.add_background_definition(
                         def_name, pred_vars, background_def
                     )
                 else:
@@ -603,7 +607,7 @@ class LearnDefinitions(BaseFOL):
             )
         )
         if learn_success:
-            self._gavel.add_background_definition(
+            self._fol_reasoner.add_background_definition(
                 chemical_class.name, scored_def.pred_variables, scored_def.tptp_def
             )
             self._add_generated_predicates_to_prompt_obj(
@@ -668,7 +672,7 @@ class LearnDefinitions(BaseFOL):
         loaded_def_names = []
         for _, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
-                self._gavel.add_background_definition(
+                self._fol_reasoner.add_background_definition(
                     learned_def.name,
                     learned_def.learned_FOL.pred_variables,
                     learned_def.learned_FOL.formula,
@@ -687,7 +691,7 @@ class LearnDefinitions(BaseFOL):
         loaded_additional_def_names = []
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(
+                self._fol_reasoner.add_background_definition(
                     name,
                     add_def.fol_formula.pred_variables,
                     add_def.fol_formula.formula,
@@ -747,8 +751,6 @@ class LearnDefinitions(BaseFOL):
     @property
     def learning_log_path(self) -> str:
         return os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "learned",
-            self.chebi_prompt_obj.model_name,
+            self.definitions_save_path,
             self._LEARNING_LOG_FILE_NAME.format(max_attempts=self.max_attempts),
         )

@@ -1,4 +1,17 @@
-"""AST node definitions for a first-order logic (FOL) language.
+"""
+Code written by https://github.com/fvossel.
+
+@misc{vossel2025advancingnaturallanguageformalization,
+    title={Advancing Natural Language Formalization to First Order Logic with Fine-tuned LLMs},
+    author={Felix Vossel and Till Mossakowski and Bj"orn Gehrke},
+    year={2025},
+    eprint={2509.22338},
+    archivePrefix={arXiv},
+    primaryClass={cs.CL},
+    url={https://arxiv.org/abs/2509.22338},
+}
+
+AST node definitions for a first-order logic (FOL) language.
 
 Each node class represents a syntactic construct — terms (Variable, Constant,
 Number, Function) or formulas (Atom, Not, And, Or, Xor, Implies, Iff,
@@ -288,6 +301,9 @@ class Atom(Node):
             op = self.INFIX_PREDS_P9[self.predicate]
             return f"({left} {op} {right})"
 
+        if not self.args:
+            return f"{self.predicate}"
+
         args_str = ", ".join(a.to_prover9() for a in self.args)
         return f"{self.predicate}({args_str})"
 
@@ -313,6 +329,9 @@ class Atom(Node):
             right = self.args[1].to_tptp()
             op = self.INFIX_PREDS_TPTP[self.predicate]
             return f"({left} {op} {right})"
+
+        if not self.args:
+            return f"{self.predicate.lower()}"
 
         args_str = ",".join(a.to_tptp() for a in self.args)
         return f"{self.predicate.lower()}({args_str})"
@@ -607,6 +626,14 @@ NODE_CLASSES = {
 class FOLTransformer(Transformer):
     """Transforms parsed tokens from Lark parser into AST nodes."""
 
+    @staticmethod
+    def _fold_binary(items, node_cls):
+        """Left-fold a variable-length item list into nested binary nodes."""
+        node = items[0]
+        for item in items[1:]:
+            node = node_cls(node, item)
+        return node
+
     def VARIABLE(self, items):
         """Transform variable token into Variable node."""
         return Variable(str(items))
@@ -680,6 +707,11 @@ class FOLTransformer(Transformer):
             args = items[1]
         return Atom(pred, args)
 
+    def atom0_(self, items):
+        """Transform bare predicate symbol into a zero-arity Atom node."""
+        pred = str(items[0])
+        return Atom(pred, [])
+
     def lt_(self, items):
         """Transform less-than comparison into Atom node."""
         left, right = items
@@ -716,15 +748,15 @@ class FOLTransformer(Transformer):
 
     def and_(self, items):
         """Transform conjunction into And node."""
-        return And(items[0], items[1])
+        return self._fold_binary(items, And)
 
     def or_(self, items):
         """Transform disjunction into Or node."""
-        return Or(items[0], items[1])
+        return self._fold_binary(items, Or)
 
     def xor_(self, items):
         """Transform exclusive or into Xor node."""
-        return Xor(items[0], items[1])
+        return self._fold_binary(items, Xor)
 
     def implies_(self, items):
         """Transform implication into Implies node."""

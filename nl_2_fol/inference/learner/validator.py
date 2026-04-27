@@ -1,10 +1,10 @@
 import os
 import pickle
 
-from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
+import tqdm
+
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
-import tqdm
 
 
 class PerformValidation(BaseFOL):
@@ -22,7 +22,6 @@ class PerformValidation(BaseFOL):
             split="val",
         )
         self.defs_file_path = defs_file_path
-        self._gavel = GavelFOLReasoner()
         self._loaded_defs = self._load_definitions(defs_file_path)
 
     def validate(self):
@@ -48,14 +47,26 @@ class PerformValidation(BaseFOL):
                 f"Skipping validation for this class."
             )
             return
+        try:
+            val_metrics = self._score_definition(
+                chemical_class=chemical_class,
+                tptp_def=learned_def.learned_FOL.formula,
+                sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
+                max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
+                temp_additional_defs=None,
+            )[0]
+        except Exception:
+            print(f"Parsed Definition: {learned_def.learned_FOL.formula}")
+            print("Variables:", learned_def.learned_FOL.pred_variables)
 
-        val_metrics = self._score_definition(
-            chemical_class=chemical_class,
-            tptp_def=learned_def.learned_FOL.formula,
-            sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
-            max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
-            temp_additional_defs=None,
-        )[0]
+            if learned_def.additional_defs_used:
+                print("Additional definitions used during learning:")
+                for add_def_name, (
+                    def_vars,
+                    add_def,
+                ) in learned_def.additional_defs_used.items():
+                    print(f"\t{add_def_name}: {add_def} \n\tVariables: {def_vars}")
+            raise
         self._loaded_defs.learned_definitions[
             chemical_class.id
         ].val_metrics = val_metrics
@@ -95,7 +106,7 @@ class PerformValidation(BaseFOL):
         counter = 0
         for _, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
-                self._gavel.add_background_definition(
+                self._fol_reasoner.add_background_definition(
                     learned_def.name,
                     learned_def.learned_FOL.pred_variables,
                     learned_def.learned_FOL.formula,
@@ -107,7 +118,7 @@ class PerformValidation(BaseFOL):
         counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(
+                self._fol_reasoner.add_background_definition(
                     name,
                     add_def.fol_formula.pred_variables,
                     add_def.fol_formula.formula,
