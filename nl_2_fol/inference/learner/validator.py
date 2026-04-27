@@ -3,7 +3,6 @@ import pickle
 
 import tqdm
 
-from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
 
@@ -23,7 +22,6 @@ class PerformValidation(BaseFOL):
             split="val",
         )
         self.defs_file_path = defs_file_path
-        self._gavel = GavelFOLReasoner()
         self._loaded_defs = self._load_definitions(defs_file_path)
 
     def validate(self):
@@ -108,7 +106,7 @@ class PerformValidation(BaseFOL):
         counter = 0
         for _, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
-                self._gavel.add_background_definition(
+                self._fol_reasoner.add_background_definition(
                     learned_def.name,
                     learned_def.learned_FOL.pred_variables,
                     learned_def.learned_FOL.formula,
@@ -120,7 +118,7 @@ class PerformValidation(BaseFOL):
         counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(
+                self._fol_reasoner.add_background_definition(
                     name,
                     add_def.fol_formula.pred_variables,
                     add_def.fol_formula.formula,
