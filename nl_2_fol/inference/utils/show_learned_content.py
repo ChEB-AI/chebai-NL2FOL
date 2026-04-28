@@ -275,6 +275,72 @@ def upsert_additional_definition_in_pickle(
     return True
 
 
+def set_class_learn_false_in_pickle(
+    pickle_file_path: str, class_name: str, output_file_path=None, create_backup=True
+):
+    """Set `learn_success` to False for a learned or additional definition in a pickle."""
+
+    if class_name == "all":
+        raise ValueError(
+            "Refusing to modify all classes. Please pass a specific class."
+        )
+
+    input_path = Path(pickle_file_path)
+    original_pickle_bytes = input_path.read_bytes()
+    data: DefinitionLearningResults = pickle.loads(original_pickle_bytes)
+
+    target = str(class_name).strip()
+    modified = False
+    learned_modified_keys = []
+    additional_modified_keys = []
+
+    for key, learned_def in data.learned_definitions.items():
+        if str(key) == target or learned_def.name == target:
+            if learned_def.learn_success is not False:
+                learned_def.learn_success = False
+                modified = True
+            learned_modified_keys.append(key)
+
+    for name, add_def in data.additional_definitions.items():
+        if name == target or getattr(add_def, "fol_formula", None) and name == target:
+            if learned_def.learn_success is not False:
+                add_def.learn_success = False
+                modified = True
+            additional_modified_keys.append(name)
+
+    total_modified = len(learned_modified_keys) + len(additional_modified_keys)
+    if total_modified == 0 and not modified:
+        print(f"No class found for '{class_name}'. Nothing modified.")
+        return False
+
+    output_path = Path(output_file_path) if output_file_path else input_path
+
+    if create_backup and output_path.resolve() == input_path.resolve():
+        backup_path = input_path.with_suffix(input_path.suffix + ".bak")
+        backup_path.write_bytes(original_pickle_bytes)
+        print(f"Backup written to: {backup_path}")
+
+    with open(output_path, "wb") as f:
+        pickle.dump(data, f)
+
+    print(
+        f"Marked {len(learned_modified_keys)} learned definition(s) as learn_success=False."
+    )
+    print(
+        f"Marked {len(additional_modified_keys)} additional definition(s) as learn_success=False."
+    )
+    print(f"Updated pickle written to: {output_path}")
+
+    print("Current content for the updated predicate:")
+    print_pickle_contents(
+        output_path,
+        class_name=target,
+        show_system_prompt=False,
+        show_conversation_history=False,
+    )
+    return True
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Show or delete class definitions from learned_definitions pickle."
@@ -374,6 +440,26 @@ def _parse_args():
         help="Do not create a backup when editing in place.",
     )
 
+    set_learn_false_parser = subparsers.add_parser(
+        "set-learn-false",
+        help="Mark a learned or additional definition's learn_success as False.",
+    )
+    set_learn_false_parser.add_argument(
+        "class_name",
+        help="Class name or learned definition key to mark as failed.",
+    )
+    set_learn_false_parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=None,
+        help="Optional output pickle path. Defaults to in-place update.",
+    )
+    set_learn_false_parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Do not create a backup when editing in place.",
+    )
+
     return parser.parse_args()
 
 
@@ -383,6 +469,7 @@ if __name__ == "__main__":
     # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> delete hopanoid
     # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> stats
     # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> upsert-additional twoPlusCarbonCompound "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)" --used-for=12345,56645 --learn-success
+    # python nl_2_fol/inference/utils/show_learned_content.py --pickle-file=<file_path> set-learn-false hopanoid
     if args.command in (None, "show"):
         class_name = args.class_name if args.command == "show" else "all"
         show_system_prompt = args.system_prompt if args.command == "show" else False
@@ -418,4 +505,11 @@ if __name__ == "__main__":
             output_file_path=args.output_file,
             create_backup=not args.no_backup,
             replace_used_for=args.replace_used_for,
+        )
+    elif args.command == "set-learn-false":
+        set_class_learn_false_in_pickle(
+            args.pickle_file,
+            class_name=args.class_name,
+            output_file_path=args.output_file,
+            create_backup=not args.no_backup,
         )
