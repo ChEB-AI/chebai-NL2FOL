@@ -59,16 +59,21 @@ def write_comparison_csv(
 
     learned_rows: dict[str, dict[str, float]] = {}
     for chebi_id, metrics in c3p_metrics.items():
-        learned_def = learned_data.learned_definitions[chebi_id]
+        if chebi_id not in learned_data.learned_definitions:
+            train_f1 = 0.0
+            val_f1 = 0.0
+        else:
+            learned_def = learned_data.learned_definitions[chebi_id]
 
-        val_f1 = (
-            float(learned_def.val_metrics.F1)
-            if learned_def.val_metrics is not None
-            else 0.0
-        )
+            train_f1 = float(learned_def.train_metrics.F1)
+            val_f1 = (
+                float(learned_def.val_metrics.F1)
+                if learned_def.val_metrics is not None
+                else 0.0
+            )
         learned_rows[str(chebi_id)] = {
             "c3p_f1_score": metrics["F1"],
-            "model_train_f1": float(learned_def.train_metrics.F1),
+            "model_train_f1": train_f1,
             "model_val_f1": val_f1,
         }
 
@@ -103,7 +108,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--c3p-json",
         type=Path,
-        required=True,
+        default=Path("data") / "c3p_trust.json",
         help="Path to c3p_trust.json file.",
     )
     parser.add_argument(
