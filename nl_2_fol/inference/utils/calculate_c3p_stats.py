@@ -38,10 +38,10 @@ def categorize_f1_scores(json_file_path):
     failed_to_learn = 0
 
     # Calculate F1 scores and categorize
-    for entry_id, metrics in data.items():
-        tp = metrics.get("TP", 0)
-        fp = metrics.get("FP", 0)
-        fn = metrics.get("FN", 0)
+    for _, metrics in data.items():
+        tp = metrics.get("TP")
+        fp = metrics.get("FP")
+        fn = metrics.get("FN")
 
         f1 = calculate_f1_score(tp, fp, fn)
         f1_scores.append(f1)
