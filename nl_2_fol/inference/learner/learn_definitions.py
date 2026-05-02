@@ -103,7 +103,8 @@ class LearnDefinitions(BaseFOL):
                     print("Please answer with 'yes' or 'no'.")
             self._learn(chemical_class)
 
-    def _learn(self, chemical_class: dm.ChemicalClass) -> None:
+    def _learn(self, chemical_class: dm.ChemicalClass) -> bool:
+        """Returns True if learning was successful, False otherwise."""
         attempts = 0
 
         # Tracks all the definitions which scored below threshold from all attempts
@@ -129,7 +130,7 @@ class LearnDefinitions(BaseFOL):
                 chemical_class=chemical_class,
                 low_score_defs_collector=low_score_defs_collector,
             )
-            return
+            return True
         except Exception as e:
             raised_exception = e
             if isinstance(e, ce.MissingPredicateException):
@@ -233,7 +234,7 @@ class LearnDefinitions(BaseFOL):
                     temp_additional_defs=add_bck_def,
                     low_score_defs_collector=low_score_defs_collector,
                 )
-                return
+                return True
             except Exception as e:
                 raised_exception = e
                 if isinstance(e, ce.MissingPredicateException):
@@ -257,6 +258,9 @@ class LearnDefinitions(BaseFOL):
             history.add_message(HumanMessage(content=final_error_prompt))
 
         self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
+        if not low_score_defs_collector:
+            return False
+        return True
 
     def _accept_highest_scoring_def(
         self,
@@ -462,15 +466,20 @@ class LearnDefinitions(BaseFOL):
             and predicate not in self._learned_classes
             and predicate not in self._failed_classes
         }
+        learned_class_predicates: set[str] = set()
         for predicate in chemical_class_predicates:
             print(
                 f"Missing predicate '{predicate}' is a chemical class in the slim dataset and not yet learned, "
                 "hence triggering learning for it first before handling other missing predicates."
             )
-            self._learn(self._c3po_slim_data.get_chemical_class_by_name(predicate))
+            learned = self._learn(
+                self._c3po_slim_data.get_chemical_class_by_name(predicate)
+            )
+            if learned:
+                learned_class_predicates.add(predicate)
 
         raised_exception = ce.RetryException()
-        other_predicates = e.missing_predicates - chemical_class_predicates
+        other_predicates = e.missing_predicates - learned_class_predicates
         if other_predicates:
             predicates_to_learn: dict[str, str | None] = {}
             for predicate in other_predicates:
