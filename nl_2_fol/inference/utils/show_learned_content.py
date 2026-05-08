@@ -302,8 +302,8 @@ def set_class_learn_false_in_pickle(
             learned_modified_keys.append(key)
 
     for name, add_def in data.additional_definitions.items():
-        if name == target or getattr(add_def, "fol_formula", None) and name == target:
-            if learned_def.learn_success is not False:
+        if name == target:
+            if add_def.learn_success is not False:
                 add_def.learn_success = False
                 modified = True
             additional_modified_keys.append(name)

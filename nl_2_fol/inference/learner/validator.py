@@ -61,7 +61,7 @@ class PerformValidation(BaseFOL):
                 max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
                 temp_additional_defs=None,
             )[0]
-        except Exception:
+        except Exception as e:
             self.counter += 1
             print(f"Parsed Definition: {learned_def.learned_FOL.formula}")
             print(
@@ -78,6 +78,9 @@ class PerformValidation(BaseFOL):
                     print(
                         f"\t{add_def_name}: {add_def} \n\tVariables: {[str(var) for var in def_vars]}"
                     )
+            print(
+                f"Error during validation of definition for class {class_name}: \n\t{e}"
+            )
             return
 
         self._loaded_defs.learned_definitions[

@@ -257,16 +257,15 @@ class LearnDefinitions(BaseFOL):
             history = self.chebi_prompt_obj.get_session_history(chemical_class.name)
             history.add_message(HumanMessage(content=final_error_prompt))
 
-        self._accept_highest_scoring_def(chemical_class, low_score_defs_collector)
-        if not low_score_defs_collector:
-            return False
-        return True
+        return self._accept_highest_scoring_def(
+            chemical_class, low_score_defs_collector
+        )
 
     def _accept_highest_scoring_def(
         self,
         chemical_class: dm.ChemicalClass,
         low_score_defs_collector: dict[int, def_model.ScoredDefinition],
-    ):
+    ) -> bool:
         if not low_score_defs_collector:
             print(
                 "No generated FOL definition could be accepted because no "
@@ -315,6 +314,7 @@ class LearnDefinitions(BaseFOL):
         self._accept_learned_definition(
             chemical_class, scored_def=best_scored_def, learn_success=learn_success
         )
+        return learn_success
 
     def _post_cleanup(self, session_id: str):
         # This is to clean up the session history after learning a definition for a chemical
