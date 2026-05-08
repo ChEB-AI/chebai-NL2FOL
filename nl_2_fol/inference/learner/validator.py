@@ -23,11 +23,16 @@ class PerformValidation(BaseFOL):
         )
         self.defs_file_path = defs_file_path
         self._loaded_defs = self._load_definitions(defs_file_path)
+        self.counter = 0
 
     def validate(self):
         for _, learned_def in tqdm.tqdm(self._loaded_defs.learned_definitions.items()):
             if learned_def.learn_success and learned_def.val_metrics is None:
                 self.validate_class(learned_def.name)
+        if self.counter > 0:
+            print(
+                f"Validation completed. {self.counter} definitions could not be validated due to errors during validation."
+            )
 
     def validate_class(self, class_name: str):
         print("-" * 10, f"Validating definition for {class_name}...", "-" * 10)
@@ -47,6 +52,7 @@ class PerformValidation(BaseFOL):
                 f"Skipping validation for this class."
             )
             return
+
         try:
             val_metrics = self._score_definition(
                 chemical_class=chemical_class,
@@ -55,9 +61,13 @@ class PerformValidation(BaseFOL):
                 max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
                 temp_additional_defs=None,
             )[0]
-        except Exception:
+        except Exception as e:
+            self.counter += 1
             print(f"Parsed Definition: {learned_def.learned_FOL.formula}")
-            print("Variables:", learned_def.learned_FOL.pred_variables)
+            print(
+                "Variables:",
+                [str(var) for var in learned_def.learned_FOL.pred_variables],
+            )
 
             if learned_def.additional_defs_used:
                 print("Additional definitions used during learning:")
@@ -65,8 +75,14 @@ class PerformValidation(BaseFOL):
                     def_vars,
                     add_def,
                 ) in learned_def.additional_defs_used.items():
-                    print(f"\t{add_def_name}: {add_def} \n\tVariables: {def_vars}")
-            raise
+                    print(
+                        f"\t{add_def_name}: {add_def} \n\tVariables: {[str(var) for var in def_vars]}"
+                    )
+            print(
+                f"Error during validation of definition for class {class_name}: \n\t{e}"
+            )
+            return
+
         self._loaded_defs.learned_definitions[
             chemical_class.id
         ].val_metrics = val_metrics
