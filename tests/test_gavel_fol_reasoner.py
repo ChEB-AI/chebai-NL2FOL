@@ -1,6 +1,7 @@
 """Tests for GavelFOLReasoner class."""
 
 import pytest
+from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
@@ -344,20 +345,20 @@ class TestGavelFOLReasoner:
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
-        assert matches is True, (
+        assert matches == ModelCheckerOutcome.MODEL_FOUND, (
             "Expected carbon monoxide to match the definition, but it did not."
         )
 
         matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
         # returns model found (which contradicts the chemistry)
-        assert matches is True, (
+        assert matches == ModelCheckerOutcome.MODEL_FOUND, (
             "Expected ethanol to match the definition, but it did not. "
         )
 
         matches = reasoner.does_mol_match_tptp_definition(
             thionitrousAcid, definition_to_match
         )
-        assert matches is False, (
+        assert matches == ModelCheckerOutcome.NO_MODEL, (
             "Expected thionitrous acid to not match the definition, but it did."
         )
 
@@ -376,17 +377,17 @@ class TestGavelFOLReasoner:
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
-        assert matches is True, (
+        assert matches == ModelCheckerOutcome.MODEL_FOUND, (
             "Expected carbon monoxide to match the definition, but it did not."
         )
         matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
-        assert matches is False, (
+        assert matches == ModelCheckerOutcome.NO_MODEL, (
             "Expected ethanol to not match the definition, but it did."
         )
         matches = reasoner.does_mol_match_tptp_definition(
             thionitrousAcid, definition_to_match
         )
-        assert matches is False, (
+        assert matches == ModelCheckerOutcome.NO_MODEL, (
             "Expected thionitrous acid to not match the definition, but it did."
         )
 
@@ -412,7 +413,7 @@ class TestGavelFOLReasoner:
             carboxylic_acid_mol, parsed_formula_1
         )
         # Verify model checking completes without error
-        assert result_1_match is True, (
+        assert result_1_match == ModelCheckerOutcome.MODEL_FOUND, (
             "Acetic acid should match carboxylic acid formula"
         )
 
@@ -423,7 +424,7 @@ class TestGavelFOLReasoner:
         result_1_no_match = reasoner.does_mol_match_tptp_definition(
             ethanol_mol, parsed_formula_1
         )
-        assert result_1_no_match is False, (
+        assert result_1_no_match == ModelCheckerOutcome.NO_MODEL, (
             "Ethanol should not match carboxylic acid formula"
         )
 
@@ -447,7 +448,10 @@ class TestGavelFOLReasoner:
             azide_mol, parsed_formula_2
         )
         # Verify model checking completes without error
-        assert result_2_match is not None
+        assert result_2_match in {
+            ModelCheckerOutcome.MODEL_FOUND,
+            ModelCheckerOutcome.NO_MODEL,
+        }
 
         # Test molecule that does NOT match azide pattern
         aniline_mol = Chem.MolFromSmiles(
@@ -456,4 +460,6 @@ class TestGavelFOLReasoner:
         result_2_no_match = reasoner.does_mol_match_tptp_definition(
             aniline_mol, parsed_formula_2
         )
-        assert result_2_no_match is False, "Aniline should not match azide formula"
+        assert result_2_no_match == ModelCheckerOutcome.NO_MODEL, (
+            "Aniline should not match azide formula"
+        )

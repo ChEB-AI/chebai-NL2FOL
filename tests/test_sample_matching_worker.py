@@ -1,5 +1,6 @@
 """Tests for check_if_definition_matches_samples subprocess timeout and error paths."""
 
+import itertools
 import queue
 from unittest.mock import MagicMock, patch
 
@@ -75,14 +76,13 @@ class TestCheckIfDefinitionMatchesSamples:
     def timeout_proc_mocks(self):
         """Process mocks for the timeout scenario.
 
-        is_alive() call sequence when a timeout occurs before workers finish:
-          - pos: while-check(T) → outer-timeout-check(T) → inner-pos-check(T) → post-terminate(F)
-           - neg: inner-neg-check(T) → terminate-check(T) → post-terminate(F)
+        The workers stay alive long enough for the deadline check to fire, then
+        remain alive so the timeout cleanup path can terminate them.
         """
         mock_pos_proc = MagicMock()
-        mock_pos_proc.is_alive.side_effect = [True, True, True, False]
+        mock_pos_proc.is_alive.return_value = True
         mock_neg_proc = MagicMock()
-        mock_neg_proc.is_alive.side_effect = [True, True, False]
+        mock_neg_proc.is_alive.return_value = True
         return mock_pos_proc, mock_neg_proc
 
     # ------------------------------------------------------------------ #
@@ -98,7 +98,7 @@ class TestCheckIfDefinitionMatchesSamples:
 
         # pos queue holds one result emitted before the timeout
         pos_q: queue.Queue = queue.Queue()
-        pos_q.put(("pos_checked", "c1ccccc1", True))  # benzene matched → TP
+        pos_q.put(("pos_checked", "c1ccccc1", "match"))  # benzene matched → TP
 
         neg_q: queue.Queue = queue.Queue()  # no neg results before timeout
 
@@ -106,18 +106,22 @@ class TestCheckIfDefinitionMatchesSamples:
             pos_q, neg_q, mock_pos_proc, mock_neg_proc
         )
 
-        # A negative timeout ensures the deadline has already passed when the
-        # loop first checks remaining time, forcing an immediate timeout.
-        result = check_if_definition_matches_samples(
-            gavel=common_inputs["gavel"],
-            sample_matching_timeout_seconds=-1,
-            chemical_class=common_inputs["chemical_class"],
-            tptp_def=common_inputs["tptp_def"],
-            pos_samples=common_inputs["pos_samples"],
-            neg_samples=common_inputs["neg_samples"],
-        )
+        with patch(
+            "nl_2_fol.inference.learner.sample_matching_worker.time.monotonic",
+            side_effect=itertools.count(100),
+        ):
+            result = check_if_definition_matches_samples(
+                gavel=common_inputs["gavel"],
+                sample_matching_timeout_seconds=1,
+                chemical_class=common_inputs["chemical_class"],
+                tptp_def=common_inputs["tptp_def"],
+                pos_samples=common_inputs["pos_samples"],
+                neg_samples=common_inputs["neg_samples"],
+            )
 
-        unmatched_pos, matched_neg, processed_pos, processed_neg = result
+        unmatched_pos, matched_neg, processed_pos, processed_neg, extended_outcomes = (
+            result
+        )
 
         # benzene was matched (True) so it is not a false-negative
         assert len(unmatched_pos) == 0
@@ -127,6 +131,19 @@ class TestCheckIfDefinitionMatchesSamples:
         # benzene was processed
         assert len(processed_pos) == 1
         assert next(iter(processed_pos)).smiles == "c1ccccc1"
+        assert set(extended_outcomes) == {
+            "inferred_match_pos",
+            "inferred_match_neg",
+            "inferred_no_match_pos",
+            "inferred_no_match_neg",
+            "timeout_pos",
+            "timeout_neg",
+            "error_pos",
+            "error_neg",
+            "unknown_pos",
+            "unknown_neg",
+        }
+        assert all(len(samples) == 0 for samples in extended_outcomes.values())
 
         mock_pos_proc.terminate.assert_called_once()
         mock_neg_proc.terminate.assert_called_once()
@@ -139,7 +156,7 @@ class TestCheckIfDefinitionMatchesSamples:
         mock_pos_proc, mock_neg_proc = timeout_proc_mocks
 
         pos_q: queue.Queue = queue.Queue()
-        pos_q.put(("pos_checked", "c1ccccc1", False))  # benzene not matched → FN
+        pos_q.put(("pos_checked", "c1ccccc1", "no_match"))  # benzene not matched → FN
 
         neg_q: queue.Queue = queue.Queue()
 
@@ -147,19 +164,40 @@ class TestCheckIfDefinitionMatchesSamples:
             pos_q, neg_q, mock_pos_proc, mock_neg_proc
         )
 
-        unmatched_pos, matched_neg, processed_pos, processed_neg = (
-            check_if_definition_matches_samples(
+        with patch(
+            "nl_2_fol.inference.learner.sample_matching_worker.time.monotonic",
+            side_effect=itertools.count(100),
+        ):
+            (
+                unmatched_pos,
+                matched_neg,
+                processed_pos,
+                processed_neg,
+                extended_outcomes,
+            ) = check_if_definition_matches_samples(
                 gavel=common_inputs["gavel"],
-                sample_matching_timeout_seconds=-1,
+                sample_matching_timeout_seconds=1,
                 chemical_class=common_inputs["chemical_class"],
                 tptp_def=common_inputs["tptp_def"],
                 pos_samples=common_inputs["pos_samples"],
                 neg_samples=common_inputs["neg_samples"],
             )
-        )
 
         assert "c1ccccc1" in unmatched_pos
         assert len(processed_pos) == 1
+        assert set(extended_outcomes) == {
+            "inferred_match_pos",
+            "inferred_match_neg",
+            "inferred_no_match_pos",
+            "inferred_no_match_neg",
+            "timeout_pos",
+            "timeout_neg",
+            "error_pos",
+            "error_neg",
+            "unknown_pos",
+            "unknown_neg",
+        }
+        assert all(len(samples) == 0 for samples in extended_outcomes.values())
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
     def test_timeout_with_no_results_raises_timeout_error(
@@ -175,15 +213,19 @@ class TestCheckIfDefinitionMatchesSamples:
             pos_q, neg_q, mock_pos_proc, mock_neg_proc
         )
 
-        with pytest.raises(TimeoutError, match="No samples were processed"):
-            check_if_definition_matches_samples(
-                gavel=common_inputs["gavel"],
-                sample_matching_timeout_seconds=-1,
-                chemical_class=common_inputs["chemical_class"],
-                tptp_def=common_inputs["tptp_def"],
-                pos_samples=common_inputs["pos_samples"],
-                neg_samples=common_inputs["neg_samples"],
-            )
+        with patch(
+            "nl_2_fol.inference.learner.sample_matching_worker.time.monotonic",
+            side_effect=itertools.count(100),
+        ):
+            with pytest.raises(TimeoutError, match="No samples were processed"):
+                check_if_definition_matches_samples(
+                    gavel=common_inputs["gavel"],
+                    sample_matching_timeout_seconds=1,
+                    chemical_class=common_inputs["chemical_class"],
+                    tptp_def=common_inputs["tptp_def"],
+                    pos_samples=common_inputs["pos_samples"],
+                    neg_samples=common_inputs["neg_samples"],
+                )
 
         mock_pos_proc.terminate.assert_called_once()
         mock_neg_proc.terminate.assert_called_once()
