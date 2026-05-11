@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import pickle
 
@@ -26,38 +27,99 @@ class PerformValidation(BaseFOL):
         self.counter = 0
 
     def validate(self):
-        for _, learned_def in tqdm.tqdm(self._loaded_defs.learned_definitions.items()):
-            if learned_def.learn_success and learned_def.val_metrics is None:
-                self.validate_class(learned_def.name)
+        classes_to_validate = [
+            learned_def.name
+            for _, learned_def in self._loaded_defs.learned_definitions.items()
+            if learned_def.learn_success and learned_def.val_metrics is None
+        ]
+        if len(classes_to_validate) == 0:
+            return
+
+        ctx = multiprocessing.get_context("fork")
+        result_queue = ctx.Queue()
+        processes = []
+
+        for class_name in tqdm.tqdm(
+            classes_to_validate, desc="Launching validation processes"
+        ):
+            process = ctx.Process(
+                target=self._validate_class_worker,
+                args=(class_name, result_queue),
+            )
+            process.start()
+            processes.append(process)
+
+        for process in processes:
+            process.join()
+
+        self._collect_validation_results(result_queue, len(classes_to_validate))
         if self.counter > 0:
             print(
                 f"Validation completed. {self.counter} definitions could not be validated due to errors during validation."
             )
 
     def validate_class(self, class_name: str):
-        print("-" * 10, f"Validating definition for {class_name}...", "-" * 10)
-        chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
-        if chemical_class.id not in self._loaded_defs.learned_definitions:
-            print(
-                f"No learned definition found for class {class_name} with id "
-                f"{chemical_class.id}. Skipping validation for this class."
-            )
+        result = self._validate_class_result(class_name)
+        if result is None:
             return
 
-        learned_def = self._loaded_defs.learned_definitions[chemical_class.id]
-        if not learned_def.learn_success:
-            print(
-                f"Learned definition for class {class_name} with id {chemical_class.id} "
-                f"was not successful learned during learning process. "
-                f"Skipping validation for this class."
-            )
+        status, class_id, val_metrics = result
+        if status != "ok" or class_id is None or val_metrics is None:
             return
 
+        self._loaded_defs.learned_definitions[class_id].val_metrics = val_metrics
+        self._save_validated_definitions()
+
+    def _validate_class_worker(self, class_name: str, result_queue):
+        result_queue.put((class_name, self._validate_class_result(class_name)))
+
+    def _collect_validation_results(self, result_queue, expected_results: int):
+        updated = False
+        for _ in range(expected_results):
+            _, result = result_queue.get()
+            if result is None:
+                continue
+
+            status, class_id, val_metrics = result
+            if status == "error":
+                self.counter += 1
+                continue
+
+            if status == "ok" and class_id is not None and val_metrics is not None:
+                self._loaded_defs.learned_definitions[
+                    class_id
+                ].val_metrics = val_metrics
+                updated = True
+
+        if updated:
+            self._save_validated_definitions()
+
+    def _validate_class_result(
+        self, class_name: str
+    ) -> tuple[str, int | None, def_model.DefinitionMetrics | None] | None:
         try:
+            print("-" * 10, f"Validating definition for {class_name}...", "-" * 10)
+            chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
+            if chemical_class.id not in self._loaded_defs.learned_definitions:
+                print(
+                    f"No learned definition found for class {class_name} with id "
+                    f"{chemical_class.id}. Skipping validation for this class."
+                )
+                return ("skipped", None, None)
+
+            learned_def = self._loaded_defs.learned_definitions[chemical_class.id]
+            if not learned_def.learn_success:
+                print(
+                    f"Learned definition for class {class_name} with id {chemical_class.id} "
+                    f"was not successful learned during learning process. "
+                    f"Skipping validation for this class."
+                )
+                return ("skipped", None, None)
+
             val_metrics = self._score_definition(
                 chemical_class=chemical_class,
                 tptp_def=learned_def.learned_FOL.formula,
-                sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
+                sample_match_timeout_seconds=None,
                 max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
                 temp_additional_defs=None,
             )[0]
@@ -81,12 +143,9 @@ class PerformValidation(BaseFOL):
             print(
                 f"Error during validation of definition for class {class_name}: \n\t{e}"
             )
-            return
+            return ("error", chemical_class.id, None)
 
-        self._loaded_defs.learned_definitions[
-            chemical_class.id
-        ].val_metrics = val_metrics
-        self._save_validated_definitions()
+        return ("ok", chemical_class.id, val_metrics)
 
     def _save_validated_definitions(self):
         if "_with_val" not in self.defs_file_path:

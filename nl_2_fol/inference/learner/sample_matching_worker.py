@@ -111,7 +111,7 @@ def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
 
 def check_if_definition_matches_samples(
     gavel: GavelFOLReasoner,
-    sample_matching_timeout_seconds: int,
+    sample_matching_timeout_seconds: int | None,
     chemical_class: dm.ChemicalClass,
     tptp_def: QuantifiedFormula,
     pos_samples: set[dm.ChemicalStructure],
@@ -125,9 +125,25 @@ def check_if_definition_matches_samples(
     set[dm.SMILES_STRING],
     set[dm.ChemicalStructure],
     set[dm.ChemicalStructure],
+    dict,
 ]:
-    unmatched_pos_samples = set()  # FNs
-    matched_neg_samples = set()  # FPs
+    # Track definite outcomes
+    unmatched_pos_samples = set()  # FNs (definite no_match on positives)
+    matched_neg_samples = set()  # FPs (definite match on negatives)
+
+    # Track inferred outcomes
+    inferred_match_pos = set()
+    inferred_match_neg = set()
+    inferred_no_match_pos = set()
+    inferred_no_match_neg = set()
+
+    # Track error/timeout/unknown outcomes
+    timeout_pos = set()
+    timeout_neg = set()
+    error_pos = set()
+    error_neg = set()
+    unknown_pos = set()
+    unknown_neg = set()
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
@@ -142,7 +158,7 @@ def check_if_definition_matches_samples(
         "\n[sample-matching] Starting validation for "
         f"{chemical_class.name} | "
         f"pos={len(pos_samples_list)} neg={len(neg_samples_list)} "
-        f"timeout={sample_matching_timeout_seconds}s",
+        f"timeout={sample_matching_timeout_seconds if sample_matching_timeout_seconds is not None else 'none'}",
         flush=True,
     )
     ctx = multiprocessing.get_context("fork")
@@ -180,10 +196,22 @@ def check_if_definition_matches_samples(
 
             event_type = event[0]
             if event_type == "pos_checked":
-                _, smiles, matched = event
+                _, smiles, outcome = event
                 processed_pos_smiles.add(smiles)
-                if not matched:
-                    unmatched_pos_samples.add(smiles)
+                if outcome == "match":
+                    pass  # TP - counted in processed but not in unmatched
+                elif outcome == "no_match":
+                    unmatched_pos_samples.add(smiles)  # FN
+                elif outcome == "inferred_match":
+                    inferred_match_pos.add(smiles)
+                elif outcome == "inferred_no_match":
+                    inferred_no_match_pos.add(smiles)
+                elif outcome == "timeout":
+                    timeout_pos.add(smiles)
+                elif outcome == "error":
+                    error_pos.add(smiles)
+                else:  # unknown
+                    unknown_pos.add(smiles)
             elif event_type == "done":
                 pos_worker_completed = True
                 print(
@@ -211,10 +239,22 @@ def check_if_definition_matches_samples(
 
             event_type = event[0]
             if event_type == "neg_checked":
-                _, smiles, matched = event
+                _, smiles, outcome = event
                 processed_neg_smiles.add(smiles)
-                if matched:
-                    matched_neg_samples.add(smiles)
+                if outcome == "match":
+                    matched_neg_samples.add(smiles)  # FP
+                elif outcome == "no_match":
+                    pass  # TN - counted in processed but not in matched
+                elif outcome == "inferred_match":
+                    inferred_match_neg.add(smiles)
+                elif outcome == "inferred_no_match":
+                    inferred_no_match_neg.add(smiles)
+                elif outcome == "timeout":
+                    timeout_neg.add(smiles)
+                elif outcome == "error":
+                    error_neg.add(smiles)
+                else:  # unknown
+                    unknown_neg.add(smiles)
             elif event_type == "done":
                 neg_worker_completed = True
                 print(
@@ -239,16 +279,24 @@ def check_if_definition_matches_samples(
         flush=True,
     )
 
-    deadline = time.monotonic() + sample_matching_timeout_seconds
+    deadline = (
+        None
+        if sample_matching_timeout_seconds is None
+        or sample_matching_timeout_seconds <= 0
+        else time.monotonic() + sample_matching_timeout_seconds
+    )
     timed_out = False
     last_progress_report = time.monotonic()
 
     while pos_worker.is_alive() or neg_worker.is_alive():
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            break
-        join_timeout = min(0.5, remaining)
+        if deadline is None:
+            join_timeout = 0.5
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            join_timeout = min(0.5, remaining)
         if pos_worker.is_alive():
             pos_worker.join(timeout=join_timeout)
         if neg_worker.is_alive():
@@ -257,7 +305,7 @@ def check_if_definition_matches_samples(
         drain_neg_queue()
 
         now = time.monotonic()
-        if now - last_progress_report >= 5:
+        if deadline is not None and now - last_progress_report >= 5:
             print(
                 f"[sample-matching for {chemical_class.name}] Progress "
                 f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
@@ -341,11 +389,25 @@ def check_if_definition_matches_samples(
         f"{len(processed_neg_samples)} processed "
         f"(total available: {len(neg_samples)})"
     )
+    # Return all outcome tracking data with the standard TP/FP/TN/FN outcomes
     return (
-        unmatched_pos_samples,
-        matched_neg_samples,
-        processed_pos_samples,
-        processed_neg_samples,
+        unmatched_pos_samples,  # FNs
+        matched_neg_samples,  # FPs
+        processed_pos_samples,  # All processed positives (used for TP calculation)
+        processed_neg_samples,  # All processed negatives (used for TN calculation)
+        # Extended outcomes dict
+        {
+            "inferred_match_pos": inferred_match_pos,
+            "inferred_match_neg": inferred_match_neg,
+            "inferred_no_match_pos": inferred_no_match_pos,
+            "inferred_no_match_neg": inferred_no_match_neg,
+            "timeout_pos": timeout_pos,
+            "timeout_neg": timeout_neg,
+            "error_pos": error_pos,
+            "error_neg": error_neg,
+            "unknown_pos": unknown_pos,
+            "unknown_neg": unknown_neg,
+        },
     )
 
 
@@ -363,18 +425,27 @@ def _check_samples_worker(
     label = "positive" if event_type == "pos_checked" else "negative"
     total_samples = len(samples)
 
-    def is_matched(chemical: dm.ChemicalStructure) -> bool | None:
+    def is_matched(chemical: dm.ChemicalStructure) -> str:
+        """Returns categorized outcome: 'match', 'no_match', 'inferred_match', 'inferred_no_match', 'timeout', 'error', or 'unknown'."""
         outcome = gavel.does_mol_match_tptp_definition(
             chemical.mol,
             tptp_def,
             temp_additional_defs=temp_additional_defs,
         )
         if outcome == ModelCheckerOutcome.MODEL_FOUND:
-            return True
-        elif outcome == ModelCheckerOutcome.MODEL_NOT_FOUND:
-            return False
-        else:
-            return None
+            return "match"
+        elif outcome == ModelCheckerOutcome.NO_MODEL:
+            return "no_match"
+        elif outcome == ModelCheckerOutcome.MODEL_FOUND_INFERRED:
+            return "inferred_match"
+        elif outcome == ModelCheckerOutcome.NO_MODEL_INFERRED:
+            return "inferred_no_match"
+        elif outcome == ModelCheckerOutcome.TIMEOUT:
+            return "timeout"
+        elif outcome == ModelCheckerOutcome.ERROR:
+            return "error"
+        else:  # ModelCheckerOutcome.UNKNOWN or any other value
+            return "unknown"
 
     try:
         print(
@@ -384,14 +455,7 @@ def _check_samples_worker(
         )
         for idx, chemical in enumerate(samples, start=1):
             matched = is_matched(chemical)
-            if matched is None:
-                print(
-                    f"[sample-matching:{label}] Worker PID={os.getpid()} matched result"
-                    " is None for sample with SMILES={chemical.smiles}. "
-                    f"skipping sample with due to error during matching.",
-                    flush=True,
-                )
-                continue
+            # Record all outcome types, not just True/False
             result_queue.put((event_type, chemical.smiles, matched))
             if idx == 1 or idx % 25 == 0 or idx == total_samples:
                 print(

@@ -27,6 +27,7 @@ class BaseFOL:
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_version = chebi_version
+        assert split in {"train", "val"}, f"Invalid split: {split}"
         self.split = split
         self.fol_reasoner = fol_reasoner
         self._c3po_slim_data, self._entire_chebi_data = dm.load_c3po_slim_dataset(
@@ -55,7 +56,7 @@ class BaseFOL:
         *,
         chemical_class: dm.ChemicalClass,
         tptp_def: logic.QuantifiedFormula,
-        sample_match_timeout_seconds: int,
+        sample_match_timeout_seconds: int | None,
         max_neg_samples: int,
         temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
@@ -73,12 +74,7 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        (
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
-        ) = check_if_definition_matches_samples(
+        result = check_if_definition_matches_samples(
             self._fol_reasoner,
             sample_match_timeout_seconds,
             chemical_class,
@@ -87,11 +83,31 @@ class BaseFOL:
             neg_samples,
             temp_additional_defs,
         )
+        # Unpack standard outcomes and extended outcomes dict
+        extended_outcomes: dict = {}
+        try:
+            (
+                unmatched_pos_samples,
+                matched_neg_samples,
+                processed_pos_samples,
+                processed_neg_samples,
+                extended_outcomes,
+            ) = result  # type: ignore
+        except (ValueError, TypeError):
+            # Fallback for old signature (should not happen with updated code)
+            (
+                unmatched_pos_samples,
+                matched_neg_samples,
+                processed_pos_samples,
+                processed_neg_samples,
+            ) = result  # type: ignore
+
         metrics = self._get_metrics(
             unmatched_pos_samples,
             matched_neg_samples,
             processed_pos_samples,
             processed_neg_samples,
+            extended_outcomes,
         )
         return (
             metrics,
@@ -113,9 +129,13 @@ class BaseFOL:
             if smiles in self._c3po_slim_data.smiles_to_instance
         }
         negative_examples = list(self._c3po_slim_data.all_smiles - positive_examples)
-        negative_examples = self._get_closest_negatives(
-            negative_examples, chemical_class.id, n_samples=max_neg_samples
-        )
+
+        if self.split == "train":
+            # Closest 1000 negative samples are used for training to speed up training.
+            # For validation, we use all negative samples to fairly compare againts the c3po.
+            negative_examples = self._get_closest_negatives(
+                negative_examples, chemical_class.id, n_samples=max_neg_samples
+            )
         negative_instances = {
             self._c3po_slim_data.smiles_to_instance[smiles]
             for smiles in negative_examples
@@ -169,7 +189,11 @@ class BaseFOL:
         matched_neg_samples: set[dm.SMILES_STRING],
         processed_pos_samples: set[dm.ChemicalStructure],
         processed_neg_samples: set[dm.ChemicalStructure],
+        extended_outcomes: dict | None = None,
     ) -> def_model.DefinitionMetrics:
+        if extended_outcomes is None:
+            extended_outcomes = {}
+
         num_true_positives = len(processed_pos_samples) - len(unmatched_pos_samples)
         num_false_negatives = len(unmatched_pos_samples)
         num_false_positives = len(matched_neg_samples)
@@ -199,4 +223,19 @@ class BaseFOL:
             FP=num_false_positives,
             FN=num_false_negatives,
             TN=num_true_negatives,
+            # Populate extended outcomes from confusion matrix
+            inferred_match_pos=len(extended_outcomes.get("inferred_match_pos", set())),
+            inferred_match_neg=len(extended_outcomes.get("inferred_match_neg", set())),
+            inferred_no_match_pos=len(
+                extended_outcomes.get("inferred_no_match_pos", set())
+            ),
+            inferred_no_match_neg=len(
+                extended_outcomes.get("inferred_no_match_neg", set())
+            ),
+            timeout_pos=len(extended_outcomes.get("timeout_pos", set())),
+            timeout_neg=len(extended_outcomes.get("timeout_neg", set())),
+            error_pos=len(extended_outcomes.get("error_pos", set())),
+            error_neg=len(extended_outcomes.get("error_neg", set())),
+            unknown_pos=len(extended_outcomes.get("unknown_pos", set())),
+            unknown_neg=len(extended_outcomes.get("unknown_neg", set())),
         )
