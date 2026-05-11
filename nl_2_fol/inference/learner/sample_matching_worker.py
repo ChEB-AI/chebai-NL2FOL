@@ -6,6 +6,7 @@ import time
 import traceback
 from importlib import import_module
 
+from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
@@ -362,12 +363,18 @@ def _check_samples_worker(
     label = "positive" if event_type == "pos_checked" else "negative"
     total_samples = len(samples)
 
-    def is_matched(chemical: dm.ChemicalStructure) -> bool:
-        return gavel.does_mol_match_tptp_definition(
+    def is_matched(chemical: dm.ChemicalStructure) -> bool | None:
+        outcome = gavel.does_mol_match_tptp_definition(
             chemical.mol,
             tptp_def,
             temp_additional_defs=temp_additional_defs,
         )
+        if outcome == ModelCheckerOutcome.MODEL_FOUND:
+            return True
+        elif outcome == ModelCheckerOutcome.MODEL_NOT_FOUND:
+            return False
+        else:
+            return None
 
     try:
         print(
@@ -377,6 +384,14 @@ def _check_samples_worker(
         )
         for idx, chemical in enumerate(samples, start=1):
             matched = is_matched(chemical)
+            if matched is None:
+                print(
+                    f"[sample-matching:{label}] Worker PID={os.getpid()} matched result"
+                    " is None for sample with SMILES={chemical.smiles}. "
+                    f"skipping sample with due to error during matching.",
+                    flush=True,
+                )
+                continue
             result_queue.put((event_type, chemical.smiles, matched))
             if idx == 1 or idx % 25 == 0 or idx == total_samples:
                 print(

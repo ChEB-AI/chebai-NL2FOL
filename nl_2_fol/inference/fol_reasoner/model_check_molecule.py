@@ -93,7 +93,7 @@ class GavelFOLReasoner:
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
-    ) -> bool:
+    ) -> ModelCheckerOutcome:
         """Checks if a given molecule matches a logical definition using model checking.
 
         Converts the molecule to a first-order logic representation and uses a model
@@ -109,7 +109,7 @@ class GavelFOLReasoner:
                 before committing them permanently.
 
         Returns:
-            True if the molecule matches the definition (model found), False otherwise.
+            ModelCheckerOutcome: The result of the model checking process.
 
         Raises:
             MissingPredicateException: If the formula contains predicates not defined
@@ -165,7 +165,7 @@ class GavelFOLReasoner:
         except Exception as e:
             print(f"Error occured for following smiles: {Chem.MolToSmiles(molecule)}")
             raise Exception(f"{exception_prefix}{e}")
-        return outcome == ModelCheckerOutcome.MODEL_FOUND
+        return outcome
 
     @mol_to_fol_exception
     def _mol_to_fol(self, mol: Chem.Mol):
@@ -273,4 +273,6 @@ if __name__ == "__main__":
     matches = fol_parser.does_mol_match_tptp_definition(
         mol, fol_parser.get_tptp_fol_definition(llm_for)[1]
     )
-    print(f"Tripeptide matches definition: {matches}")
+    print(
+        f"Tripeptide matches definition: {matches == ModelCheckerOutcome.MODEL_FOUND}"
+    )
