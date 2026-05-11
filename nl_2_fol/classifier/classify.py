@@ -1,6 +1,7 @@
 import os
 import pickle
 
+from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from rdkit import Chem
 
 from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
@@ -25,9 +26,10 @@ class NL2FOLChebiClassifier:
         classification = []
 
         for chebi_id, learned_def in self.class_definitions.items():
-            if self._gavel.does_mol_match_tptp_definition(
+            outcome = self._gavel.does_mol_match_tptp_definition(
                 mol, learned_def.learned_FOL.formula
-            ):
+            )
+            if outcome == ModelCheckerOutcome.MODEL_FOUND:
                 classification.append({"chebi_id": chebi_id, "name": learned_def.name})
 
         return {smiles: classification}
