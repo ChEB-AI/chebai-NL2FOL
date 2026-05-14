@@ -1,6 +1,9 @@
 import multiprocessing
 import os
 import pickle
+import queue
+import time
+from collections import deque
 
 import tqdm
 
@@ -37,22 +40,76 @@ class PerformValidation(BaseFOL):
 
         ctx = multiprocessing.get_context("fork")
         result_queue = ctx.Queue()
-        processes = []
+        max_workers = max(1, min(os.cpu_count() or 1, len(classes_to_validate)))
+        pending_classes = deque(classes_to_validate)
+        active_processes = {}
+        waiting_for_results = {}
+        received_results = set()
+        updated = False
+        result_grace_seconds = 30.0
 
-        for class_name in tqdm.tqdm(
-            classes_to_validate, desc="Launching validation processes"
-        ):
-            process = ctx.Process(
-                target=self._validate_class_worker,
-                args=(class_name, result_queue),
-            )
-            process.start()
-            processes.append(process)
+        with tqdm.tqdm(
+            total=len(classes_to_validate), desc="Validating definitions"
+        ) as progress:
+            while pending_classes or active_processes or waiting_for_results:
+                while pending_classes and len(active_processes) < max_workers:
+                    class_name = pending_classes.popleft()
+                    process = ctx.Process(
+                        target=self._validate_class_worker,
+                        args=(class_name, result_queue),
+                    )
+                    process.start()
+                    active_processes[class_name] = process
 
-        for process in processes:
-            process.join()
+                try:
+                    class_name, result = result_queue.get(timeout=0.1)
+                except queue.Empty:
+                    pass
+                else:
+                    received_results.add(class_name)
+                    waiting_for_results.pop(class_name, None)
+                    updated = self._apply_validation_result(result) or updated
+                    progress.update(1)
 
-        self._collect_validation_results(result_queue, len(classes_to_validate))
+                finished_classes = []
+                for class_name, process in active_processes.items():
+                    process.join(timeout=0)
+                    if process.is_alive():
+                        continue
+
+                    if (
+                        process.exitcode not in (0, None)
+                        and class_name not in received_results
+                    ):
+                        self.counter += 1
+                        waiting_for_results.pop(class_name, None)
+                        print(
+                            f"Validation worker for {class_name} exited with code "
+                            f"{process.exitcode} before returning a result."
+                        )
+                        progress.update(1)
+                    elif process.exitcode == 0 and class_name not in received_results:
+                        waiting_for_results.setdefault(class_name, time.monotonic())
+
+                    finished_classes.append(class_name)
+
+                for class_name in finished_classes:
+                    active_processes.pop(class_name, None)
+
+                for class_name, started_at in list(waiting_for_results.items()):
+                    if time.monotonic() - started_at <= result_grace_seconds:
+                        continue
+
+                    self.counter += 1
+                    waiting_for_results.pop(class_name, None)
+                    print(
+                        f"Validation worker for {class_name} did not return a result "
+                        f"within {result_grace_seconds:.0f} seconds after finishing."
+                    )
+                    progress.update(1)
+
+        if updated:
+            self._save_validated_definitions()
         if self.counter > 0:
             print(
                 f"Validation completed. {self.counter} definitions could not be validated due to errors during validation."
@@ -60,15 +117,26 @@ class PerformValidation(BaseFOL):
 
     def validate_class(self, class_name: str):
         result = self._validate_class_result(class_name)
+        if self._apply_validation_result(result):
+            self._save_validated_definitions()
+
+    def _apply_validation_result(
+        self,
+        result: tuple[str, int | None, def_model.DefinitionMetrics | None] | None,
+    ) -> bool:
         if result is None:
-            return
+            return False
 
         status, class_id, val_metrics = result
+        if status == "error":
+            self.counter += 1
+            return False
+
         if status != "ok" or class_id is None or val_metrics is None:
-            return
+            return False
 
         self._loaded_defs.learned_definitions[class_id].val_metrics = val_metrics
-        self._save_validated_definitions()
+        return True
 
     def _validate_class_worker(self, class_name: str, result_queue):
         result_queue.put((class_name, self._validate_class_result(class_name)))
@@ -76,20 +144,12 @@ class PerformValidation(BaseFOL):
     def _collect_validation_results(self, result_queue, expected_results: int):
         updated = False
         for _ in range(expected_results):
-            _, result = result_queue.get()
-            if result is None:
-                continue
+            try:
+                _, result = result_queue.get(timeout=0.1)
+            except queue.Empty:
+                break
 
-            status, class_id, val_metrics = result
-            if status == "error":
-                self.counter += 1
-                continue
-
-            if status == "ok" and class_id is not None and val_metrics is not None:
-                self._loaded_defs.learned_definitions[
-                    class_id
-                ].val_metrics = val_metrics
-                updated = True
+            updated = self._apply_validation_result(result) or updated
 
         if updated:
             self._save_validated_definitions()
