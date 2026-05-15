@@ -11,6 +11,7 @@ from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
 from nl_2_fol.inference.learner.tee_stream import TeeStream
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
@@ -70,6 +71,11 @@ class LearnDefinitions(BaseFOL):
 
     def learn_class(self, class_name: str):
         with TeeStream.capture_learning_output(self.learning_log_path):
+            print(
+                f"Camel casing the input class name `{class_name}` to "
+                f"`{to_camel_case(class_name)}` to match with the class names in the dataset."
+            )
+            class_name = to_camel_case(class_name)
             if class_name not in self._c3po_slim_data.classes:
                 print(f"{class_name} not found in the dataset.")
                 return
