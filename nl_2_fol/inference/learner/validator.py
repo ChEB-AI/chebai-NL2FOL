@@ -140,6 +140,18 @@ class PerformValidation(BaseFOL):
         resolved_class_name = self._validate_given_class_name(class_name)
         if resolved_class_name is None:
             return
+
+        classes_to_validate = set(
+            learned_def.name
+            for _, learned_def in self._loaded_defs.learned_definitions.items()
+            if learned_def.learn_success and learned_def.val_metrics is None
+        )
+        if resolved_class_name not in classes_to_validate:
+            print(
+                f"Class {resolved_class_name} is either already validated or not eligible for validation."
+            )
+            return
+
         result = self._validate_class_result(resolved_class_name)
         if self._apply_validation_result(result):
             self._save_validated_definitions()
