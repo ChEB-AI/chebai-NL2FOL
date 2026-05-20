@@ -235,7 +235,7 @@ def check_if_definition_matches_samples(
             event_type = event[0]
             if event_type == "neg_checked":
                 _, smiles, outcome = event
-                processed_neg_samples.add(smiles)
+                processed_neg_smiles.add(smiles)
                 if outcome == "match":
                     matched_neg_samples.add(smiles)  # FP
                 elif outcome == "no_match":

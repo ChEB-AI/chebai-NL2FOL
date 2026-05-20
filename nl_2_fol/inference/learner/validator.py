@@ -165,7 +165,6 @@ class PerformValidation(BaseFOL):
 
         status, class_id, val_metrics = result
         if status == "error":
-            self.counter += 1
             return False
 
         if status != "ok" or class_id is None or val_metrics is None:

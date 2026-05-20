@@ -128,8 +128,6 @@ class TestCheckIfDefinitionMatchesSamples:
         assert len(processed["processed_neg_samples"]) == 0
         # benzene was processed
         assert len(processed["processed_pos_samples"]) == 1
-        assert len(processed["processed_pos_samples"]) == 1
-        assert len(processed["processed_neg_samples"]) == 0
         assert next(iter(processed["processed_pos_samples"])).smiles == "c1ccccc1"
         assert set(outcomes.keys()).issuperset(
             {
@@ -184,7 +182,6 @@ class TestCheckIfDefinitionMatchesSamples:
             )
 
         assert "c1ccccc1" in outcomes["unmatched_pos_samples"]
-        assert len(processed["processed_pos_samples"]) == 1
         assert len(processed["processed_pos_samples"]) == 1
         assert len(processed["processed_neg_samples"]) == 0
         assert set(outcomes.keys()).issuperset(
