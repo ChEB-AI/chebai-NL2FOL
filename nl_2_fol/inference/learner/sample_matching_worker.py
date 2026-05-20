@@ -147,6 +147,8 @@ def check_if_definition_matches_samples(
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
+    seen_pos_smiles: set[dm.SMILES_STRING] = set()
+    seen_neg_smiles: set[dm.SMILES_STRING] = set()
     pos_worker_error: WorkerError | None = None
     neg_worker_error: WorkerError | None = None
     pos_worker_completed = False
@@ -197,10 +199,12 @@ def check_if_definition_matches_samples(
             event_type = event[0]
             if event_type == "pos_checked":
                 _, smiles, outcome = event
-                processed_pos_smiles.add(smiles)
+                seen_pos_smiles.add(smiles)
                 if outcome == "match":
+                    processed_pos_smiles.add(smiles)
                     pass  # TP - counted in processed but not in unmatched
                 elif outcome == "no_match":
+                    processed_pos_smiles.add(smiles)
                     unmatched_pos_samples.add(smiles)  # FN
                 elif outcome == "inferred_match":
                     inferred_match_pos.add(smiles)
@@ -240,10 +244,12 @@ def check_if_definition_matches_samples(
             event_type = event[0]
             if event_type == "neg_checked":
                 _, smiles, outcome = event
-                processed_neg_smiles.add(smiles)
+                seen_neg_smiles.add(smiles)
                 if outcome == "match":
+                    processed_neg_smiles.add(smiles)
                     matched_neg_samples.add(smiles)  # FP
                 elif outcome == "no_match":
+                    processed_neg_smiles.add(smiles)
                     pass  # TN - counted in processed but not in matched
                 elif outcome == "inferred_match":
                     inferred_match_neg.add(smiles)
@@ -367,7 +373,7 @@ def check_if_definition_matches_samples(
         chemical for chemical in neg_samples if chemical.smiles in processed_neg_smiles
     }
 
-    if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
+    if len(seen_pos_smiles) == 0 and len(seen_neg_smiles) == 0:
         raise TimeoutError(
             "No samples were processed within "
             f"{sample_matching_timeout_seconds} seconds while validating definition "
