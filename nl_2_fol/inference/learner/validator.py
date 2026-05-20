@@ -38,9 +38,14 @@ class PerformValidation(BaseFOL):
         if len(classes_to_validate) == 0:
             return
 
+        print(
+            f"Starting validation for remaining {len(classes_to_validate)} classes..."
+        )
+
         ctx = multiprocessing.get_context("fork")
         result_queue = ctx.Queue()
         max_workers = max(1, min(os.cpu_count() or 1, len(classes_to_validate)))
+        print(f"Using up to {max_workers} parallel validation workers.")
         pending_classes = deque(classes_to_validate)
         active_processes = {}
         waiting_for_results = {}
@@ -68,7 +73,25 @@ class PerformValidation(BaseFOL):
                 else:
                     received_results.add(class_name)
                     waiting_for_results.pop(class_name, None)
-                    updated = self._apply_validation_result(result) or updated
+                    # If the worker returned an error, terminate the worker process
+                    # to avoid it continuing any background work unnecessarily.
+                    status = result[0]
+
+                    proc = active_processes.get(class_name)
+                    if (
+                        (status == "error" or status == "skipped")
+                        and proc is not None
+                        and proc.is_alive()
+                    ):
+                        try:
+                            proc.terminate()
+                            proc.join(timeout=1)
+                        except Exception:
+                            pass
+
+                    if self._apply_validation_result(result):
+                        # Persist immediately so next run will skip this class
+                        self._save_validated_definitions()
                     progress.update(1)
 
                 finished_classes = []
@@ -142,24 +165,26 @@ class PerformValidation(BaseFOL):
         result_queue.put((class_name, self._validate_class_result(class_name)))
 
     def _collect_validation_results(self, result_queue, expected_results: int):
-        updated = False
         for _ in range(expected_results):
             try:
                 _, result = result_queue.get(timeout=0.1)
             except queue.Empty:
                 break
 
-            updated = self._apply_validation_result(result) or updated
-
-        if updated:
-            self._save_validated_definitions()
+            if self._apply_validation_result(result):
+                # Save after each successful application so progress is durable
+                self._save_validated_definitions()
 
     def _validate_class_result(
         self, class_name: str
     ) -> tuple[str, int | None, def_model.DefinitionMetrics | None] | None:
         try:
-            print("-" * 10, f"Validating definition for {class_name}...", "-" * 10)
             chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
+            print(
+                "-" * 10,
+                f"Validating definition for ChEBI:{chemical_class.id} - {class_name}...",
+                "-" * 10,
+            )
             if chemical_class.id not in self._loaded_defs.learned_definitions:
                 print(
                     f"No learned definition found for class {class_name} with id "
