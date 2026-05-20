@@ -50,7 +50,6 @@ class PerformValidation(BaseFOL):
         active_processes = {}
         waiting_for_results = {}
         received_results = set()
-        updated = False
         result_grace_seconds = 30.0
 
         with tqdm.tqdm(
@@ -131,15 +130,17 @@ class PerformValidation(BaseFOL):
                     )
                     progress.update(1)
 
-        if updated:
-            self._save_validated_definitions()
+        self._save_validated_definitions()
         if self.counter > 0:
             print(
                 f"Validation completed. {self.counter} definitions could not be validated due to errors during validation."
             )
 
     def validate_class(self, class_name: str):
-        result = self._validate_class_result(class_name)
+        resolved_class_name = self._validate_given_class_name(class_name)
+        if resolved_class_name is None:
+            return
+        result = self._validate_class_result(resolved_class_name)
         if self._apply_validation_result(result):
             self._save_validated_definitions()
 

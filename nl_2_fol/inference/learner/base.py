@@ -9,6 +9,7 @@ from nl_2_fol.inference.learner.sample_matching_worker import (
     check_if_definition_matches_samples,
 )
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
 class BaseFOL:
@@ -239,3 +240,17 @@ class BaseFOL:
             unknown_pos=len(extended_outcomes.get("unknown_pos", set())),
             unknown_neg=len(extended_outcomes.get("unknown_neg", set())),
         )
+
+    def _validate_given_class_name(self, class_name: str) -> None | str:
+        resolved_class_name = class_name
+        if resolved_class_name not in self._c3po_slim_data.classes:
+            camel_cased_class_name = to_camel_case(class_name)
+            print(
+                f"Class name `{class_name}` was not found directly in the dataset. "
+                f"Trying camel-cased variant `{camel_cased_class_name}`."
+            )
+            resolved_class_name = camel_cased_class_name
+        if resolved_class_name not in self._c3po_slim_data.classes:
+            print(f"{class_name} not found in the dataset.")
+            return None
+        return resolved_class_name

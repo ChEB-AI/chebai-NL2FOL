@@ -11,7 +11,6 @@ from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
 from nl_2_fol.inference.learner.tee_stream import TeeStream
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
-from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
 
@@ -71,32 +70,29 @@ class LearnDefinitions(BaseFOL):
 
     def learn_class(self, class_name: str):
         with TeeStream.capture_learning_output(self.learning_log_path):
-            print(
-                f"Camel casing the input class name `{class_name}` to "
-                f"`{to_camel_case(class_name)}` to match with the class names in the dataset."
-            )
-            class_name = to_camel_case(class_name)
-            if class_name not in self._c3po_slim_data.classes:
-                print(f"{class_name} not found in the dataset.")
+            resolved_class_name = self._validate_given_class_name(class_name)
+            if resolved_class_name is None:
                 return
-            chemical_class = self._c3po_slim_data.classes[class_name]
+            chemical_class = self._c3po_slim_data.classes[resolved_class_name]
             if chemical_class.definition is None:
-                print(f"No definition available for {class_name}, skipping learning.")
+                print(
+                    f"No definition available for {resolved_class_name}, skipping learning."
+                )
                 return
             if chemical_class.id in self.definitions.learned_definitions:
                 print(
-                    f"Definition already learned for {class_name}, skipping learning."
+                    f"Definition already learned for {resolved_class_name}, skipping learning."
                 )
                 return
-            if class_name in self._failed_classes:
+            if resolved_class_name in self._failed_classes:
                 print(
-                    f"{class_name} is in the list of classes which failed to learn in "
+                    f"{resolved_class_name} is in the list of classes which failed to learn in "
                     "previous runs, skipping learning to avoid unnecessary attempts."
                 )
                 while True:
                     retry_choice = (
                         input(
-                            f"Do you want to retry learning '{class_name}'? (yes/no): "
+                            f"Do you want to retry learning '{resolved_class_name}'? (yes/no): "
                         )
                         .strip()
                         .lower()
@@ -104,7 +100,7 @@ class LearnDefinitions(BaseFOL):
                     if retry_choice in {"yes", "y"}:
                         break
                     if retry_choice in {"no", "n"}:
-                        print(f"Skipping retry for {class_name}.")
+                        print(f"Skipping retry for {resolved_class_name}.")
                         return
                     print("Please answer with 'yes' or 'no'.")
             self._learn(chemical_class)
