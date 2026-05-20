@@ -200,6 +200,53 @@ class TestCheckIfDefinitionMatchesSamples:
         assert all(len(samples) == 0 for samples in extended_outcomes.values())
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
+    def test_non_definite_outcomes_are_not_counted_as_processed(
+        self, mock_mp, common_inputs
+    ):
+        """Only definite match/no_match outcomes are counted in processed sets."""
+        pos_q: queue.Queue = queue.Queue()
+        pos_q.put(("pos_checked", "c1ccccc1", "inferred_match"))
+        pos_q.put(("done",))
+
+        neg_q: queue.Queue = queue.Queue()
+        neg_q.put(("neg_checked", "CCO", "timeout"))
+        neg_q.put(("done",))
+
+        mock_pos_proc = MagicMock()
+        mock_pos_proc.is_alive.return_value = False
+        mock_pos_proc.exitcode = 0
+
+        mock_neg_proc = MagicMock()
+        mock_neg_proc.is_alive.return_value = False
+        mock_neg_proc.exitcode = 0
+
+        mock_mp.get_context.return_value = _make_mock_context(
+            pos_q, neg_q, mock_pos_proc, mock_neg_proc
+        )
+
+        (
+            unmatched_pos,
+            matched_neg,
+            processed_pos,
+            processed_neg,
+            extended_outcomes,
+        ) = check_if_definition_matches_samples(
+            gavel=common_inputs["gavel"],
+            sample_matching_timeout_seconds=10,
+            chemical_class=common_inputs["chemical_class"],
+            tptp_def=common_inputs["tptp_def"],
+            pos_samples=common_inputs["pos_samples"],
+            neg_samples=common_inputs["neg_samples"],
+        )
+
+        assert len(unmatched_pos) == 0
+        assert len(matched_neg) == 0
+        assert len(processed_pos) == 0
+        assert len(processed_neg) == 0
+        assert extended_outcomes["inferred_match_pos"] == {"c1ccccc1"}
+        assert extended_outcomes["timeout_neg"] == {"CCO"}
+
+    @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
     def test_timeout_with_no_results_raises_timeout_error(
         self, mock_mp, common_inputs, timeout_proc_mocks
     ):
