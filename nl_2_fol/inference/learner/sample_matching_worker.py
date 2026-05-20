@@ -120,30 +120,26 @@ def check_if_definition_matches_samples(
         str, tuple[list[logic.Variable], logic.QuantifiedFormula]
     ]
     | None = None,
-) -> tuple[
-    set[dm.SMILES_STRING],
-    set[dm.SMILES_STRING],
-    set[dm.ChemicalStructure],
-    set[dm.ChemicalStructure],
-    dict,
-]:
+) -> tuple[dict[str, set[dm.SMILES_STRING]], dict[str, set[dm.ChemicalStructure]]]:
     # Track definite outcomes
-    unmatched_pos_samples = set()  # FNs (definite no_match on positives)
-    matched_neg_samples = set()  # FPs (definite match on negatives)
+    matched_pos_samples: set[dm.SMILES_STRING] = set()  # TPs
+    unmatched_neg_samples: set[dm.SMILES_STRING] = set()  # TNs
+    unmatched_pos_samples: set[dm.SMILES_STRING] = set()  # FNs
+    matched_neg_samples: set[dm.SMILES_STRING] = set()  # FPs
 
     # Track inferred outcomes
-    inferred_match_pos = set()
-    inferred_match_neg = set()
-    inferred_no_match_pos = set()
-    inferred_no_match_neg = set()
+    inferred_match_pos: set[dm.SMILES_STRING] = set()
+    inferred_match_neg: set[dm.SMILES_STRING] = set()
+    inferred_no_match_pos: set[dm.SMILES_STRING] = set()
+    inferred_no_match_neg: set[dm.SMILES_STRING] = set()
 
     # Track error/timeout/unknown outcomes
-    timeout_pos = set()
-    timeout_neg = set()
-    error_pos = set()
-    error_neg = set()
-    unknown_pos = set()
-    unknown_neg = set()
+    timeout_pos: set[dm.SMILES_STRING] = set()
+    timeout_neg: set[dm.SMILES_STRING] = set()
+    error_pos: set[dm.SMILES_STRING] = set()
+    error_neg: set[dm.SMILES_STRING] = set()
+    unknown_pos: set[dm.SMILES_STRING] = set()
+    unknown_neg: set[dm.SMILES_STRING] = set()
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
@@ -199,7 +195,7 @@ def check_if_definition_matches_samples(
                 _, smiles, outcome = event
                 processed_pos_smiles.add(smiles)
                 if outcome == "match":
-                    pass  # TP - counted in processed but not in unmatched
+                    matched_pos_samples.add(smiles)  # TP
                 elif outcome == "no_match":
                     unmatched_pos_samples.add(smiles)  # FN
                 elif outcome == "inferred_match":
@@ -221,12 +217,11 @@ def check_if_definition_matches_samples(
             elif event_type == "error":
                 pos_worker_error = _parse_error_event(event)
                 error_message = pos_worker_error[0]
-                if PRINT_TRACES:
-                    print(
-                        f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
-                        f"{error_message}",
-                        flush=True,
-                    )
+                print(
+                    f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
+                    f"{error_message}",
+                    flush=True,
+                )
 
     def drain_neg_queue() -> None:
         nonlocal neg_worker_error
@@ -240,11 +235,11 @@ def check_if_definition_matches_samples(
             event_type = event[0]
             if event_type == "neg_checked":
                 _, smiles, outcome = event
-                processed_neg_smiles.add(smiles)
+                processed_neg_samples.add(smiles)
                 if outcome == "match":
                     matched_neg_samples.add(smiles)  # FP
                 elif outcome == "no_match":
-                    pass  # TN - counted in processed but not in matched
+                    unmatched_neg_samples.add(smiles)  # TN
                 elif outcome == "inferred_match":
                     inferred_match_neg.add(smiles)
                 elif outcome == "inferred_no_match":
@@ -264,12 +259,11 @@ def check_if_definition_matches_samples(
             elif event_type == "error":
                 neg_worker_error = _parse_error_event(event)
                 error_message = neg_worker_error[0]
-                if PRINT_TRACES:
-                    print(
-                        f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
-                        f"{error_message}",
-                        flush=True,
-                    )
+                print(
+                    f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
+                    f"{error_message}",
+                    flush=True,
+                )
 
     pos_worker.start()
     neg_worker.start()
@@ -361,10 +355,16 @@ def check_if_definition_matches_samples(
             f"exit code: {neg_worker.exitcode}."
         )
     processed_pos_samples = {
-        chemical for chemical in pos_samples if chemical.smiles in processed_pos_smiles
+        chemical
+        for chemical in pos_samples
+        if chemical.smiles in processed_pos_smiles
+        and chemical.smiles in (matched_pos_samples | unmatched_pos_samples)
     }
     processed_neg_samples = {
-        chemical for chemical in neg_samples if chemical.smiles in processed_neg_smiles
+        chemical
+        for chemical in neg_samples
+        if chemical.smiles in processed_neg_smiles
+        and chemical.smiles in (matched_neg_samples | unmatched_neg_samples)
     }
 
     if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
@@ -390,25 +390,25 @@ def check_if_definition_matches_samples(
         f"(total available: {len(neg_samples)})"
     )
     # Return all outcome tracking data with the standard TP/FP/TN/FN outcomes
-    return (
-        unmatched_pos_samples,  # FNs
-        matched_neg_samples,  # FPs
-        processed_pos_samples,  # All processed positives (used for TP calculation)
-        processed_neg_samples,  # All processed negatives (used for TN calculation)
-        # Extended outcomes dict
-        {
-            "inferred_match_pos": inferred_match_pos,
-            "inferred_match_neg": inferred_match_neg,
-            "inferred_no_match_pos": inferred_no_match_pos,
-            "inferred_no_match_neg": inferred_no_match_neg,
-            "timeout_pos": timeout_pos,
-            "timeout_neg": timeout_neg,
-            "error_pos": error_pos,
-            "error_neg": error_neg,
-            "unknown_pos": unknown_pos,
-            "unknown_neg": unknown_neg,
-        },
-    )
+    return {
+        "matched_pos_samples": matched_pos_samples,  # TPs
+        "unmatched_neg_samples": unmatched_neg_samples,  # TNs
+        "unmatched_pos_samples": unmatched_pos_samples,  # FNs
+        "matched_neg_samples": matched_neg_samples,  # FPs
+        "inferred_match_pos": inferred_match_pos,
+        "inferred_match_neg": inferred_match_neg,
+        "inferred_no_match_pos": inferred_no_match_pos,
+        "inferred_no_match_neg": inferred_no_match_neg,
+        "timeout_pos": timeout_pos,
+        "timeout_neg": timeout_neg,
+        "error_pos": error_pos,
+        "error_neg": error_neg,
+        "unknown_pos": unknown_pos,
+        "unknown_neg": unknown_neg,
+    }, {
+        "processed_pos_samples": processed_pos_samples,  # All processed positives
+        "processed_neg_samples": processed_neg_samples,  # All processed negatives
+    }
 
 
 def _check_samples_worker(

@@ -75,7 +75,7 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        result = check_if_definition_matches_samples(
+        match_result_dict, processed_samples_dict = check_if_definition_matches_samples(
             self._fol_reasoner,
             sample_match_timeout_seconds,
             chemical_class,
@@ -84,38 +84,15 @@ class BaseFOL:
             neg_samples,
             temp_additional_defs,
         )
-        # Unpack standard outcomes and extended outcomes dict
-        extended_outcomes: dict = {}
-        try:
-            (
-                unmatched_pos_samples,
-                matched_neg_samples,
-                processed_pos_samples,
-                processed_neg_samples,
-                extended_outcomes,
-            ) = result  # type: ignore
-        except (ValueError, TypeError):
-            # Fallback for old signature (should not happen with updated code)
-            (
-                unmatched_pos_samples,
-                matched_neg_samples,
-                processed_pos_samples,
-                processed_neg_samples,
-            ) = result  # type: ignore
 
-        metrics = self._get_metrics(
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
-            extended_outcomes,
-        )
+        metrics = self._get_metrics(match_result_dict)
+
         return (
             metrics,
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
+            match_result_dict["unmatched_pos_samples"],
+            match_result_dict["matched_neg_samples"],
+            processed_samples_dict["processed_pos_samples"],
+            processed_samples_dict["processed_neg_samples"],
         )
 
     @ce.stop_program_upon_failure
@@ -186,19 +163,12 @@ class BaseFOL:
     @ce.stop_program_upon_failure
     def _get_metrics(
         self,
-        unmatched_pos_samples: set[dm.SMILES_STRING],
-        matched_neg_samples: set[dm.SMILES_STRING],
-        processed_pos_samples: set[dm.ChemicalStructure],
-        processed_neg_samples: set[dm.ChemicalStructure],
-        extended_outcomes: dict | None = None,
+        cm: dict[str, set[dm.SMILES_STRING]],
     ) -> def_model.DefinitionMetrics:
-        if extended_outcomes is None:
-            extended_outcomes = {}
-
-        num_true_positives = len(processed_pos_samples) - len(unmatched_pos_samples)
-        num_false_negatives = len(unmatched_pos_samples)
-        num_false_positives = len(matched_neg_samples)
-        num_true_negatives = len(processed_neg_samples) - len(matched_neg_samples)
+        num_true_positives = len(cm["matched_pos_samples"])  # TPs
+        num_false_negatives = len(cm["unmatched_pos_samples"])  # FNs
+        num_false_positives = len(cm["matched_neg_samples"])  # FPs
+        num_true_negatives = len(cm["unmatched_neg_samples"])  # TNs
 
         def safe_divide(numerator: float, denominator: float) -> float:
             return numerator / denominator if denominator > 0 else 0.0
@@ -225,20 +195,16 @@ class BaseFOL:
             FN=num_false_negatives,
             TN=num_true_negatives,
             # Populate extended outcomes from confusion matrix
-            inferred_match_pos=len(extended_outcomes.get("inferred_match_pos", set())),
-            inferred_match_neg=len(extended_outcomes.get("inferred_match_neg", set())),
-            inferred_no_match_pos=len(
-                extended_outcomes.get("inferred_no_match_pos", set())
-            ),
-            inferred_no_match_neg=len(
-                extended_outcomes.get("inferred_no_match_neg", set())
-            ),
-            timeout_pos=len(extended_outcomes.get("timeout_pos", set())),
-            timeout_neg=len(extended_outcomes.get("timeout_neg", set())),
-            error_pos=len(extended_outcomes.get("error_pos", set())),
-            error_neg=len(extended_outcomes.get("error_neg", set())),
-            unknown_pos=len(extended_outcomes.get("unknown_pos", set())),
-            unknown_neg=len(extended_outcomes.get("unknown_neg", set())),
+            inferred_match_pos=len(cm.get("inferred_match_pos", set())),
+            inferred_match_neg=len(cm.get("inferred_match_neg", set())),
+            inferred_no_match_pos=len(cm.get("inferred_no_match_pos", set())),
+            inferred_no_match_neg=len(cm.get("inferred_no_match_neg", set())),
+            timeout_pos=len(cm.get("timeout_pos", set())),
+            timeout_neg=len(cm.get("timeout_neg", set())),
+            error_pos=len(cm.get("error_pos", set())),
+            error_neg=len(cm.get("error_neg", set())),
+            unknown_pos=len(cm.get("unknown_pos", set())),
+            unknown_neg=len(cm.get("unknown_neg", set())),
         )
 
     def _validate_given_class_name(self, class_name: str) -> None | str:

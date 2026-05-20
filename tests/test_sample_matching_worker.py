@@ -119,31 +119,37 @@ class TestCheckIfDefinitionMatchesSamples:
                 neg_samples=common_inputs["neg_samples"],
             )
 
-        unmatched_pos, matched_neg, processed_pos, processed_neg, extended_outcomes = (
-            result
-        )
+        outcomes, processed = result
 
         # benzene was matched (True) so it is not a false-negative
-        assert len(unmatched_pos) == 0
+        assert len(outcomes["unmatched_pos_samples"]) == 0
         # no neg results were processed before the timeout
-        assert len(matched_neg) == 0
-        assert len(processed_neg) == 0
+        assert len(outcomes["matched_neg_samples"]) == 0
+        assert len(processed["processed_neg_samples"]) == 0
         # benzene was processed
-        assert len(processed_pos) == 1
-        assert next(iter(processed_pos)).smiles == "c1ccccc1"
-        assert set(extended_outcomes) == {
-            "inferred_match_pos",
-            "inferred_match_neg",
-            "inferred_no_match_pos",
-            "inferred_no_match_neg",
-            "timeout_pos",
-            "timeout_neg",
-            "error_pos",
-            "error_neg",
-            "unknown_pos",
-            "unknown_neg",
-        }
-        assert all(len(samples) == 0 for samples in extended_outcomes.values())
+        assert len(processed["processed_pos_samples"]) == 1
+        assert len(processed["processed_pos_samples"]) == 1
+        assert len(processed["processed_neg_samples"]) == 0
+        assert next(iter(processed["processed_pos_samples"])).smiles == "c1ccccc1"
+        assert set(outcomes.keys()).issuperset(
+            {
+                "inferred_match_pos",
+                "inferred_match_neg",
+                "inferred_no_match_pos",
+                "inferred_no_match_neg",
+                "timeout_pos",
+                "timeout_neg",
+                "error_pos",
+                "error_neg",
+                "unknown_pos",
+                "unknown_neg",
+            }
+        )
+        assert all(
+            len(samples) == 0
+            for k, samples in outcomes.items()
+            if k.startswith(("inferred_", "timeout_", "error_", "unknown_"))
+        )
 
         mock_pos_proc.terminate.assert_called_once()
         mock_neg_proc.terminate.assert_called_once()
@@ -168,13 +174,7 @@ class TestCheckIfDefinitionMatchesSamples:
             "nl_2_fol.inference.learner.sample_matching_worker.time.monotonic",
             side_effect=itertools.count(100),
         ):
-            (
-                unmatched_pos,
-                matched_neg,
-                processed_pos,
-                processed_neg,
-                extended_outcomes,
-            ) = check_if_definition_matches_samples(
+            outcomes, processed = check_if_definition_matches_samples(
                 gavel=common_inputs["gavel"],
                 sample_matching_timeout_seconds=1,
                 chemical_class=common_inputs["chemical_class"],
@@ -183,21 +183,29 @@ class TestCheckIfDefinitionMatchesSamples:
                 neg_samples=common_inputs["neg_samples"],
             )
 
-        assert "c1ccccc1" in unmatched_pos
-        assert len(processed_pos) == 1
-        assert set(extended_outcomes) == {
-            "inferred_match_pos",
-            "inferred_match_neg",
-            "inferred_no_match_pos",
-            "inferred_no_match_neg",
-            "timeout_pos",
-            "timeout_neg",
-            "error_pos",
-            "error_neg",
-            "unknown_pos",
-            "unknown_neg",
-        }
-        assert all(len(samples) == 0 for samples in extended_outcomes.values())
+        assert "c1ccccc1" in outcomes["unmatched_pos_samples"]
+        assert len(processed["processed_pos_samples"]) == 1
+        assert len(processed["processed_pos_samples"]) == 1
+        assert len(processed["processed_neg_samples"]) == 0
+        assert set(outcomes.keys()).issuperset(
+            {
+                "inferred_match_pos",
+                "inferred_match_neg",
+                "inferred_no_match_pos",
+                "inferred_no_match_neg",
+                "timeout_pos",
+                "timeout_neg",
+                "error_pos",
+                "error_neg",
+                "unknown_pos",
+                "unknown_neg",
+            }
+        )
+        assert all(
+            len(samples) == 0
+            for k, samples in outcomes.items()
+            if k.startswith(("inferred_", "timeout_", "error_", "unknown_"))
+        )
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
     def test_timeout_with_no_results_raises_timeout_error(
