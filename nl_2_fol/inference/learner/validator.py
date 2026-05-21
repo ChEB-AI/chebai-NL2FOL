@@ -228,7 +228,10 @@ class PerformValidation(BaseFOL):
                 [str(var) for var in learned_def.learned_FOL.pred_variables],
             )
 
-            if learned_def.additional_defs_used:
+            if (
+                hasattr(learned_def, "additional_defs_used")
+                and learned_def.additional_defs_used
+            ):
                 print("Additional definitions used during learning:")
                 for add_def_name, (
                     def_vars,
