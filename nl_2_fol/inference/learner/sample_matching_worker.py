@@ -28,6 +28,8 @@ WorkerError = tuple[
     dict | None,
 ]
 
+MAX_TIMEOUTS = 50
+
 
 def _parse_error_event(event: tuple) -> WorkerError:
     """Parse the structured worker error event."""
@@ -297,6 +299,59 @@ def check_if_definition_matches_samples(
             neg_worker.join(timeout=join_timeout)
         drain_pos_queue()
         drain_neg_queue()
+
+        # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
+        if len(timeout_pos) > MAX_TIMEOUTS and pos_worker.is_alive():
+            print(
+                f"[sample-matching for {chemical_class.name}] Positive worker exceeded {MAX_TIMEOUTS} timeouts (count={len(timeout_pos)}); terminating positive and sibling negative worker.",
+                flush=True,
+            )
+            # terminate positive worker
+            pos_worker.terminate()
+            pos_worker.join(timeout=2)
+            if pos_worker.is_alive():
+                pos_worker.kill()
+                pos_worker.join()
+            pos_worker_completed = True
+
+            # also terminate negative worker to avoid orphaned work
+            if neg_worker.is_alive():
+                print(
+                    f"[sample-matching for {chemical_class.name}] Terminating negative worker due to positive worker timeout cutoff.",
+                    flush=True,
+                )
+                neg_worker.terminate()
+                neg_worker.join(timeout=2)
+                if neg_worker.is_alive():
+                    neg_worker.kill()
+                    neg_worker.join()
+                neg_worker_completed = True
+
+        if len(timeout_neg) > MAX_TIMEOUTS and neg_worker.is_alive():
+            print(
+                f"[sample-matching for {chemical_class.name}] Negative worker exceeded {MAX_TIMEOUTS} timeouts (count={len(timeout_neg)}); terminating negative and sibling positive worker.",
+                flush=True,
+            )
+            # terminate negative worker
+            neg_worker.terminate()
+            neg_worker.join(timeout=2)
+            if neg_worker.is_alive():
+                neg_worker.kill()
+                neg_worker.join()
+            neg_worker_completed = True
+
+            # also terminate positive worker to avoid orphaned work
+            if pos_worker.is_alive():
+                print(
+                    f"[sample-matching for {chemical_class.name}] Terminating positive worker due to negative worker timeout cutoff.",
+                    flush=True,
+                )
+                pos_worker.terminate()
+                pos_worker.join(timeout=2)
+                if pos_worker.is_alive():
+                    pos_worker.kill()
+                    pos_worker.join()
+                pos_worker_completed = True
 
         now = time.monotonic()
         if deadline is not None and now - last_progress_report >= 5:
