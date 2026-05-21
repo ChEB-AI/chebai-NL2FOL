@@ -300,8 +300,9 @@ def check_if_definition_matches_samples(
         drain_pos_queue()
         drain_neg_queue()
 
-        # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
         if len(timeout_pos) > MAX_TIMEOUTS or len(timeout_neg) > MAX_TIMEOUTS:
+            # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
+            # See: https://github.com/sfluegel05/chemlog-peptides/issues/16
             print(
                 f"[sample-matching for {chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
                 f"timeouts (pos={len(timeout_pos)}, neg={len(timeout_neg)}, "
