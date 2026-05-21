@@ -303,9 +303,9 @@ def check_if_definition_matches_samples(
         # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
         if len(timeout_pos) > MAX_TIMEOUTS or len(timeout_neg) > MAX_TIMEOUTS:
             print(
-                f"[sample-matching for {chemical_class.name}] Worker exceeded {MAX_TIMEOUTS}"
-                f"timeouts (count={len(timeout_pos)}); terminating positive and "
-                "negative worker.",
+                f"[sample-matching for {chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
+                f"timeouts (pos={len(timeout_pos)}, neg={len(timeout_neg)}, "
+                f"max={max(len(timeout_pos), len(timeout_neg))}); terminating positive and negative workers to prevent runaway processing. Returning results processed so far.",
                 flush=True,
             )
             if pos_worker.is_alive():
@@ -451,8 +451,8 @@ def check_if_definition_matches_samples(
         "unknown_pos": unknown_pos,
         "unknown_neg": unknown_neg,
     }, {
-        "processed_pos_samples": processed_pos_samples,  # All processed positives
-        "processed_neg_samples": processed_neg_samples,  # All processed negatives
+        "processed_pos_samples": processed_pos_samples,
+        "processed_neg_samples": processed_neg_samples,
     }
 
 

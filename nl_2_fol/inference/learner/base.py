@@ -110,7 +110,7 @@ class BaseFOL:
 
         if self.split == "train":
             # Closest 1000 negative samples are used for training to speed up training.
-            # For validation, we use all negative samples to fairly compare againts the c3po.
+            # For validation, we use all negative samples to fairly compare against the c3po.
             negative_examples = self._get_closest_negatives(
                 negative_examples, chemical_class.id, n_samples=max_neg_samples
             )

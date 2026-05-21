@@ -176,17 +176,6 @@ class PerformValidation(BaseFOL):
     def _validate_class_worker(self, class_name: str, result_queue):
         result_queue.put((class_name, self._validate_class_result(class_name)))
 
-    def _collect_validation_results(self, result_queue, expected_results: int):
-        for _ in range(expected_results):
-            try:
-                _, result = result_queue.get(timeout=0.1)
-            except queue.Empty:
-                break
-
-            if self._apply_validation_result(result):
-                # Save after each successful application so progress is durable
-                self._save_validated_definitions()
-
     def _validate_class_result(
         self, class_name: str
     ) -> tuple[str, int | None, def_model.DefinitionMetrics | None] | None:
