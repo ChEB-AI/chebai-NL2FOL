@@ -301,25 +301,24 @@ def check_if_definition_matches_samples(
         drain_neg_queue()
 
         # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
-        if len(timeout_pos) > MAX_TIMEOUTS and pos_worker.is_alive():
+        if len(timeout_pos) > MAX_TIMEOUTS or len(timeout_neg) > MAX_TIMEOUTS:
             print(
-                f"[sample-matching for {chemical_class.name}] Positive worker exceeded {MAX_TIMEOUTS} timeouts (count={len(timeout_pos)}); terminating positive and sibling negative worker.",
+                f"[sample-matching for {chemical_class.name}] Worker exceeded {MAX_TIMEOUTS}"
+                f"timeouts (count={len(timeout_pos)}); terminating positive and "
+                "negative worker.",
                 flush=True,
             )
-            # terminate positive worker
-            pos_worker.terminate()
-            pos_worker.join(timeout=2)
             if pos_worker.is_alive():
-                pos_worker.kill()
-                pos_worker.join()
-            pos_worker_completed = True
+                # terminate positive worker
+                pos_worker.terminate()
+                pos_worker.join(timeout=2)
+                if pos_worker.is_alive():
+                    pos_worker.kill()
+                    pos_worker.join()
+                pos_worker_completed = True
 
             # also terminate negative worker to avoid orphaned work
             if neg_worker.is_alive():
-                print(
-                    f"[sample-matching for {chemical_class.name}] Terminating negative worker due to positive worker timeout cutoff.",
-                    flush=True,
-                )
                 neg_worker.terminate()
                 neg_worker.join(timeout=2)
                 if neg_worker.is_alive():
@@ -327,31 +326,22 @@ def check_if_definition_matches_samples(
                     neg_worker.join()
                 neg_worker_completed = True
 
-        if len(timeout_neg) > MAX_TIMEOUTS and neg_worker.is_alive():
-            print(
-                f"[sample-matching for {chemical_class.name}] Negative worker exceeded {MAX_TIMEOUTS} timeouts (count={len(timeout_neg)}); terminating negative and sibling positive worker.",
-                flush=True,
-            )
-            # terminate negative worker
-            neg_worker.terminate()
-            neg_worker.join(timeout=2)
-            if neg_worker.is_alive():
-                neg_worker.kill()
-                neg_worker.join()
-            neg_worker_completed = True
+            # Set all matched samples to unknown since we can't trust the results
+            # anymore after too many timeouts
+            matched_pos_samples: set[dm.SMILES_STRING] = set()  # TPs
+            unmatched_neg_samples: set[dm.SMILES_STRING] = set()  # TNs
+            unmatched_pos_samples: set[dm.SMILES_STRING] = set()  # FNs
+            matched_neg_samples: set[dm.SMILES_STRING] = set()  # FPs
 
-            # also terminate positive worker to avoid orphaned work
-            if pos_worker.is_alive():
-                print(
-                    f"[sample-matching for {chemical_class.name}] Terminating positive worker due to negative worker timeout cutoff.",
-                    flush=True,
-                )
-                pos_worker.terminate()
-                pos_worker.join(timeout=2)
-                if pos_worker.is_alive():
-                    pos_worker.kill()
-                    pos_worker.join()
-                pos_worker_completed = True
+            # Move processed samples or remaining samples to timeouts as the FOL exceeds
+            # Max timeouts threshold, which indicates that the definition is likely
+            # too complex to validate within reasonable time.
+            timeout_pos: set[dm.SMILES_STRING] = {
+                chemical.smiles for chemical in pos_samples
+            }
+            timeout_neg: set[dm.SMILES_STRING] = {
+                chemical.smiles for chemical in neg_samples
+            }
 
         now = time.monotonic()
         if deadline is not None and now - last_progress_report >= 5:
