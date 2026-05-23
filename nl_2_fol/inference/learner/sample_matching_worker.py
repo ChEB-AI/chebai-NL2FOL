@@ -73,7 +73,9 @@ def _resolve_exception_class(
     return None
 
 
-def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
+def _raise_worker_error(
+    chemical_class: dm.ChemicalClass, worker_label: str, worker_error: WorkerError
+) -> None:
     error_message, error_trace, exc_module, exc_qualname, exc_args, exc_state = (
         worker_error
     )
@@ -97,16 +99,18 @@ def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
 
         if error_trace:
             rebuilt_exception.add_note(
-                "Original worker traceback (from subprocess):\n" + error_trace
+                f"[{chemical_class.id}:{chemical_class.name}:{worker_label}] Original worker traceback (from subprocess):\n"
+                + error_trace
             )
         raise rebuilt_exception
 
     fallback_exception = Exception(
-        f"{worker_label} sample matching subprocess failed with error: {error_message}"
+        f"{chemical_class.id}:{chemical_class.name}:{worker_label} sample matching subprocess failed with error: {error_message}"
     )
     if error_trace:
         fallback_exception.add_note(
-            "Original worker traceback (from subprocess):\n" + error_trace
+            f"[{chemical_class.id}:{chemical_class.name}:{worker_label}] Original worker traceback (from subprocess):\n"
+            + error_trace
         )
     raise fallback_exception
 
@@ -153,7 +157,7 @@ def check_if_definition_matches_samples(
     pos_samples_list = list(pos_samples)
     neg_samples_list = list(neg_samples)
     print(
-        "\n[sample-matching] Starting validation for "
+        f"\n[{chemical_class.id}:{chemical_class.name}:sample-matching] Starting validation for "
         f"{chemical_class.name} | "
         f"pos={len(pos_samples_list)} neg={len(neg_samples_list)} "
         f"timeout={sample_matching_timeout_seconds if sample_matching_timeout_seconds is not None else 'none'}",
@@ -165,6 +169,7 @@ def check_if_definition_matches_samples(
     pos_worker = ctx.Process(
         target=check_positive_samples_worker,
         args=(
+            chemical_class,
             pos_result_queue,
             gavel,
             tptp_def,
@@ -175,6 +180,7 @@ def check_if_definition_matches_samples(
     neg_worker = ctx.Process(
         target=check_negative_samples_worker,
         args=(
+            chemical_class,
             neg_result_queue,
             gavel,
             tptp_def,
@@ -213,14 +219,14 @@ def check_if_definition_matches_samples(
             elif event_type == "done":
                 pos_worker_completed = True
                 print(
-                    f"[sample-matching for {chemical_class.name}] Positive worker reported done.",
+                    f"[{chemical_class.id}:{chemical_class.name}] Positive worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
                 pos_worker_error = _parse_error_event(event)
                 error_message = pos_worker_error[0]
                 print(
-                    f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
+                    f"[{chemical_class.id}:{chemical_class.name}] Positive worker reported error: "
                     f"{error_message}",
                     flush=True,
                 )
@@ -255,14 +261,14 @@ def check_if_definition_matches_samples(
             elif event_type == "done":
                 neg_worker_completed = True
                 print(
-                    f"[sample-matching for {chemical_class.name}] Negative worker reported done.",
+                    f"[{chemical_class.id}:{chemical_class.name}] Negative worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
                 neg_worker_error = _parse_error_event(event)
                 error_message = neg_worker_error[0]
                 print(
-                    f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
+                    f"[{chemical_class.id}:{chemical_class.name}] Negative worker reported error: "
                     f"{error_message}",
                     flush=True,
                 )
@@ -270,7 +276,7 @@ def check_if_definition_matches_samples(
     pos_worker.start()
     neg_worker.start()
     print(
-        f"[sample-matching for {chemical_class.name}] Spawned workers "
+        f"[{chemical_class.id}:{chemical_class.name}] Spawned workers "
         f"(pos_pid={pos_worker.pid}, neg_pid={neg_worker.pid}).",
         flush=True,
     )
@@ -304,7 +310,7 @@ def check_if_definition_matches_samples(
             # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
             # See: https://github.com/sfluegel05/chemlog-peptides/issues/16
             print(
-                f"[sample-matching for {chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
+                f"[{chemical_class.id}:{chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
                 f"timeouts (pos={len(timeout_pos)}, neg={len(timeout_neg)}, "
                 f"max={max(len(timeout_pos), len(timeout_neg))}); terminating positive and negative workers to prevent runaway processing. Returning results processed so far.",
                 flush=True,
@@ -347,7 +353,7 @@ def check_if_definition_matches_samples(
         now = time.monotonic()
         if deadline is not None and now - last_progress_report >= 5:
             print(
-                f"[sample-matching for {chemical_class.name}] Progress "
+                f"[{chemical_class.id}:{chemical_class.name}] Progress "
                 f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
                 f"neg={len(processed_neg_smiles)}/{len(neg_samples_list)} "
                 f"remaining={max(0, int(deadline - now))}s",
@@ -357,7 +363,7 @@ def check_if_definition_matches_samples(
 
     if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
         print(
-            f"[sample-matching for {chemical_class.name}] Sample matching subprocesses exceeded "
+            f"[{chemical_class.id}:{chemical_class.name}] Sample matching subprocesses exceeded "
             f"{sample_matching_timeout_seconds} seconds and was terminated."
         )
         if pos_worker.is_alive():
@@ -377,10 +383,10 @@ def check_if_definition_matches_samples(
     drain_neg_queue()
 
     if pos_worker_error is not None:
-        _raise_worker_error("Positive", pos_worker_error)
+        _raise_worker_error(chemical_class, "Positive", pos_worker_error)
 
     if neg_worker_error is not None:
-        _raise_worker_error("Negative", neg_worker_error)
+        _raise_worker_error(chemical_class, "Negative", neg_worker_error)
 
     if (
         not pos_worker_completed
@@ -388,7 +394,7 @@ def check_if_definition_matches_samples(
         and pos_worker.exitcode not in (0, None)
     ):
         raise StopProgramException(
-            "Positive sample matching subprocess exited unexpectedly with "
+            f"[{chemical_class.id}:{chemical_class.name}] Positive sample matching subprocess exited unexpectedly with "
             f"exit code: {pos_worker.exitcode}."
         )
     if (
@@ -397,7 +403,7 @@ def check_if_definition_matches_samples(
         and neg_worker.exitcode not in (0, None)
     ):
         raise StopProgramException(
-            "Negative sample matching subprocess exited unexpectedly with "
+            f"[{chemical_class.id}:{chemical_class.name}] Negative sample matching subprocess exited unexpectedly with "
             f"exit code: {neg_worker.exitcode}."
         )
     processed_pos_samples = {
@@ -415,23 +421,23 @@ def check_if_definition_matches_samples(
 
     if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
         raise TimeoutError(
-            "No samples were processed within "
+            f"[{chemical_class.id}:{chemical_class.name}] No samples were processed within "
             f"{sample_matching_timeout_seconds} seconds while validating definition "
             f"of {chemical_class.name}. Try reducing formula complexity."
         )
 
     if timed_out:
         print(
-            f"[sample-matching for {chemical_class.name}] Sample matching timed out; returning partial results."
+            f"[{chemical_class.id}:{chemical_class.name}] Sample matching timed out; returning partial results."
         )
 
     print(
-        f"[sample-matching for {chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
+        f"[{chemical_class.id}:{chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
         f"{len(processed_pos_samples)} processed "
         f"(total available: {len(pos_samples)})"
     )
     print(
-        f"[sample-matching for {chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
+        f"[{chemical_class.id}:{chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
         f"{len(processed_neg_samples)} processed "
         f"(total available: {len(neg_samples)})"
     )
@@ -458,6 +464,7 @@ def check_if_definition_matches_samples(
 
 
 def _check_samples_worker(
+    chemical_class: dm.ChemicalClass,
     result_queue,
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
@@ -495,7 +502,7 @@ def _check_samples_worker(
 
     try:
         print(
-            f"[sample-matching:{label}] Worker PID={os.getpid()} starting "
+            f"[{chemical_class.id}:{chemical_class.name}] Worker PID={os.getpid()} starting "
             f"{total_samples} samples.",
             flush=True,
         )
@@ -505,7 +512,7 @@ def _check_samples_worker(
             result_queue.put((event_type, chemical.smiles, matched))
             if idx == 1 or idx % 25 == 0 or idx == total_samples:
                 print(
-                    f"[sample-matching:{label}] "
+                    f"[{chemical_class.id}:{chemical_class.name}:{label}] "
                     f"processed {idx}/{total_samples} "
                     f"(smiles={chemical.smiles}, matched={matched})",
                     flush=True,
@@ -513,12 +520,12 @@ def _check_samples_worker(
 
         result_queue.put(("done",))
         print(
-            f"[sample-matching:{label}] Worker PID={os.getpid()} completed.",
+            f"[{chemical_class.id}:{chemical_class.name}:{label}] Worker PID={os.getpid()} completed.",
             flush=True,
         )
     except Exception as e:
         print(
-            f"[sample-matching:{label}] Worker PID={os.getpid()} failed: {e}",
+            f"[{chemical_class.id}:{chemical_class.name}:{label}] Worker PID={os.getpid()} failed: {e}",
             flush=True,
         )
         error_trace = traceback.format_exc()
@@ -548,6 +555,7 @@ def _check_samples_worker(
 
 
 def check_positive_samples_worker(
+    chemical_class: dm.ChemicalClass,
     result_queue,
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
@@ -558,6 +566,7 @@ def check_positive_samples_worker(
     | None = None,
 ) -> None:
     _check_samples_worker(
+        chemical_class,
         result_queue,
         gavel,
         tptp_def,
@@ -568,6 +577,7 @@ def check_positive_samples_worker(
 
 
 def check_negative_samples_worker(
+    chemical_class: dm.ChemicalClass,
     result_queue,
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
@@ -578,6 +588,7 @@ def check_negative_samples_worker(
     | None = None,
 ) -> None:
     _check_samples_worker(
+        chemical_class,
         result_queue,
         gavel,
         tptp_def,

@@ -85,6 +85,9 @@ class PerformValidation(BaseFOL):
                         try:
                             proc.terminate()
                             proc.join(timeout=1)
+                            if proc.is_alive():
+                                proc.kill()
+                                proc.join()
                         except Exception:
                             pass
 
