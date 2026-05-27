@@ -10,6 +10,32 @@ import tqdm
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
 
+# Allowing max_workers to equal the total CPU count is not optimal for this
+# validation pipeline.
+#
+# Example:
+# On a 120-core machine, launching 120 validation processes would assign
+# roughly one core per validation task. Since many validation tasks are
+# long-running and may exceed the cluster wall-time limit (48 hours),
+# giving each task access to more CPU resources can improve completion time.
+#
+# Therefore, the number of concurrent validation processes is intentionally
+# limited to 32. This reduces CPU and memory contention and leaves room for:
+#   - internal multithreading used by libraries,
+#   - parallelism inside validation routines,
+#   - improved cache/memory efficiency,
+#   - faster completion of individual validation jobs.
+#
+# The optimal value depends on:
+#   - available CPU cores,
+#   - memory bandwidth,
+#   - whether validation routines internally parallelize work,
+#   - workload complexity.
+#
+# As a starting point, using roughly 25–50% of available CPU cores as
+# worker processes is recommended for large symbolic validation workloads.
+MAX_PROCESSES = 32
+
 
 class PerformValidation(BaseFOL):
     def __init__(
@@ -44,7 +70,9 @@ class PerformValidation(BaseFOL):
 
         ctx = multiprocessing.get_context("fork")
         result_queue = ctx.Queue()
-        max_workers = max(1, min(os.cpu_count() or 1, 32, len(classes_to_validate)))
+        max_workers = max(
+            1, min(os.cpu_count() or 1, MAX_PROCESSES, len(classes_to_validate))
+        )
         print(f"Using up to {max_workers} parallel validation workers.")
         pending_classes = deque(classes_to_validate)
         active_processes = {}
