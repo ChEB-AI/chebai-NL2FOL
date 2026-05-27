@@ -66,27 +66,58 @@ class Main:
     @staticmethod
     def validate(
         defs_file_path: str,  # nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions.pkl
-        class_name: str = "all",
-        class_names: list[str] | None = None,
+        class_name: str | None = None,
+        class_names_txt_file_path: str | None = None,
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
     ):
+        """
+        Validate learned definitions.
+
+        Parameters
+        - `defs_file_path`: path to the pickled `DefinitionLearningResults` produced
+            by the learning pipeline.
+        - `class_name`: validate a single class by name or all classes in single job.
+        - `class_names_txt_file_path`: path to a plain-text file containing class
+            names (one per line). This was added so you can share validation across
+            multiple HPC jobs: provide disjoint class lists to different jobs and
+            validate them in parallel. Each class validation is expensive (the
+            pipeline validates against ~35,700 samples), so running jobs in
+            parallel for disjoint class subsets completes the overall run faster.
+
+        The validator performs atomic, locked merges when writing the output
+        pickle, so multiple jobs can safely update the same definitions file.
+        The text file should contain the exact class names used in the learned
+        definitions (one per line, no header).
+        """
+
         validator = PerformValidation(
             defs_file_path=defs_file_path,
             slim_dataset_path=slim_dataset_path,
             structures_path=structures_data_path,
         )
-        if class_names is not None and class_name != "all":
-            raise ValueError("Use either class_name or class_names, not both.")
+        if class_names_txt_file_path is not None and class_name is not None:
+            raise ValueError(
+                "Use either class_name or class_names_txt_file_path, not both."
+            )
 
-        if class_names is not None:
+        if class_names_txt_file_path is not None:
+            with open(class_names_txt_file_path, "r") as f:
+                class_names = [line.strip() for line in f]
+            if len(class_names) == 0:
+                raise ValueError("class_names_txt_file is empty.")
             validator.validate(class_names=class_names)
         elif class_name == "all":
+            # validate all classes in the definitions file (this is a single-job, non-parallel option)
             validator.validate()
-        else:
+        elif class_name is not None:
             validator.validate_class(class_name=class_name)
+        else:
+            raise ValueError(
+                "Either class_name or class_names_txt_file_path must be provided."
+            )
 
     @staticmethod
     def learn_mistral(

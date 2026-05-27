@@ -28,12 +28,6 @@ from nl_2_fol.inference.learner.base import BaseFOL
 #   - improved cache/memory efficiency,
 #   - faster completion of individual validation jobs.
 #
-# The optimal value depends on:
-#   - available CPU cores,
-#   - memory bandwidth,
-#   - whether validation routines internally parallelize work,
-#   - workload complexity.
-#
 # As a starting point, using roughly 25–50% of available CPU cores as
 # worker processes is recommended for large symbolic validation workloads.
 MAX_PROCESSES = 32
@@ -77,11 +71,16 @@ class PerformValidation(BaseFOL):
             and (selected_classes is None or learned_def.name in selected_classes)
         ]
 
+        if len(classes_to_validate) == 0:
+            print(
+                "No classes to validate. All definitions are already validated or no valid class names provided."
+            )
+            return
+
         print(
             f"Starting validation for remaining {len(classes_to_validate)} classes..."
         )
-        if len(classes_to_validate) == 0:
-            return
+        print("Classes to validate: ", classes_to_validate)
 
         ctx = multiprocessing.get_context("fork")
         result_queue = ctx.Queue()
@@ -385,3 +384,29 @@ class PerformValidation(BaseFOL):
         print(f"Loaded {counter} additional definitions")
 
         return new_definitions
+
+
+if __name__ == "__main__":
+    from nl_2_fol.inference.cli import DATA_DIR, PROJECT_DIR
+
+    Validator = PerformValidation(
+        defs_file_path=os.path.join(
+            PROJECT_DIR,
+            "inference",
+            "learner",
+            "learned",
+            "claude-opus-4-6",
+            "learned_definitions_a3_with_val.pkl",
+        ),
+        slim_dataset_path=os.path.join(DATA_DIR, "classes_slim.csv"),
+        structures_path=os.path.join(DATA_DIR, "structures.csv"),
+    )
+
+    classes_to_validate = [
+        learned_def.name
+        for _, learned_def in Validator._loaded_defs.learned_definitions.items()
+        if learned_def.learn_success and learned_def.val_metrics is None
+    ]
+
+    print(f"Classes to validate: {len(classes_to_validate)}")
+    [print(f"{class_name}") for class_name in classes_to_validate]
