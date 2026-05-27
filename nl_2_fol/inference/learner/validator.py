@@ -35,16 +35,16 @@ class PerformValidation(BaseFOL):
             for _, learned_def in self._loaded_defs.learned_definitions.items()
             if learned_def.learn_success and learned_def.val_metrics is None
         ]
-        if len(classes_to_validate) == 0:
-            return
 
         print(
             f"Starting validation for remaining {len(classes_to_validate)} classes..."
         )
+        if len(classes_to_validate) == 0:
+            return
 
         ctx = multiprocessing.get_context("fork")
         result_queue = ctx.Queue()
-        max_workers = max(1, min(os.cpu_count() or 1, len(classes_to_validate)))
+        max_workers = max(1, min(os.cpu_count() or 1, 32, len(classes_to_validate)))
         print(f"Using up to {max_workers} parallel validation workers.")
         pending_classes = deque(classes_to_validate)
         active_processes = {}

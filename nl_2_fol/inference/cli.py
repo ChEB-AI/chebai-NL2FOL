@@ -132,3 +132,13 @@ class Main:
 if __name__ == "__main__":
     # python nl_2_fol/inference/cli.py learn --help
     CLI(Main)
+    # Main.validate(
+    #     defs_file_path=os.path.join(
+    #         PROJECT_DIR,
+    #         "inference",
+    #         "learner",
+    #         "learned",
+    #         "claude-opus-4-6",
+    #         "learned_definitions_a3_with_val.pkl",
+    #     )
+    # )
