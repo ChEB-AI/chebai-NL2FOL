@@ -67,6 +67,7 @@ class Main:
     def validate(
         defs_file_path: str,  # nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions.pkl
         class_name: str = "all",
+        class_names: list[str] | None = None,
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
@@ -77,7 +78,12 @@ class Main:
             slim_dataset_path=slim_dataset_path,
             structures_path=structures_data_path,
         )
-        if class_name == "all":
+        if class_names is not None and class_name != "all":
+            raise ValueError("Use either class_name or class_names, not both.")
+
+        if class_names is not None:
+            validator.validate(class_names=class_names)
+        elif class_name == "all":
             validator.validate()
         else:
             validator.validate_class(class_name=class_name)

@@ -1,7 +1,9 @@
+import fcntl
 import multiprocessing
 import os
 import pickle
 import queue
+import tempfile
 import time
 from collections import deque
 
@@ -55,11 +57,24 @@ class PerformValidation(BaseFOL):
         self._loaded_defs = self._load_definitions(defs_file_path)
         self.counter = 0
 
-    def validate(self):
+    def validate(
+        self,
+        class_names: list[str] | None = None,
+    ):
+        selected_classes = None
+        if class_names is not None:
+            selected_classes = set()
+            for class_name in class_names:
+                resolved_class_name = self._validate_given_class_name(class_name)
+                if resolved_class_name is not None:
+                    selected_classes.add(resolved_class_name)
+
         classes_to_validate = [
             learned_def.name
             for _, learned_def in self._loaded_defs.learned_definitions.items()
-            if learned_def.learn_success and learned_def.val_metrics is None
+            if learned_def.learn_success
+            and learned_def.val_metrics is None
+            and (selected_classes is None or learned_def.name in selected_classes)
         ]
 
         print(
@@ -277,8 +292,56 @@ class PerformValidation(BaseFOL):
             )
         else:
             output_path = self.defs_file_path
-        with open(output_path, "wb") as f:
-            pickle.dump(self._loaded_defs, f)
+
+        lock_path = f"{output_path}.lock"
+        with open(lock_path, "w") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                merged_definitions = self._load_latest_validated_definitions(
+                    output_path
+                )
+                self._merge_validation_metrics(
+                    source_definitions=self._loaded_defs,
+                    target_definitions=merged_definitions,
+                )
+
+                output_dir = os.path.dirname(output_path) or "."
+                with tempfile.NamedTemporaryFile(
+                    mode="wb", delete=False, dir=output_dir, prefix=".tmp-"
+                ) as temp_file:
+                    pickle.dump(merged_definitions, temp_file)
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+                    temp_path = temp_file.name
+
+                os.replace(temp_path, output_path)
+                self._loaded_defs = merged_definitions
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+    def _load_latest_validated_definitions(
+        self, output_path: str
+    ) -> def_model.DefinitionLearningResults:
+        if os.path.exists(output_path):
+            with open(output_path, "rb") as f:
+                return pickle.load(f)
+        return self._loaded_defs
+
+    def _merge_validation_metrics(
+        self,
+        source_definitions: def_model.DefinitionLearningResults,
+        target_definitions: def_model.DefinitionLearningResults,
+    ) -> None:
+        for class_id, learned_def in source_definitions.learned_definitions.items():
+            if learned_def.val_metrics is None:
+                continue
+
+            if class_id not in target_definitions.learned_definitions:
+                continue
+
+            target_definitions.learned_definitions[
+                class_id
+            ].val_metrics = learned_def.val_metrics
 
     def _load_definitions(
         self, definitions_file_path: str
