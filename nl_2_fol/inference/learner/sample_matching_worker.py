@@ -126,6 +126,7 @@ def check_if_definition_matches_samples(
         str, tuple[list[logic.Variable], logic.QuantifiedFormula]
     ]
     | None = None,
+    split: str = "train",
 ) -> tuple[dict[str, set[dm.SMILES_STRING]], dict[str, set[dm.ChemicalStructure]]]:
     # Track definite outcomes
     matched_pos_samples: set[dm.SMILES_STRING] = set()  # TPs
@@ -312,7 +313,7 @@ def check_if_definition_matches_samples(
             print(
                 f"[{chemical_class.id}:{chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
                 f"timeouts (pos={len(timeout_pos)}, neg={len(timeout_neg)}, "
-                f"max={max(len(timeout_pos), len(timeout_neg))}); terminating positive and negative workers to prevent runaway processing. Returning results processed so far.",
+                f"max={max(len(timeout_pos), len(timeout_neg))}); terminating positive and negative workers to prevent runaway processing.",
                 flush=True,
             )
             if pos_worker.is_alive():
@@ -419,7 +420,11 @@ def check_if_definition_matches_samples(
         and chemical.smiles in (matched_neg_samples | unmatched_neg_samples)
     }
 
-    if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
+    if (
+        split == "train"
+        and len(processed_pos_samples) == 0
+        and len(processed_neg_samples) == 0
+    ):
         raise TimeoutError(
             f"[{chemical_class.id}:{chemical_class.name}] No samples were processed within "
             f"{sample_matching_timeout_seconds} seconds while validating definition "

@@ -28,7 +28,8 @@ class BaseFOL:
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_version = chebi_version
-        assert split in {"train", "val"}, f"Invalid split: {split}"
+        if split not in {"train", "val"}:
+            raise ValueError(f"Invalid split: {split}")
         self.split = split
         self.fol_reasoner = fol_reasoner
         self._c3po_slim_data, self._entire_chebi_data = dm.load_c3po_slim_dataset(
@@ -83,6 +84,7 @@ class BaseFOL:
             pos_samples,
             neg_samples,
             temp_additional_defs,
+            split=self.split,
         )
 
         metrics = self._get_metrics(match_result_dict)
