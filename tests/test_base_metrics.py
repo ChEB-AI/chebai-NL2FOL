@@ -12,7 +12,9 @@ def _make_structure(name: str, smiles: str) -> ChemicalStructure:
 
 def test_score_definition_uses_definite_outcomes_for_metrics(monkeypatch):
     base_fol = BaseFOL.__new__(BaseFOL)
+
     base_fol._fol_reasoner = MagicMock()
+    base_fol.split = "train"
 
     chemical_class = MagicMock()
     chemical_class.name = "TestClass"
