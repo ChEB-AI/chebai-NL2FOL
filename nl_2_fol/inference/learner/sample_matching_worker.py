@@ -335,6 +335,8 @@ def check_if_definition_matches_samples(
                     neg_worker.join()
                 neg_worker_completed = True
 
+            drain_pos_queue()
+            drain_neg_queue()
             # Set all matched samples to unknown since we can't trust the results
             # anymore after too many timeouts
             matched_pos_samples: set[dm.SMILES_STRING] = set()  # TPs
