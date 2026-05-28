@@ -289,6 +289,7 @@ def check_if_definition_matches_samples(
         else time.monotonic() + sample_matching_timeout_seconds
     )
     timed_out = False
+    max_timeout_threshold_reached = False
     last_progress_report = time.monotonic()
 
     while pos_worker.is_alive() or neg_worker.is_alive():
@@ -350,6 +351,7 @@ def check_if_definition_matches_samples(
             timeout_neg: set[dm.SMILES_STRING] = {
                 chemical.smiles for chemical in neg_samples
             }
+            max_timeout_threshold_reached = True
 
         now = time.monotonic()
         if deadline is not None and now - last_progress_report >= 5:
@@ -393,6 +395,7 @@ def check_if_definition_matches_samples(
         not pos_worker_completed
         and not timed_out
         and pos_worker.exitcode not in (0, None)
+        and not max_timeout_threshold_reached
     ):
         raise StopProgramException(
             f"[{chemical_class.id}:{chemical_class.name}] Positive sample matching subprocess exited unexpectedly with "
@@ -402,6 +405,7 @@ def check_if_definition_matches_samples(
         not neg_worker_completed
         and not timed_out
         and neg_worker.exitcode not in (0, None)
+        and not max_timeout_threshold_reached
     ):
         raise StopProgramException(
             f"[{chemical_class.id}:{chemical_class.name}] Negative sample matching subprocess exited unexpectedly with "
