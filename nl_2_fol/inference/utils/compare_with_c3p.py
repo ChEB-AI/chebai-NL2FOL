@@ -1,10 +1,12 @@
 import argparse
 import csv
 import json
+import os
 import pickle
 from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
+from nl_2_fol.prompting.custom_api._test_inference import PROJECT_DIR
 
 
 def _load_c3p_trust(c3p_path: Path) -> dict[int, dict[str, float]]:
@@ -49,18 +51,22 @@ def write_comparison_csv(
     c3p_metrics = _load_c3p_trust(c3p_path)
     learned_data = _load_learned_definitions(learned_pickle_path)
 
-    learned_rows: dict[str, dict[str, float]] = {}
+    learned_rows: dict[str, dict[str, float | str]] = {}
     for chebi_id, metrics in c3p_metrics.items():
         if chebi_id not in learned_data.learned_definitions:
-            val_f1 = 0.0
+            val_f1 = "not_learned"
         else:
             learned_def = learned_data.learned_definitions[chebi_id]
 
-            val_f1 = (
-                float(learned_def.val_metrics.F1)
-                if learned_def.val_metrics is not None
-                else 0.0
-            )
+            if not learned_def.learn_success:
+                val_f1 = "failed_to_learn"
+            else:
+                if learned_def.val_metrics is None:
+                    # Eg. [36835:3alphaHydroxySteroid:negative] processed 4975/35507
+                    # Validation pipeline is not completed with 48hrs time limit,
+                    val_f1 = "failed_to_validate"
+                else:
+                    val_f1 = float(learned_def.val_metrics.F1)
         learned_rows[str(chebi_id)] = {
             "c3p_f1_score": metrics["F1"],
             "our_f1_score": val_f1,
@@ -98,10 +104,19 @@ def _parse_args() -> argparse.Namespace:
         default=Path("data") / "c3p_train_val_scores.json",
         help="Path to c3p_train_val_scores.json file (will use validation f1).",
     )
+
+    claude_learned_fp = os.path.join(
+        PROJECT_DIR,
+        "inference",
+        "learner",
+        "learned",
+        "claude-opus-4-6",
+        "learned_definitions_a3_with_val.pkl",
+    )
     parser.add_argument(
         "--learned-pickle",
         type=Path,
-        required=True,
+        default=claude_learned_fp,
         help="Path to learned definitions pickle file.",
     )
     parser.add_argument(
