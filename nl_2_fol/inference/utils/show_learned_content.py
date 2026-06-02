@@ -80,17 +80,38 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
 
     requested_metric = metric_name.upper()
     scores, val_scores = [], []
+    train_metric_records = []
     failed = 0
 
     for learned_def in data.learned_definitions.values():
-        train_metric_value = getattr(learned_def.train_metrics, requested_metric)
+        train_metrics = learned_def.train_metrics
+        train_metric_value = getattr(train_metrics, requested_metric)
         if not learned_def.learn_success:
             failed += 1
+        else:
+            if train_metric_value > 0.0:
+                # Exclude case D i.e. ignore failed classes and classes with 0 f1 scores
+                # for micro and macro f1 calculation
+                train_metric_records.append(train_metrics)
+
         scores.append(float(train_metric_value))
 
         if learned_def.val_metrics is not None:
-            val_metric_value = getattr(learned_def.val_metrics, requested_metric)
+            val_metrics = learned_def.val_metrics
+            val_metric_value = getattr(val_metrics, requested_metric)
             val_scores.append(float(val_metric_value))
+
+    def calculate_micro_macro_f1(metric_records):
+        total_tp = sum(record.TP for record in metric_records)
+        total_fp = sum(record.FP for record in metric_records)
+        total_fn = sum(record.FN for record in metric_records)
+
+        denominator = 2 * total_tp + total_fp + total_fn
+        micro_f1 = (2 * total_tp / denominator) if denominator > 0 else 0.0
+        macro_f1 = sum(float(record.F1) for record in metric_records) / len(
+            metric_records
+        )
+        return micro_f1, macro_f1
 
     def print_stats(scores, total, dataset_name):
         perfect = sum(1 for score in scores if score == 1.0)
@@ -124,6 +145,10 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
             print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
         else:
             raise ValueError("Unexpected dataset name for stats printing.")
+
+        micro_f1, macro_f1 = calculate_micro_macro_f1(train_metric_records)
+        print(f"Train micro-F1: {micro_f1:.4f}")
+        print(f"Train macro-F1: {macro_f1:.4f}")
         print("-------------------------------------------------------")
 
     train_total = len(scores)
