@@ -8,36 +8,28 @@ from nl_2_fol.inference.learner.definition_model import DefinitionLearningResult
 
 
 def _load_c3p_trust(c3p_path: Path) -> dict[int, dict[str, float]]:
+    # Expecting a JSON array of objects produced by the c3p script
+    # Each object contains a `chebi_id` like "CHEBI:12345" and a `val` block
+    # where the validation F1 score is stored under the `f1` key.
     with open(c3p_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    def safe_divide(numerator: float, denominator: float) -> float:
-        return numerator / denominator if denominator > 0 else 0.0
-
-    def _f1_from_counts(tp: float, fp: float, fn: float) -> float:
-        return safe_divide(
-            2 * tp,
-            2 * tp + fp + fn,
-        )
-
     parsed: dict[int, dict[str, float]] = {}
-    for chebi_id, metrics in raw.items():
-        tp = float(metrics["TP"])
-        fp = float(metrics["FP"])
-        fn = float(metrics["FN"])
-        tn = float(metrics["TN"])
-        ppv = float(metrics["PPV"])
-        npv = float(metrics["NPV"])
-        f1 = _f1_from_counts(tp=tp, fp=fp, fn=fn)
-        parsed[int(chebi_id)] = {
-            "TP": tp,
-            "FP": fp,
-            "FN": fn,
-            "TN": tn,
-            "PPV": ppv,
-            "NPV": npv,
-            "F1": f1,
-        }
+    for entry in raw:
+        chebi_str = entry.get("chebi_id")
+        if not chebi_str:
+            continue
+        # chebi_id may be like "CHEBI:84948" — extract numeric part
+        try:
+            chebi_num = int(str(chebi_str).split(":")[-1])
+        except Exception:
+            # skip malformed ids
+            raise ValueError(f"Malformed chebi_id: {chebi_str}")
+
+        val_block = entry.get("val", {}) or {}
+        # validation F1 is stored as `f1` (lowercase) in this file
+        f1 = float(val_block.get("f1", 0.0))
+        parsed[chebi_num] = {"F1": f1}
 
     return parsed
 
@@ -60,12 +52,10 @@ def write_comparison_csv(
     learned_rows: dict[str, dict[str, float]] = {}
     for chebi_id, metrics in c3p_metrics.items():
         if chebi_id not in learned_data.learned_definitions:
-            train_f1 = 0.0
             val_f1 = 0.0
         else:
             learned_def = learned_data.learned_definitions[chebi_id]
 
-            train_f1 = float(learned_def.train_metrics.F1)
             val_f1 = (
                 float(learned_def.val_metrics.F1)
                 if learned_def.val_metrics is not None
@@ -73,8 +63,7 @@ def write_comparison_csv(
             )
         learned_rows[str(chebi_id)] = {
             "c3p_f1_score": metrics["F1"],
-            "model_train_f1": train_f1,
-            "model_val_f1": val_f1,
+            "our_f1_score": val_f1,
         }
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,8 +73,7 @@ def write_comparison_csv(
             fieldnames=[
                 "chebi_id",
                 "c3p_f1_score",
-                "model_train_f1",
-                "model_val_f1",
+                "our_f1_score",
             ],
         )
         writer.writeheader()
@@ -95,21 +83,20 @@ def write_comparison_csv(
                 {
                     "chebi_id": chebi_id,
                     "c3p_f1_score": data_dict["c3p_f1_score"],
-                    "model_train_f1": data_dict["model_train_f1"],
-                    "model_val_f1": data_dict["model_val_f1"],
+                    "our_f1_score": data_dict["our_f1_score"],
                 }
             )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare c3p_trust metrics against learned definition scores and export CSV."
+        description="Compare c3p train/val metrics (validation F1 only) against learned definition scores and export CSV."
     )
     parser.add_argument(
         "--c3p-json",
         type=Path,
-        default=Path("data") / "c3p_trust.json",
-        help="Path to c3p_trust.json file.",
+        default=Path("data") / "c3p_train_val_scores.json",
+        help="Path to c3p_train_val_scores.json file (will use validation f1).",
     )
     parser.add_argument(
         "--learned-pickle",

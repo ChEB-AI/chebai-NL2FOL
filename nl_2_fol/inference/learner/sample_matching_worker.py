@@ -6,6 +6,7 @@ import time
 import traceback
 from importlib import import_module
 
+from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
@@ -26,6 +27,8 @@ WorkerError = tuple[
     tuple | None,
     dict | None,
 ]
+
+MAX_TIMEOUTS = 50
 
 
 def _parse_error_event(event: tuple) -> WorkerError:
@@ -70,7 +73,9 @@ def _resolve_exception_class(
     return None
 
 
-def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
+def _raise_worker_error(
+    chemical_class: dm.ChemicalClass, worker_label: str, worker_error: WorkerError
+) -> None:
     error_message, error_trace, exc_module, exc_qualname, exc_args, exc_state = (
         worker_error
     )
@@ -94,23 +99,25 @@ def _raise_worker_error(worker_label: str, worker_error: WorkerError) -> None:
 
         if error_trace:
             rebuilt_exception.add_note(
-                "Original worker traceback (from subprocess):\n" + error_trace
+                f"[{chemical_class.id}:{chemical_class.name}:{worker_label}] Original worker traceback (from subprocess):\n"
+                + error_trace
             )
         raise rebuilt_exception
 
     fallback_exception = Exception(
-        f"{worker_label} sample matching subprocess failed with error: {error_message}"
+        f"{chemical_class.id}:{chemical_class.name}:{worker_label} sample matching subprocess failed with error: {error_message}"
     )
     if error_trace:
         fallback_exception.add_note(
-            "Original worker traceback (from subprocess):\n" + error_trace
+            f"[{chemical_class.id}:{chemical_class.name}:{worker_label}] Original worker traceback (from subprocess):\n"
+            + error_trace
         )
     raise fallback_exception
 
 
 def check_if_definition_matches_samples(
     gavel: GavelFOLReasoner,
-    sample_matching_timeout_seconds: int,
+    sample_matching_timeout_seconds: int | None,
     chemical_class: dm.ChemicalClass,
     tptp_def: QuantifiedFormula,
     pos_samples: set[dm.ChemicalStructure],
@@ -119,14 +126,27 @@ def check_if_definition_matches_samples(
         str, tuple[list[logic.Variable], logic.QuantifiedFormula]
     ]
     | None = None,
-) -> tuple[
-    set[dm.SMILES_STRING],
-    set[dm.SMILES_STRING],
-    set[dm.ChemicalStructure],
-    set[dm.ChemicalStructure],
-]:
-    unmatched_pos_samples = set()  # FNs
-    matched_neg_samples = set()  # FPs
+    split: str = "train",
+) -> tuple[dict[str, set[dm.SMILES_STRING]], dict[str, set[dm.ChemicalStructure]]]:
+    # Track definite outcomes
+    matched_pos_samples: set[dm.SMILES_STRING] = set()  # TPs
+    unmatched_neg_samples: set[dm.SMILES_STRING] = set()  # TNs
+    unmatched_pos_samples: set[dm.SMILES_STRING] = set()  # FNs
+    matched_neg_samples: set[dm.SMILES_STRING] = set()  # FPs
+
+    # Track inferred outcomes
+    inferred_match_pos: set[dm.SMILES_STRING] = set()
+    inferred_match_neg: set[dm.SMILES_STRING] = set()
+    inferred_no_match_pos: set[dm.SMILES_STRING] = set()
+    inferred_no_match_neg: set[dm.SMILES_STRING] = set()
+
+    # Track error/timeout/unknown outcomes
+    timeout_pos: set[dm.SMILES_STRING] = set()
+    timeout_neg: set[dm.SMILES_STRING] = set()
+    error_pos: set[dm.SMILES_STRING] = set()
+    error_neg: set[dm.SMILES_STRING] = set()
+    unknown_pos: set[dm.SMILES_STRING] = set()
+    unknown_neg: set[dm.SMILES_STRING] = set()
 
     processed_pos_smiles: set[dm.SMILES_STRING] = set()
     processed_neg_smiles: set[dm.SMILES_STRING] = set()
@@ -138,10 +158,10 @@ def check_if_definition_matches_samples(
     pos_samples_list = list(pos_samples)
     neg_samples_list = list(neg_samples)
     print(
-        "\n[sample-matching] Starting validation for "
+        f"\n[{chemical_class.id}:{chemical_class.name}:sample-matching] Starting validation for "
         f"{chemical_class.name} | "
         f"pos={len(pos_samples_list)} neg={len(neg_samples_list)} "
-        f"timeout={sample_matching_timeout_seconds}s",
+        f"timeout={sample_matching_timeout_seconds if sample_matching_timeout_seconds is not None else 'none'}",
         flush=True,
     )
     ctx = multiprocessing.get_context("fork")
@@ -150,6 +170,7 @@ def check_if_definition_matches_samples(
     pos_worker = ctx.Process(
         target=check_positive_samples_worker,
         args=(
+            chemical_class,
             pos_result_queue,
             gavel,
             tptp_def,
@@ -160,6 +181,7 @@ def check_if_definition_matches_samples(
     neg_worker = ctx.Process(
         target=check_negative_samples_worker,
         args=(
+            chemical_class,
             neg_result_queue,
             gavel,
             tptp_def,
@@ -179,25 +201,36 @@ def check_if_definition_matches_samples(
 
             event_type = event[0]
             if event_type == "pos_checked":
-                _, smiles, matched = event
+                _, smiles, outcome = event
                 processed_pos_smiles.add(smiles)
-                if not matched:
-                    unmatched_pos_samples.add(smiles)
+                if outcome == "match":
+                    matched_pos_samples.add(smiles)  # TP
+                elif outcome == "no_match":
+                    unmatched_pos_samples.add(smiles)  # FN
+                elif outcome == "inferred_match":
+                    inferred_match_pos.add(smiles)
+                elif outcome == "inferred_no_match":
+                    inferred_no_match_pos.add(smiles)
+                elif outcome == "timeout":
+                    timeout_pos.add(smiles)
+                elif outcome == "error":
+                    error_pos.add(smiles)
+                else:  # unknown
+                    unknown_pos.add(smiles)
             elif event_type == "done":
                 pos_worker_completed = True
                 print(
-                    f"[sample-matching for {chemical_class.name}] Positive worker reported done.",
+                    f"[{chemical_class.id}:{chemical_class.name}] Positive worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
                 pos_worker_error = _parse_error_event(event)
                 error_message = pos_worker_error[0]
-                if PRINT_TRACES:
-                    print(
-                        f"[sample-matching for {chemical_class.name}] Positive worker reported error: "
-                        f"{error_message}",
-                        flush=True,
-                    )
+                print(
+                    f"[{chemical_class.id}:{chemical_class.name}] Positive worker reported error: "
+                    f"{error_message}",
+                    flush=True,
+                )
 
     def drain_neg_queue() -> None:
         nonlocal neg_worker_error
@@ -210,44 +243,64 @@ def check_if_definition_matches_samples(
 
             event_type = event[0]
             if event_type == "neg_checked":
-                _, smiles, matched = event
+                _, smiles, outcome = event
                 processed_neg_smiles.add(smiles)
-                if matched:
-                    matched_neg_samples.add(smiles)
+                if outcome == "match":
+                    matched_neg_samples.add(smiles)  # FP
+                elif outcome == "no_match":
+                    unmatched_neg_samples.add(smiles)  # TN
+                elif outcome == "inferred_match":
+                    inferred_match_neg.add(smiles)
+                elif outcome == "inferred_no_match":
+                    inferred_no_match_neg.add(smiles)
+                elif outcome == "timeout":
+                    timeout_neg.add(smiles)
+                elif outcome == "error":
+                    error_neg.add(smiles)
+                else:  # unknown
+                    unknown_neg.add(smiles)
             elif event_type == "done":
                 neg_worker_completed = True
                 print(
-                    f"[sample-matching for {chemical_class.name}] Negative worker reported done.",
+                    f"[{chemical_class.id}:{chemical_class.name}] Negative worker reported done.",
                     flush=True,
                 )
             elif event_type == "error":
                 neg_worker_error = _parse_error_event(event)
                 error_message = neg_worker_error[0]
-                if PRINT_TRACES:
-                    print(
-                        f"[sample-matching for {chemical_class.name}] Negative worker reported error: "
-                        f"{error_message}",
-                        flush=True,
-                    )
+                print(
+                    f"[{chemical_class.id}:{chemical_class.name}] Negative worker reported error: "
+                    f"{error_message}",
+                    flush=True,
+                )
 
     pos_worker.start()
     neg_worker.start()
     print(
-        f"[sample-matching for {chemical_class.name}] Spawned workers "
+        f"[{chemical_class.id}:{chemical_class.name}] Spawned workers "
         f"(pos_pid={pos_worker.pid}, neg_pid={neg_worker.pid}).",
         flush=True,
     )
 
-    deadline = time.monotonic() + sample_matching_timeout_seconds
+    deadline = (
+        None
+        if sample_matching_timeout_seconds is None
+        or sample_matching_timeout_seconds <= 0
+        else time.monotonic() + sample_matching_timeout_seconds
+    )
     timed_out = False
+    max_timeout_threshold_reached = False
     last_progress_report = time.monotonic()
 
     while pos_worker.is_alive() or neg_worker.is_alive():
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            break
-        join_timeout = min(0.5, remaining)
+        if deadline is None:
+            join_timeout = 0.5
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            join_timeout = min(0.5, remaining)
         if pos_worker.is_alive():
             pos_worker.join(timeout=join_timeout)
         if neg_worker.is_alive():
@@ -255,10 +308,57 @@ def check_if_definition_matches_samples(
         drain_pos_queue()
         drain_neg_queue()
 
-        now = time.monotonic()
-        if now - last_progress_report >= 5:
+        if len(timeout_pos) > MAX_TIMEOUTS or len(timeout_neg) > MAX_TIMEOUTS:
+            # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
+            # See: https://github.com/sfluegel05/chemlog-peptides/issues/16
             print(
-                f"[sample-matching for {chemical_class.name}] Progress "
+                f"[{chemical_class.id}:{chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
+                f"timeouts (pos={len(timeout_pos)}, neg={len(timeout_neg)}, "
+                f"max={max(len(timeout_pos), len(timeout_neg))}); terminating positive and negative workers to prevent runaway processing.",
+                flush=True,
+            )
+            if pos_worker.is_alive():
+                # terminate positive worker
+                pos_worker.terminate()
+                pos_worker.join(timeout=2)
+                if pos_worker.is_alive():
+                    pos_worker.kill()
+                    pos_worker.join()
+                pos_worker_completed = True
+
+            # also terminate negative worker to avoid orphaned work
+            if neg_worker.is_alive():
+                neg_worker.terminate()
+                neg_worker.join(timeout=2)
+                if neg_worker.is_alive():
+                    neg_worker.kill()
+                    neg_worker.join()
+                neg_worker_completed = True
+
+            drain_pos_queue()
+            drain_neg_queue()
+            # Set all matched samples to unknown since we can't trust the results
+            # anymore after too many timeouts
+            matched_pos_samples: set[dm.SMILES_STRING] = set()  # TPs
+            unmatched_neg_samples: set[dm.SMILES_STRING] = set()  # TNs
+            unmatched_pos_samples: set[dm.SMILES_STRING] = set()  # FNs
+            matched_neg_samples: set[dm.SMILES_STRING] = set()  # FPs
+
+            # Move processed samples or remaining samples to timeouts as the FOL exceeds
+            # Max timeouts threshold, which indicates that the definition is likely
+            # too complex to validate within reasonable time.
+            timeout_pos: set[dm.SMILES_STRING] = {
+                chemical.smiles for chemical in pos_samples
+            }
+            timeout_neg: set[dm.SMILES_STRING] = {
+                chemical.smiles for chemical in neg_samples
+            }
+            max_timeout_threshold_reached = True
+
+        now = time.monotonic()
+        if deadline is not None and now - last_progress_report >= 5:
+            print(
+                f"[{chemical_class.id}:{chemical_class.name}] Progress "
                 f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
                 f"neg={len(processed_neg_smiles)}/{len(neg_samples_list)} "
                 f"remaining={max(0, int(deadline - now))}s",
@@ -268,7 +368,7 @@ def check_if_definition_matches_samples(
 
     if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
         print(
-            f"[sample-matching for {chemical_class.name}] Sample matching subprocesses exceeded "
+            f"[{chemical_class.id}:{chemical_class.name}] Sample matching subprocesses exceeded "
             f"{sample_matching_timeout_seconds} seconds and was terminated."
         )
         if pos_worker.is_alive():
@@ -288,67 +388,94 @@ def check_if_definition_matches_samples(
     drain_neg_queue()
 
     if pos_worker_error is not None:
-        _raise_worker_error("Positive", pos_worker_error)
+        _raise_worker_error(chemical_class, "Positive", pos_worker_error)
 
     if neg_worker_error is not None:
-        _raise_worker_error("Negative", neg_worker_error)
+        _raise_worker_error(chemical_class, "Negative", neg_worker_error)
 
     if (
         not pos_worker_completed
         and not timed_out
         and pos_worker.exitcode not in (0, None)
+        and not max_timeout_threshold_reached
     ):
         raise StopProgramException(
-            "Positive sample matching subprocess exited unexpectedly with "
+            f"[{chemical_class.id}:{chemical_class.name}] Positive sample matching subprocess exited unexpectedly with "
             f"exit code: {pos_worker.exitcode}."
         )
     if (
         not neg_worker_completed
         and not timed_out
         and neg_worker.exitcode not in (0, None)
+        and not max_timeout_threshold_reached
     ):
         raise StopProgramException(
-            "Negative sample matching subprocess exited unexpectedly with "
+            f"[{chemical_class.id}:{chemical_class.name}] Negative sample matching subprocess exited unexpectedly with "
             f"exit code: {neg_worker.exitcode}."
         )
     processed_pos_samples = {
-        chemical for chemical in pos_samples if chemical.smiles in processed_pos_smiles
+        chemical
+        for chemical in pos_samples
+        if chemical.smiles in processed_pos_smiles
+        and chemical.smiles in (matched_pos_samples | unmatched_pos_samples)
     }
     processed_neg_samples = {
-        chemical for chemical in neg_samples if chemical.smiles in processed_neg_smiles
+        chemical
+        for chemical in neg_samples
+        if chemical.smiles in processed_neg_smiles
+        and chemical.smiles in (matched_neg_samples | unmatched_neg_samples)
     }
 
-    if len(processed_pos_samples) == 0 and len(processed_neg_samples) == 0:
+    if (
+        split == "train"
+        and len(processed_pos_samples) == 0
+        and len(processed_neg_samples) == 0
+    ):
         raise TimeoutError(
-            "No samples were processed within "
+            f"[{chemical_class.id}:{chemical_class.name}] No samples were processed within "
             f"{sample_matching_timeout_seconds} seconds while validating definition "
             f"of {chemical_class.name}. Try reducing formula complexity."
         )
 
     if timed_out:
         print(
-            f"[sample-matching for {chemical_class.name}] Sample matching timed out; returning partial results."
+            f"[{chemical_class.id}:{chemical_class.name}] Sample matching timed out; returning partial results."
         )
 
     print(
-        f"[sample-matching for {chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
+        f"[{chemical_class.id}:{chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
         f"{len(processed_pos_samples)} processed "
         f"(total available: {len(pos_samples)})"
     )
     print(
-        f"[sample-matching for {chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
+        f"[{chemical_class.id}:{chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
         f"{len(processed_neg_samples)} processed "
         f"(total available: {len(neg_samples)})"
     )
-    return (
-        unmatched_pos_samples,
-        matched_neg_samples,
-        processed_pos_samples,
-        processed_neg_samples,
-    )
+    # Return all outcome tracking data with the standard TP/FP/TN/FN outcomes
+    return {
+        "matched_pos_samples": matched_pos_samples,  # TPs
+        "unmatched_neg_samples": unmatched_neg_samples,  # TNs
+        "unmatched_pos_samples": unmatched_pos_samples,  # FNs
+        "matched_neg_samples": matched_neg_samples,  # FPs
+        "inferred_match_pos": inferred_match_pos,
+        "inferred_match_neg": inferred_match_neg,
+        "inferred_no_match_pos": inferred_no_match_pos,
+        "inferred_no_match_neg": inferred_no_match_neg,
+        "timeout_pos": timeout_pos,
+        "timeout_neg": timeout_neg,
+        "error_pos": error_pos,
+        "error_neg": error_neg,
+        "unknown_pos": unknown_pos,
+        "unknown_neg": unknown_neg,
+    }, {
+        "processed_pos_samples": processed_pos_samples,
+        "processed_neg_samples": processed_neg_samples,
+    }
 
 
 def _check_samples_worker(
+    chemical_class: dm.ChemicalClass,
     result_queue,
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
@@ -362,25 +489,41 @@ def _check_samples_worker(
     label = "positive" if event_type == "pos_checked" else "negative"
     total_samples = len(samples)
 
-    def is_matched(chemical: dm.ChemicalStructure) -> bool:
-        return gavel.does_mol_match_tptp_definition(
+    def is_matched(chemical: dm.ChemicalStructure) -> str:
+        """Returns categorized outcome: 'match', 'no_match', 'inferred_match', 'inferred_no_match', 'timeout', 'error', or 'unknown'."""
+        outcome = gavel.does_mol_match_tptp_definition(
             chemical.mol,
             tptp_def,
             temp_additional_defs=temp_additional_defs,
         )
+        if outcome == ModelCheckerOutcome.MODEL_FOUND:
+            return "match"
+        elif outcome == ModelCheckerOutcome.NO_MODEL:
+            return "no_match"
+        elif outcome == ModelCheckerOutcome.MODEL_FOUND_INFERRED:
+            return "inferred_match"
+        elif outcome == ModelCheckerOutcome.NO_MODEL_INFERRED:
+            return "inferred_no_match"
+        elif outcome == ModelCheckerOutcome.TIMEOUT:
+            return "timeout"
+        elif outcome == ModelCheckerOutcome.ERROR:
+            return "error"
+        else:  # ModelCheckerOutcome.UNKNOWN or any other value
+            return "unknown"
 
     try:
         print(
-            f"[sample-matching:{label}] Worker PID={os.getpid()} starting "
+            f"[{chemical_class.id}:{chemical_class.name}] Worker PID={os.getpid()} starting "
             f"{total_samples} samples.",
             flush=True,
         )
         for idx, chemical in enumerate(samples, start=1):
             matched = is_matched(chemical)
+            # Record all outcome types, not just True/False
             result_queue.put((event_type, chemical.smiles, matched))
             if idx == 1 or idx % 25 == 0 or idx == total_samples:
                 print(
-                    f"[sample-matching:{label}] "
+                    f"[{chemical_class.id}:{chemical_class.name}:{label}] "
                     f"processed {idx}/{total_samples} "
                     f"(smiles={chemical.smiles}, matched={matched})",
                     flush=True,
@@ -388,12 +531,12 @@ def _check_samples_worker(
 
         result_queue.put(("done",))
         print(
-            f"[sample-matching:{label}] Worker PID={os.getpid()} completed.",
+            f"[{chemical_class.id}:{chemical_class.name}:{label}] Worker PID={os.getpid()} completed.",
             flush=True,
         )
     except Exception as e:
         print(
-            f"[sample-matching:{label}] Worker PID={os.getpid()} failed: {e}",
+            f"[{chemical_class.id}:{chemical_class.name}:{label}] Worker PID={os.getpid()} failed: {e}",
             flush=True,
         )
         error_trace = traceback.format_exc()
@@ -423,6 +566,7 @@ def _check_samples_worker(
 
 
 def check_positive_samples_worker(
+    chemical_class: dm.ChemicalClass,
     result_queue,
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
@@ -433,6 +577,7 @@ def check_positive_samples_worker(
     | None = None,
 ) -> None:
     _check_samples_worker(
+        chemical_class,
         result_queue,
         gavel,
         tptp_def,
@@ -443,6 +588,7 @@ def check_positive_samples_worker(
 
 
 def check_negative_samples_worker(
+    chemical_class: dm.ChemicalClass,
     result_queue,
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
@@ -453,6 +599,7 @@ def check_negative_samples_worker(
     | None = None,
 ) -> None:
     _check_samples_worker(
+        chemical_class,
         result_queue,
         gavel,
         tptp_def,

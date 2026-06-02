@@ -8,13 +8,38 @@ from nl_2_fol.inference.preprocessing import CHEBI_ID
 
 
 class DefinitionMetrics(BaseModel):
-    TP: int = Field(..., description="True Positives")
-    FP: int = Field(..., description="False Positives")
-    FN: int = Field(..., description="False Negatives")
-    TN: int = Field(..., description="True Negatives")
+    TP: int = Field(..., description="True Positives (definite model found)")
+    FP: int = Field(
+        ..., description="False Positives (definite model found on negatives)"
+    )
+    FN: int = Field(..., description="False Negatives (definite no model on positives)")
+    TN: int = Field(..., description="True Negatives (definite no model on negatives)")
     F1: float = Field(..., description="F1 score of the learned definition")
     PPV: float = Field(..., description="Positive Predictive Value (Precision)")
     NPV: float = Field(..., description="Negative Predictive Value")
+    # Additional outcome categories for expanded confusion matrix
+    inferred_match_pos: int = Field(
+        default=0, description="Inferred model found on positive samples"
+    )
+    inferred_match_neg: int = Field(
+        default=0, description="Inferred model found on negative samples"
+    )
+    inferred_no_match_pos: int = Field(
+        default=0, description="Inferred no model on positive samples"
+    )
+    inferred_no_match_neg: int = Field(
+        default=0, description="Inferred no model on negative samples"
+    )
+    timeout_pos: int = Field(default=0, description="Timeout on positive samples")
+    timeout_neg: int = Field(default=0, description="Timeout on negative samples")
+    error_pos: int = Field(default=0, description="Error on positive samples")
+    error_neg: int = Field(default=0, description="Error on negative samples")
+    unknown_pos: int = Field(
+        default=0, description="Unknown outcome on positive samples"
+    )
+    unknown_neg: int = Field(
+        default=0, description="Unknown outcome on negative samples"
+    )
 
 
 class FOLFormula(BaseModel):

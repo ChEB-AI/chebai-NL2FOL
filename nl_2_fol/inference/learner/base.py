@@ -9,6 +9,7 @@ from nl_2_fol.inference.learner.sample_matching_worker import (
     check_if_definition_matches_samples,
 )
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
 class BaseFOL:
@@ -27,6 +28,8 @@ class BaseFOL:
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_version = chebi_version
+        if split not in {"train", "val"}:
+            raise ValueError(f"Invalid split: {split}")
         self.split = split
         self.fol_reasoner = fol_reasoner
         self._c3po_slim_data, self._entire_chebi_data = dm.load_c3po_slim_dataset(
@@ -55,7 +58,7 @@ class BaseFOL:
         *,
         chemical_class: dm.ChemicalClass,
         tptp_def: logic.QuantifiedFormula,
-        sample_match_timeout_seconds: int,
+        sample_match_timeout_seconds: int | None,
         max_neg_samples: int,
         temp_additional_defs: dict[
             str, tuple[list[logic.Variable], logic.QuantifiedFormula]
@@ -73,12 +76,7 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        (
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
-        ) = check_if_definition_matches_samples(
+        match_result_dict, processed_samples_dict = check_if_definition_matches_samples(
             self._fol_reasoner,
             sample_match_timeout_seconds,
             chemical_class,
@@ -86,19 +84,17 @@ class BaseFOL:
             pos_samples,
             neg_samples,
             temp_additional_defs,
+            split=self.split,
         )
-        metrics = self._get_metrics(
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
-        )
+
+        metrics = self._get_metrics(match_result_dict)
+
         return (
             metrics,
-            unmatched_pos_samples,
-            matched_neg_samples,
-            processed_pos_samples,
-            processed_neg_samples,
+            match_result_dict["unmatched_pos_samples"],
+            match_result_dict["matched_neg_samples"],
+            processed_samples_dict["processed_pos_samples"],
+            processed_samples_dict["processed_neg_samples"],
         )
 
     @ce.stop_program_upon_failure
@@ -113,9 +109,13 @@ class BaseFOL:
             if smiles in self._c3po_slim_data.smiles_to_instance
         }
         negative_examples = list(self._c3po_slim_data.all_smiles - positive_examples)
-        negative_examples = self._get_closest_negatives(
-            negative_examples, chemical_class.id, n_samples=max_neg_samples
-        )
+
+        if self.split == "train":
+            # Closest 1000 negative samples are used for training to speed up training.
+            # For validation, we use all negative samples to fairly compare against the c3po.
+            negative_examples = self._get_closest_negatives(
+                negative_examples, chemical_class.id, n_samples=max_neg_samples
+            )
         negative_instances = {
             self._c3po_slim_data.smiles_to_instance[smiles]
             for smiles in negative_examples
@@ -165,15 +165,12 @@ class BaseFOL:
     @ce.stop_program_upon_failure
     def _get_metrics(
         self,
-        unmatched_pos_samples: set[dm.SMILES_STRING],
-        matched_neg_samples: set[dm.SMILES_STRING],
-        processed_pos_samples: set[dm.ChemicalStructure],
-        processed_neg_samples: set[dm.ChemicalStructure],
+        cm: dict[str, set[dm.SMILES_STRING]],
     ) -> def_model.DefinitionMetrics:
-        num_true_positives = len(processed_pos_samples) - len(unmatched_pos_samples)
-        num_false_negatives = len(unmatched_pos_samples)
-        num_false_positives = len(matched_neg_samples)
-        num_true_negatives = len(processed_neg_samples) - len(matched_neg_samples)
+        num_true_positives = len(cm["matched_pos_samples"])  # TPs
+        num_false_negatives = len(cm["unmatched_pos_samples"])  # FNs
+        num_false_positives = len(cm["matched_neg_samples"])  # FPs
+        num_true_negatives = len(cm["unmatched_neg_samples"])  # TNs
 
         def safe_divide(numerator: float, denominator: float) -> float:
             return numerator / denominator if denominator > 0 else 0.0
@@ -199,4 +196,29 @@ class BaseFOL:
             FP=num_false_positives,
             FN=num_false_negatives,
             TN=num_true_negatives,
+            # Populate extended outcomes from confusion matrix
+            inferred_match_pos=len(cm.get("inferred_match_pos", set())),
+            inferred_match_neg=len(cm.get("inferred_match_neg", set())),
+            inferred_no_match_pos=len(cm.get("inferred_no_match_pos", set())),
+            inferred_no_match_neg=len(cm.get("inferred_no_match_neg", set())),
+            timeout_pos=len(cm.get("timeout_pos", set())),
+            timeout_neg=len(cm.get("timeout_neg", set())),
+            error_pos=len(cm.get("error_pos", set())),
+            error_neg=len(cm.get("error_neg", set())),
+            unknown_pos=len(cm.get("unknown_pos", set())),
+            unknown_neg=len(cm.get("unknown_neg", set())),
         )
+
+    def _validate_given_class_name(self, class_name: str) -> None | str:
+        resolved_class_name = class_name
+        if resolved_class_name not in self._c3po_slim_data.classes:
+            camel_cased_class_name = to_camel_case(class_name)
+            print(
+                f"Class name `{class_name}` was not found directly in the dataset. "
+                f"Trying camel-cased variant `{camel_cased_class_name}`."
+            )
+            resolved_class_name = camel_cased_class_name
+        if resolved_class_name not in self._c3po_slim_data.classes:
+            print(f"{class_name} not found in the dataset.")
+            return None
+        return resolved_class_name

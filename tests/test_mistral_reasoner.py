@@ -1,6 +1,7 @@
 """Tests for MistralCustomFOLReasoner class."""
 
 import pytest
+from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from rdkit import Chem
 
 from nl_2_fol.inference.fol_reasoner import MistralCustomFOLReasoner
@@ -29,17 +30,17 @@ class TestMistralCustomFOLReasoner:
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
-        assert matches is True, (
+        assert matches == ModelCheckerOutcome.MODEL_FOUND, (
             "Expected carbon monoxide to match the definition, but it did not."
         )
         matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
-        assert matches is True, (
+        assert matches == ModelCheckerOutcome.MODEL_FOUND, (
             "Expected ethanol to match the definition, but it did not. "
         )
         matches = reasoner.does_mol_match_tptp_definition(
             thionitrousAcid, definition_to_match
         )
-        assert matches is False, (
+        assert matches == ModelCheckerOutcome.NO_MODEL, (
             "Expected thionitrous acid to not match the definition, but it did."
         )
 
@@ -60,17 +61,17 @@ class TestMistralCustomFOLReasoner:
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
-        assert matches is True, (
+        assert matches == ModelCheckerOutcome.MODEL_FOUND, (
             "Expected carbon monoxide to match the definition, but it did not."
         )
         matches = reasoner.does_mol_match_tptp_definition(ethanol, definition_to_match)
-        assert matches is False, (
+        assert matches == ModelCheckerOutcome.NO_MODEL, (
             "Expected ethanol to not match the definition, but it did."
         )
         matches = reasoner.does_mol_match_tptp_definition(
             thionitrousAcid, definition_to_match
         )
-        assert matches is False, (
+        assert matches == ModelCheckerOutcome.NO_MODEL, (
             "Expected thionitrous acid to not match the definition, but it did. This is because thionitrous acid does not contain a carbon atom bonded to an oxygen atom."
         )
 
@@ -96,7 +97,7 @@ class TestMistralCustomFOLReasoner:
             carboxylic_acid_mol, parsed_formula_1
         )
         # Verify model checking completes without error
-        assert result_1_match is True, (
+        assert result_1_match == ModelCheckerOutcome.MODEL_FOUND, (
             "Acetic acid should match carboxylic acid formula"
         )
 
@@ -107,7 +108,7 @@ class TestMistralCustomFOLReasoner:
         result_1_no_match = reasoner.does_mol_match_tptp_definition(
             ethanol_mol, parsed_formula_1
         )
-        assert result_1_no_match is False, (
+        assert result_1_no_match == ModelCheckerOutcome.NO_MODEL, (
             "Ethanol should not match carboxylic acid formula"
         )
 
@@ -131,7 +132,10 @@ class TestMistralCustomFOLReasoner:
             azide_mol, parsed_formula_2
         )
         # Verify model checking completes without error
-        assert result_2_match is not None
+        assert result_2_match in {
+            ModelCheckerOutcome.MODEL_FOUND,
+            ModelCheckerOutcome.NO_MODEL,
+        }
 
         # Test molecule that does NOT match azide pattern
         aniline_mol = Chem.MolFromSmiles(
@@ -140,7 +144,9 @@ class TestMistralCustomFOLReasoner:
         result_2_no_match = reasoner.does_mol_match_tptp_definition(
             aniline_mol, parsed_formula_2
         )
-        assert result_2_no_match is False, "Aniline should not match azide formula"
+        assert result_2_no_match == ModelCheckerOutcome.NO_MODEL, (
+            "Aniline should not match azide formula"
+        )
 
 
 class TestConvertToChemlogPredicates:
