@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Script to calculate F1 score statistics from c3p_trust.json
+Script to calculate F1 score statistics from c3p_train_val_scores.json
 """
 
+import argparse
 import json
-import os
 from pathlib import Path
 
 
@@ -18,10 +18,15 @@ def calculate_f1_score(tp, fp, fn):
     return (2 * tp) / denominator
 
 
-def categorize_f1_scores(json_file_path):
-    """Load c3p_trust.json and categorize F1 scores."""
-    with open(json_file_path, "r") as f:
+def categorize_f1_scores(json_file_path, split="val"):
+    """Load c3p_train_val_scores.json and categorize F1 scores."""
+    with open(json_file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    if not isinstance(data, list):
+        raise ValueError(
+            "Expected c3p_train_val_scores.json to contain a list of class records."
+        )
 
     # Initialize bins
     bins = {
@@ -38,11 +43,15 @@ def categorize_f1_scores(json_file_path):
     failed_to_learn = 0
 
     # Calculate F1 scores and categorize
-    for _, metrics in data.items():
-        tp = metrics.get("TP")
-        fp = metrics.get("FP")
-        fn = metrics.get("FN")
 
+    for entry in data:
+        metrics = entry.get(split)
+
+        tp = metrics.get("num_true_positives")
+        fp = metrics.get("num_false_positives")
+        fn = metrics.get("num_false_negatives")
+
+        f1 = metrics.get("f1")
         f1 = calculate_f1_score(tp, fp, fn)
         f1_scores.append(f1)
 
@@ -68,7 +77,7 @@ def categorize_f1_scores(json_file_path):
     total = len(data)
 
     # Print results
-    print(f"F1 Score Distribution (Total: {total})")
+    print(f"F1 Score Distribution for '{split}' (Total: {total})")
     print("=" * 60)
 
     for bin_name, count in bins.items():
@@ -81,6 +90,7 @@ def categorize_f1_scores(json_file_path):
             print(f"\t{bin_name}: {count} ({percentage:.2f}%)")
 
     print("=" * 60)
+
     print(f"Mean F1 Score: {sum(f1_scores) / len(f1_scores):.4f}")
     print(f"Min F1 Score: {min(f1_scores):.4f}")
     print(f"Max F1 Score: {max(f1_scores):.4f}")
@@ -89,14 +99,32 @@ def categorize_f1_scores(json_file_path):
     return bins, total, failed_to_learn, f1_scores
 
 
-if __name__ == "__main__":
-    import os
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description="Calculate F1 score distribution for c3p train/val metrics."
+    )
+    repo_root = Path(__file__).resolve().parents[3]
+    parser.add_argument(
+        "--json-path",
+        type=Path,
+        default=repo_root / "data" / "c3p_train_val_scores.json",
+        help="Path to c3p_train_val_scores.json file.",
+    )
+    parser.add_argument(
+        "--split",
+        choices=("train", "val"),
+        default="train",
+        help="Which metric split to analyze.",
+    )
+    return parser.parse_args()
 
-    working_dir = Path(os.getcwd())
-    json_path = working_dir / "data" / "c3p_trust.json"
+
+if __name__ == "__main__":
+    args = _parse_args()
+    json_path = args.json_path
 
     if not json_path.exists():
         print(f"Error: {json_path} not found!")
         exit(1)
 
-    categorize_f1_scores(json_path)
+    categorize_f1_scores(json_path, split=args.split)
