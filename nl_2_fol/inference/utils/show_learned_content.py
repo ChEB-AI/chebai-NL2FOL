@@ -8,6 +8,7 @@ from nl_2_fol.inference.learner.definition_model import (
     DefinitionLearningResults,
     FOLFormula,
 )
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
 def print_pickle_contents(
@@ -21,55 +22,75 @@ def print_pickle_contents(
     with open(pickle_file_path, "rb") as f:
         data: DefinitionLearningResults = pickle.load(f)
 
-    for _, learned_def in data.learned_definitions.items():
-        if class_name != "all" and learned_def.name != class_name:
-            continue
+    FOUND_CLASS = False
 
-        print(f"Learned definition for predicate: {learned_def.name}")
+    def _print_def(class_name):
+        for _, learned_def in data.learned_definitions.items():
+            if class_name != "all" and learned_def.name != class_name:
+                continue
+
+            nonlocal FOUND_CLASS
+            FOUND_CLASS = True
+            print(f"Learned definition for predicate: {learned_def.name}")
+            print(
+                f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+            )
+            print(f"Train Metrics: {learned_def.train_metrics}")
+            if learned_def.val_metrics is not None:
+                print(f"Validation Metrics: {learned_def.val_metrics}")
+            print(f"Formula: {learned_def.learned_FOL.formula}")
+            print(f"Learned success: {learned_def.learn_success}")
+
+            if (
+                hasattr(learned_def, "additional_defs_used")
+                and learned_def.additional_defs_used
+            ):
+                print("Additional definitions used:")
+                for name, (
+                    def_vars,
+                    add_def,
+                ) in learned_def.additional_defs_used.items():
+                    print(
+                        f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
+                    )
+            if show_system_prompt:
+                print("System prompt:")
+                print(learned_def.prompts_history["system_prompt"])
+
+            if show_conversation_history:
+                print("Conversation history:")
+                conv_his = learned_def.prompts_history["conversation_history"]
+                if conv_his is None or len(conv_his) == 0:
+                    print("\tNo conversation history available.")
+                else:
+                    for c_his in conv_his:
+                        print(c_his)
+            print("---" * 10)
+
+        for name, add_def in data.additional_definitions.items():
+            if class_name != "all" and name != class_name:
+                continue
+            FOUND_CLASS = True
+            print(f"Additional definition for predicate: {name}")
+            print(
+                f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
+            )
+            print(f"Formula: {add_def.fol_formula.formula}")
+            print(f"Learned success: {add_def.learn_success}")
+            print(f"Used for CHEBI IDs: {add_def.used_for}")
+            print("---" * 10)
+
+        print(f"Number of learned definitions: {len(data.learned_definitions)}")
+        print(f"Number of additional definitions: {len(data.additional_definitions)}")
+
+    _print_def(class_name)
+    if FOUND_CLASS is False:
+        camel_cased_class_name = to_camel_case(class_name)
         print(
-            f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+            f"Class name `{class_name}` was not found directly in the learned definitions file. "
+            f"Trying camel-cased variant `{camel_cased_class_name}`."
         )
-        print(f"Metrics: {learned_def.train_metrics}")
-        print(f"Formula: {learned_def.learned_FOL.formula}")
-        print(f"Learned success: {learned_def.learn_success}")
-
-        if (
-            hasattr(learned_def, "additional_defs_used")
-            and learned_def.additional_defs_used
-        ):
-            print("Additional definitions used:")
-            for name, (def_vars, add_def) in learned_def.additional_defs_used.items():
-                print(
-                    f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
-                )
-        if show_system_prompt:
-            print("System prompt:")
-            print(learned_def.prompts_history["system_prompt"])
-
-        if show_conversation_history:
-            print("Conversation history:")
-            conv_his = learned_def.prompts_history["conversation_history"]
-            if conv_his is None or len(conv_his) == 0:
-                print("\tNo conversation history available.")
-            else:
-                for c_his in conv_his:
-                    print(c_his)
-        print("---" * 10)
-
-    for name, add_def in data.additional_definitions.items():
-        if class_name != "all" and name != class_name:
-            continue
-        print(f"Additional definition for predicate: {name}")
-        print(
-            f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
-        )
-        print(f"Formula: {add_def.fol_formula.formula}")
-        print(f"Learned success: {add_def.learn_success}")
-        print(f"Used for CHEBI IDs: {add_def.used_for}")
-        print("---" * 10)
-
-    print(f"Number of learned definitions: {len(data.learned_definitions)}")
-    print(f"Number of additional definitions: {len(data.additional_definitions)}")
+        _print_def(camel_cased_class_name)
 
 
 def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
