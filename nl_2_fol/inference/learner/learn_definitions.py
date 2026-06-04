@@ -479,6 +479,13 @@ class LearnDefinitions(BaseFOL):
             )
             if learned:
                 learned_class_predicates.add(predicate)
+        if chemical_class_predicates - learned_class_predicates:
+            print(
+                "Failed to recursively learn definitions for the following predicates "
+                "which corresponds to c3po class : ",
+                chemical_class_predicates - learned_class_predicates,
+            )
+            print("Hence they will be learned as additional definitions.")
 
         raised_exception = ce.RetryException()
         other_predicates = e.missing_predicates - learned_class_predicates
