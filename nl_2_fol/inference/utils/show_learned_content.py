@@ -102,6 +102,7 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
     requested_metric = metric_name.upper()
     scores, val_scores = [], []
     train_metric_records = []
+    val_metric_records = []
     failed = 0
 
     for learned_def in data.learned_definitions.values():
@@ -121,20 +122,54 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
             val_metrics = learned_def.val_metrics
             val_metric_value = getattr(val_metrics, requested_metric)
             val_scores.append(float(val_metric_value))
+            val_metric_records.append(val_metrics)
 
-    def calculate_micro_macro_f1(metric_records):
+    def calculate_micro_macro_metrics(metric_records):
+        if not metric_records:
+            return None
+
         total_tp = sum(record.TP for record in metric_records)
         total_fp = sum(record.FP for record in metric_records)
         total_fn = sum(record.FN for record in metric_records)
 
-        denominator = 2 * total_tp + total_fp + total_fn
-        micro_f1 = (2 * total_tp / denominator) if denominator > 0 else 0.0
+        micro_precision_denom = total_tp + total_fp
+        micro_recall_denom = total_tp + total_fn
+        micro_precision = (
+            total_tp / micro_precision_denom if micro_precision_denom > 0 else 0.0
+        )
+        micro_recall = total_tp / micro_recall_denom if micro_recall_denom > 0 else 0.0
+        micro_f1_denom = 2 * total_tp + total_fp + total_fn
+        micro_f1 = (2 * total_tp / micro_f1_denom) if micro_f1_denom > 0 else 0.0
+
+        per_record_precisions = [
+            (record.TP / (record.TP + record.FP))
+            if (record.TP + record.FP) > 0
+            else 0.0
+            for record in metric_records
+        ]
+        per_record_recalls = [
+            (record.TP / (record.TP + record.FN))
+            if (record.TP + record.FN) > 0
+            else 0.0
+            for record in metric_records
+        ]
+        macro_precision = sum(per_record_precisions) / len(per_record_precisions)
+        macro_recall = sum(per_record_recalls) / len(per_record_recalls)
         macro_f1 = sum(float(record.F1) for record in metric_records) / len(
             metric_records
         )
-        return micro_f1, macro_f1
 
-    def print_stats(scores, total, dataset_name):
+        return {
+            "micro_precision": micro_precision,
+            "micro_recall": micro_recall,
+            "micro_f1": micro_f1,
+            "macro_precision": macro_precision,
+            "macro_recall": macro_recall,
+            "macro_f1": macro_f1,
+            "record_count": len(metric_records),
+        }
+
+    def print_stats(scores, total, dataset_name, metric_records):
         perfect = sum(1 for score in scores if score == 1.0)
         gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
         between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
@@ -167,9 +202,27 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
         else:
             raise ValueError("Unexpected dataset name for stats printing.")
 
-        micro_f1, macro_f1 = calculate_micro_macro_f1(train_metric_records)
-        print(f"Train micro-F1: {micro_f1:.4f}")
-        print(f"Train macro-F1: {macro_f1:.4f}")
+        metrics = calculate_micro_macro_metrics(metric_records)
+        if metrics is None:
+            print("No valid records available for micro/macro precision/recall/F1.")
+            print("-------------------------------------------------------")
+            return
+
+        print("-------------------------------------------------------")
+        print(
+            f"{metrics['record_count']} valid records for micro/macro precision/recall/F1 calculation "
+            f"(excluding failed and zero-score classes)."
+        )
+        print(
+            f"{dataset_name.title()} micro-precision: {metrics['micro_precision']:.4f}"
+        )
+        print(f"{dataset_name.title()} micro-recall: {metrics['micro_recall']:.4f}")
+        print(f"{dataset_name.title()} micro-F1: {metrics['micro_f1']:.4f}")
+        print(
+            f"{dataset_name.title()} macro-precision: {metrics['macro_precision']:.4f}"
+        )
+        print(f"{dataset_name.title()} macro-recall: {metrics['macro_recall']:.4f}")
+        print(f"{dataset_name.title()} macro-F1: {metrics['macro_f1']:.4f}")
         print("-------------------------------------------------------")
 
     train_total = len(scores)
@@ -180,11 +233,11 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
     if train_total == 0:
         print("No valid scores found. Nothing to summarize.")
         return
-    print_stats(scores, train_total, "training set")
+    print_stats(scores, train_total, "training set", train_metric_records)
 
     if val_scores:
         val_total = len(val_scores)
-        print_stats(val_scores, val_total, "validation set")
+        print_stats(val_scores, val_total, "validation set", val_metric_records)
 
 
 def delete_class_from_pickle(
