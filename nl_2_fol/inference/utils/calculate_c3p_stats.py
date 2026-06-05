@@ -18,6 +18,14 @@ def calculate_f1_score(tp, fp, fn):
     return (2 * tp) / denominator
 
 
+def calculate_precision_recall_f1(tp, fp, fn):
+    """Calculate precision, recall, and F1 from TP, FP, FN."""
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = calculate_f1_score(tp, fp, fn)
+    return precision, recall, f1
+
+
 def categorize_f1_scores(json_file_path, split="val"):
     """Load c3p_train_val_scores.json and categorize F1 scores."""
     with open(json_file_path, "r", encoding="utf-8") as f:
@@ -40,7 +48,12 @@ def categorize_f1_scores(json_file_path, split="val"):
     }
 
     f1_scores = []
+    precision_scores = []
+    recall_scores = []
     failed_to_learn = 0
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
 
     # Calculate F1 scores and categorize
 
@@ -51,8 +64,12 @@ def categorize_f1_scores(json_file_path, split="val"):
         fp = metrics.get("num_false_positives")
         fn = metrics.get("num_false_negatives")
 
-        f1 = metrics.get("f1")
-        f1 = calculate_f1_score(tp, fp, fn)
+        precision, recall, f1 = calculate_precision_recall_f1(tp, fp, fn)
+        total_tp += tp
+        total_fp += fp
+        total_fn += fn
+        precision_scores.append(precision)
+        recall_scores.append(recall)
         f1_scores.append(f1)
 
         # Categorize
@@ -90,6 +107,20 @@ def categorize_f1_scores(json_file_path, split="val"):
             print(f"\t{bin_name}: {count} ({percentage:.2f}%)")
 
     print("=" * 60)
+
+    micro_precision, micro_recall, micro_f1 = calculate_precision_recall_f1(
+        total_tp, total_fp, total_fn
+    )
+    macro_precision = sum(precision_scores) / len(precision_scores)
+    macro_recall = sum(recall_scores) / len(recall_scores)
+    macro_f1 = sum(f1_scores) / len(f1_scores)
+
+    print(f"Micro Precision: {micro_precision:.4f}")
+    print(f"Micro Recall: {micro_recall:.4f}")
+    print(f"Micro F1 Score: {micro_f1:.4f}")
+    print(f"Macro Precision: {macro_precision:.4f}")
+    print(f"Macro Recall: {macro_recall:.4f}")
+    print(f"Macro F1 Score: {macro_f1:.4f}")
 
     print(f"Mean F1 Score: {sum(f1_scores) / len(f1_scores):.4f}")
     print(f"Min F1 Score: {min(f1_scores):.4f}")
