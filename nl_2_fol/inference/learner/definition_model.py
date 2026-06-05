@@ -41,16 +41,16 @@ class DefinitionMetrics(BaseModel):
         default=0, description="Unknown outcome on negative samples"
     )
     # Track some smiles for analysis
-    fp_smiles: list = Field(
-        default=[],
+    fp_smiles: list[str] = Field(
+        default_factory=list,
         description="List of all smiles which are incorrectly classified as positives",
     )
-    fn_smiles: list = Field(
-        default=[],
+    fn_smiles: list[str] = Field(
+        default_factory=list,
         description="List of all smiles which are incorrectly classified as negatives",
     )
-    timeout_smiles: list = Field(
-        default=[],
+    timeout_smiles: list[str] = Field(
+        default_factory=list,
         description="List of all smiles which resulted in a timeout during evaluation",
     )
 
