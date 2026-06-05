@@ -236,6 +236,11 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
     print_stats(scores, train_total, "training set", train_metric_records)
 
     if val_scores:
+        print(
+            "Validation micro/macro metrics should only be computed with classes that are",
+            "common between c3po and ours, see `compare_with_c3p.py` for the rationale.",
+            "This validation are for informational purposes only.",
+        )
         val_total = len(val_scores)
         print_stats(val_scores, val_total, "validation set", val_metric_records)
 
