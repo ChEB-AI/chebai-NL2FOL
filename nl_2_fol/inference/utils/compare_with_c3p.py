@@ -101,8 +101,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--c3p-json",
         type=Path,
-        default=Path("data") / "c3p_train_val_scores.json",
-        help="Path to c3p_train_val_scores.json file (will use validation f1).",
+        required=True,
+        help="Path to json file of c3po containing val scores (See: https://github.com/chemkg/c3p/pull/23)",
     )
 
     claude_learned_fp = os.path.join(

@@ -134,12 +134,11 @@ def _parse_args():
     parser = argparse.ArgumentParser(
         description="Calculate F1 score distribution for c3p train/val metrics."
     )
-    repo_root = Path(__file__).resolve().parents[3]
     parser.add_argument(
         "--json-path",
         type=Path,
-        default=repo_root / "data" / "c3p_train_val_scores.json",
-        help="Path to c3p_train_val_scores.json file.",
+        required=True,
+        help="Path to json file with val/train score metrics. (See: https://github.com/chemkg/c3p/pull/23)",
     )
     parser.add_argument(
         "--split",
