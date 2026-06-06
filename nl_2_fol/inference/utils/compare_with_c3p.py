@@ -101,19 +101,36 @@ def write_comparison_csv(
 
     learned_data = _load_learned_definitions(learned_pickle_path)
 
+    not_learned_counter = 0
+    not_learned_sucessfully = 0
+    failed_to_validate = 0
+    timeout_during_validation = 0
     learned_rows: dict[str, dict[str, dict[str, float | int]]] = {}
     for chebi_id, metrics in ensemble_c3p_metriccs.items():
         if chebi_id not in learned_data.learned_definitions:
+            not_learned_counter += 1
             continue
 
         learned_def = learned_data.learned_definitions[chebi_id]
 
         if not learned_def.learn_success:
+            not_learned_sucessfully += 1
             continue
 
         if learned_def.val_metrics is None:
             # Eg. [36835:3alphaHydroxySteroid:negative] processed 4975/35507
             # Validation pipeline is not completed with 48hrs time limit,
+            failed_to_validate += 1
+            continue
+
+        if (
+            learned_def.val_metrics.TP
+            + learned_def.val_metrics.FN
+            + learned_def.val_metrics.FP
+            + learned_def.val_metrics.TN
+        ) == 0:
+            # ignore def for which all samples lead to timeouts during validation
+            timeout_during_validation += 1
             continue
 
         recall = (
@@ -137,6 +154,18 @@ def write_comparison_csv(
                 "recall": recall,
             },
         }
+
+    print("Total CHEBI ids in c3p:", len(ensemble_c3p_metriccs))
+    print(
+        "Total CHEBI ids in learned definitions:", len(learned_data.learned_definitions)
+    )
+
+    print("Not learned counter:", not_learned_counter)
+    print("Not learned successfully:", not_learned_sucessfully)
+    print("Failed to validate:", failed_to_validate)
+    print("Timeout during validation:", timeout_during_validation)
+
+    print("Finally number of selected chebi ids for comparison:", len(learned_rows))
 
     our_score_dict = calculate_micro_macro_metrics(
         [data["our_f1_score"] for data in learned_rows.values()]
