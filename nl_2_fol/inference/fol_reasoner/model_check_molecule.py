@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from chemlog.fol_classification.fol_utils import normalize_fol_formula
 from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
 from chemlog.preprocessing.mol_to_fol import mol_to_fol_atoms
@@ -244,6 +247,55 @@ class GavelFOLReasoner:
     ):
         """Add a single background definition with extracted free variables."""
         self.background_definitions[name] = (variables, definition)
+
+    def save_background_definitions_to_json(self, file_path: str | Path) -> None:
+        payload = []
+        for predicate_name, (
+            variables,
+            definition,
+        ) in self.background_definitions.items():
+            if variables:
+                head = f"{predicate_name}({', '.join(str(var) for var in variables)})"
+            else:
+                head = predicate_name
+            payload.append(
+                {
+                    "predicate": predicate_name,
+                    "definition": f"{head} <=> {definition}",
+                }
+            )
+
+        Path(file_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def load_background_definitions_from_json(
+        self,
+        file_path: str | Path,
+        *,
+        replace: bool = True,
+    ) -> dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]]:
+        """Load background definitions from a JSON file.
+
+        Args:
+            file_path: JSON file created by `save_background_definitions_to_json`.
+            replace: If True, clear the current background definitions before loading.
+
+        Returns:
+            The loaded background definitions in the internal tuple format.
+        """
+        payload = json.loads(Path(file_path).read_text(encoding="utf-8"))
+
+        loaded_definitions = {}
+        for item in payload:
+            predicate_name = item["predicate"]
+            pred_variables, fol_formula = self.get_tptp_fol_definition(
+                item["definition"]
+            )
+            loaded_definitions[predicate_name] = (pred_variables, fol_formula)
+
+        if replace:
+            self.background_definitions.clear()
+        self.background_definitions.update(loaded_definitions)
+        return loaded_definitions
 
     def convert_to_background_definitions(
         self,

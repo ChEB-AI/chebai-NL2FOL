@@ -212,13 +212,13 @@ def _parse_args() -> argparse.Namespace:
         description="Compare c3p train/val metrics (validation F1 only) against learned definition scores and export CSV."
     )
     parser.add_argument(
-        "-ensemble-c3p-json",
+        "--ensemble-c3p-json",
         type=Path,
         required=True,
         help="Path to json file of c3po containing val scores (See: https://github.com/chemkg/c3p/pull/23)",
     )
     parser.add_argument(
-        "-o3-mini-c3p-json",
+        "--o3-mini-c3p-json",
         type=Path,
         required=True,
         help="Path to json file of o3-mini containing val scores (See: https://github.com/chemkg/c3p/pull/23)",
