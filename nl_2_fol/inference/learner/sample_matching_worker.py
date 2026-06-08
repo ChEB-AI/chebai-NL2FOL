@@ -212,7 +212,11 @@ def check_if_definition_matches_samples(
                 elif outcome == "inferred_no_match":
                     inferred_no_match_pos.add(smiles)
                 elif outcome == "timeout":
-                    timeout_pos.add(smiles)
+                    print(
+                        f"[{chemical_class.id}:{chemical_class.name}] Positive worker "
+                        f"reported timeout for SMILES: {smiles}",
+                        flush=True,
+                    )
                 elif outcome == "error":
                     error_pos.add(smiles)
                 else:  # unknown
@@ -254,6 +258,11 @@ def check_if_definition_matches_samples(
                 elif outcome == "inferred_no_match":
                     inferred_no_match_neg.add(smiles)
                 elif outcome == "timeout":
+                    print(
+                        f"[{chemical_class.id}:{chemical_class.name}] Negative worker "
+                        f"reported timeout for SMILES: {smiles}",
+                        flush=True,
+                    )
                     timeout_neg.add(smiles)
                 elif outcome == "error":
                     error_neg.add(smiles)

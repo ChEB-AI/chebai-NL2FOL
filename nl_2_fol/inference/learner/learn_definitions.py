@@ -493,6 +493,8 @@ class LearnDefinitions(BaseFOL):
             predicates_to_learn: dict[str, str | None] = {}
             for predicate in other_predicates:
                 if predicate in self._chebi_name_to_data_map_train:
+                    # TODO: Do we really need to restrict to train data in this case,
+                    # or we could use the entire data? (get_name_to_data_mapping_all)
                     chebi_data = self._chebi_name_to_data_map_train[predicate]
                     predicates_to_learn[predicate] = chebi_data["definition"]
                 else:
