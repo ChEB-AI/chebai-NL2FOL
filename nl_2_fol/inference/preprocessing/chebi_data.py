@@ -32,6 +32,7 @@ class ChEBIDataWrapper(ChEBIData):
 
     def get_name_to_data_mapping_all(self) -> dict[str, dict]:
         df = self._get_name_to_data_mapping()
+        df["chebi_id"] = df.index
         return df.set_index("name").to_dict(orient="index")  # pyright: ignore[reportReturnType]
 
     def _get_name_to_data_mapping(self) -> pd.DataFrame:
