@@ -95,7 +95,7 @@ class ChEBIDataWrapper(ChEBIData):
         df = pd.DataFrame.from_dict(data_dict, orient="index")
         df = df[["smiles", "definition", "name"]]
         df["name"] = df["name"].str.lower().str.strip()
-        df = df.dropna(subset=["smiles", "definition", "name"])
+        df = df.dropna(subset=["definition", "name"])
         return df
 
     def build_hierarchy_graph(self) -> nx.DiGraph:
