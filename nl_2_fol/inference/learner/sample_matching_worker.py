@@ -356,12 +356,12 @@ def check_if_definition_matches_samples(
             # Move processed samples or remaining samples to timeouts as the FOL exceeds
             # Max timeouts threshold, which indicates that the definition is likely
             # too complex to validate within reasonable time.
-            timeout_pos: set[dm.SMILES_STRING] = {
-                chemical.smiles for chemical in pos_samples
-            }
-            timeout_neg: set[dm.SMILES_STRING] = {
-                chemical.smiles for chemical in neg_samples
-            }
+            # timeout_pos: set[dm.SMILES_STRING] = {
+            #     chemical.smiles for chemical in pos_samples
+            # }
+            # timeout_neg: set[dm.SMILES_STRING] = {
+            #     chemical.smiles for chemical in neg_samples
+            # }
             max_timeout_threshold_reached = True
 
         now = time.monotonic()
