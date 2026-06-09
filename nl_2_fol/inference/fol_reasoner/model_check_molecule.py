@@ -131,7 +131,7 @@ class GavelFOLReasoner:
             **self.background_definitions,
             **(temp_additional_defs or {}),
         }
-        model_checker = ModelChecker(universe, extensions, bck_def)
+        model_checker = ModelChecker(universe, extensions, bck_def, all_different=True)
 
         exception_prefix = (
             "MODEL CHECKING FAILED - Error during model checking for the formula.\n"
