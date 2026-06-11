@@ -212,7 +212,11 @@ def check_if_definition_matches_samples(
                 elif outcome == "inferred_no_match":
                     inferred_no_match_pos.add(smiles)
                 elif outcome == "timeout":
-                    timeout_pos.add(smiles)
+                    print(
+                        f"[{chemical_class.id}:{chemical_class.name}] Positive worker "
+                        f"reported timeout for SMILES: {smiles}",
+                        flush=True,
+                    )
                 elif outcome == "error":
                     error_pos.add(smiles)
                 else:  # unknown
@@ -254,6 +258,11 @@ def check_if_definition_matches_samples(
                 elif outcome == "inferred_no_match":
                     inferred_no_match_neg.add(smiles)
                 elif outcome == "timeout":
+                    print(
+                        f"[{chemical_class.id}:{chemical_class.name}] Negative worker "
+                        f"reported timeout for SMILES: {smiles}",
+                        flush=True,
+                    )
                     timeout_neg.add(smiles)
                 elif outcome == "error":
                     error_neg.add(smiles)
@@ -347,12 +356,12 @@ def check_if_definition_matches_samples(
             # Move processed samples or remaining samples to timeouts as the FOL exceeds
             # Max timeouts threshold, which indicates that the definition is likely
             # too complex to validate within reasonable time.
-            timeout_pos: set[dm.SMILES_STRING] = {
-                chemical.smiles for chemical in pos_samples
-            }
-            timeout_neg: set[dm.SMILES_STRING] = {
-                chemical.smiles for chemical in neg_samples
-            }
+            # timeout_pos: set[dm.SMILES_STRING] = {
+            #     chemical.smiles for chemical in pos_samples
+            # }
+            # timeout_neg: set[dm.SMILES_STRING] = {
+            #     chemical.smiles for chemical in neg_samples
+            # }
             max_timeout_threshold_reached = True
 
         now = time.monotonic()

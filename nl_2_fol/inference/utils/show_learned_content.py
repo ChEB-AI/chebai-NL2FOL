@@ -8,6 +8,7 @@ from nl_2_fol.inference.learner.definition_model import (
     DefinitionLearningResults,
     FOLFormula,
 )
+from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
 def print_pickle_contents(
@@ -21,55 +22,75 @@ def print_pickle_contents(
     with open(pickle_file_path, "rb") as f:
         data: DefinitionLearningResults = pickle.load(f)
 
-    for _, learned_def in data.learned_definitions.items():
-        if class_name != "all" and learned_def.name != class_name:
-            continue
+    FOUND_CLASS = False
 
-        print(f"Learned definition for predicate: {learned_def.name}")
+    def _print_def(class_name):
+        for _, learned_def in data.learned_definitions.items():
+            if class_name != "all" and learned_def.name != class_name:
+                continue
+
+            nonlocal FOUND_CLASS
+            FOUND_CLASS = True
+            print(f"Learned definition for predicate: {learned_def.name}")
+            print(
+                f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+            )
+            print(f"Train Metrics: {learned_def.train_metrics}")
+            if learned_def.val_metrics is not None:
+                print(f"Validation Metrics: {learned_def.val_metrics}")
+            print(f"Formula: {learned_def.learned_FOL.formula}")
+            print(f"Learned success: {learned_def.learn_success}")
+
+            if (
+                hasattr(learned_def, "additional_defs_used")
+                and learned_def.additional_defs_used
+            ):
+                print("Additional definitions used:")
+                for name, (
+                    def_vars,
+                    add_def,
+                ) in learned_def.additional_defs_used.items():
+                    print(
+                        f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
+                    )
+            if show_system_prompt:
+                print("System prompt:")
+                print(learned_def.prompts_history["system_prompt"])
+
+            if show_conversation_history:
+                print("Conversation history:")
+                conv_his = learned_def.prompts_history["conversation_history"]
+                if conv_his is None or len(conv_his) == 0:
+                    print("\tNo conversation history available.")
+                else:
+                    for c_his in conv_his:
+                        print(c_his)
+            print("---" * 10)
+
+        for name, add_def in data.additional_definitions.items():
+            if class_name != "all" and name != class_name:
+                continue
+            FOUND_CLASS = True
+            print(f"Additional definition for predicate: {name}")
+            print(
+                f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
+            )
+            print(f"Formula: {add_def.fol_formula.formula}")
+            print(f"Learned success: {add_def.learn_success}")
+            print(f"Used for CHEBI IDs: {add_def.used_for}")
+            print("---" * 10)
+
+        print(f"Number of learned definitions: {len(data.learned_definitions)}")
+        print(f"Number of additional definitions: {len(data.additional_definitions)}")
+
+    _print_def(class_name)
+    if FOUND_CLASS is False:
+        camel_cased_class_name = to_camel_case(class_name)
         print(
-            f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+            f"Class name `{class_name}` was not found directly in the learned definitions file. "
+            f"Trying camel-cased variant `{camel_cased_class_name}`."
         )
-        print(f"Metrics: {learned_def.train_metrics}")
-        print(f"Formula: {learned_def.learned_FOL.formula}")
-        print(f"Learned success: {learned_def.learn_success}")
-
-        if (
-            hasattr(learned_def, "additional_defs_used")
-            and learned_def.additional_defs_used
-        ):
-            print("Additional definitions used:")
-            for name, (def_vars, add_def) in learned_def.additional_defs_used.items():
-                print(
-                    f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
-                )
-        if show_system_prompt:
-            print("System prompt:")
-            print(learned_def.prompts_history["system_prompt"])
-
-        if show_conversation_history:
-            print("Conversation history:")
-            conv_his = learned_def.prompts_history["conversation_history"]
-            if conv_his is None or len(conv_his) == 0:
-                print("\tNo conversation history available.")
-            else:
-                for c_his in conv_his:
-                    print(c_his)
-        print("---" * 10)
-
-    for name, add_def in data.additional_definitions.items():
-        if class_name != "all" and name != class_name:
-            continue
-        print(f"Additional definition for predicate: {name}")
-        print(
-            f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
-        )
-        print(f"Formula: {add_def.fol_formula.formula}")
-        print(f"Learned success: {add_def.learn_success}")
-        print(f"Used for CHEBI IDs: {add_def.used_for}")
-        print("---" * 10)
-
-    print(f"Number of learned definitions: {len(data.learned_definitions)}")
-    print(f"Number of additional definitions: {len(data.additional_definitions)}")
+        _print_def(camel_cased_class_name)
 
 
 def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
@@ -80,19 +101,75 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
 
     requested_metric = metric_name.upper()
     scores, val_scores = [], []
+    train_metric_records = []
+    val_metric_records = []
     failed = 0
 
     for learned_def in data.learned_definitions.values():
-        train_metric_value = getattr(learned_def.train_metrics, requested_metric)
+        train_metrics = learned_def.train_metrics
+        train_metric_value = getattr(train_metrics, requested_metric)
         if not learned_def.learn_success:
             failed += 1
+        else:
+            if train_metric_value > 0.0:
+                # Exclude case D i.e. ignore failed classes and classes with 0 f1 scores
+                # for micro and macro f1 calculation
+                train_metric_records.append(train_metrics)
+
         scores.append(float(train_metric_value))
 
         if learned_def.val_metrics is not None:
-            val_metric_value = getattr(learned_def.val_metrics, requested_metric)
+            val_metrics = learned_def.val_metrics
+            val_metric_value = getattr(val_metrics, requested_metric)
             val_scores.append(float(val_metric_value))
+            val_metric_records.append(val_metrics)
 
-    def print_stats(scores, total, dataset_name):
+    def calculate_micro_macro_metrics(metric_records):
+        if not metric_records:
+            return None
+
+        total_tp = sum(record.TP for record in metric_records)
+        total_fp = sum(record.FP for record in metric_records)
+        total_fn = sum(record.FN for record in metric_records)
+
+        micro_precision_denom = total_tp + total_fp
+        micro_recall_denom = total_tp + total_fn
+        micro_precision = (
+            total_tp / micro_precision_denom if micro_precision_denom > 0 else 0.0
+        )
+        micro_recall = total_tp / micro_recall_denom if micro_recall_denom > 0 else 0.0
+        micro_f1_denom = 2 * total_tp + total_fp + total_fn
+        micro_f1 = (2 * total_tp / micro_f1_denom) if micro_f1_denom > 0 else 0.0
+
+        per_record_precisions = [
+            (record.TP / (record.TP + record.FP))
+            if (record.TP + record.FP) > 0
+            else 0.0
+            for record in metric_records
+        ]
+        per_record_recalls = [
+            (record.TP / (record.TP + record.FN))
+            if (record.TP + record.FN) > 0
+            else 0.0
+            for record in metric_records
+        ]
+        macro_precision = sum(per_record_precisions) / len(per_record_precisions)
+        macro_recall = sum(per_record_recalls) / len(per_record_recalls)
+        macro_f1 = sum(float(record.F1) for record in metric_records) / len(
+            metric_records
+        )
+
+        return {
+            "micro_precision": micro_precision,
+            "micro_recall": micro_recall,
+            "micro_f1": micro_f1,
+            "macro_precision": macro_precision,
+            "macro_recall": macro_recall,
+            "macro_f1": macro_f1,
+            "record_count": len(metric_records),
+        }
+
+    def print_stats(scores, total, dataset_name, metric_records):
         perfect = sum(1 for score in scores if score == 1.0)
         gt_08 = sum(1 for score in scores if 0.8 <= score < 1.0)
         between_06_08 = sum(1 for score in scores if 0.6 <= score < 0.8)
@@ -124,6 +201,28 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
             print(f"  score == 0.0: {equal_to_0} ({(equal_to_0 / total) * 100:.2f}%)")
         else:
             raise ValueError("Unexpected dataset name for stats printing.")
+
+        metrics = calculate_micro_macro_metrics(metric_records)
+        if metrics is None:
+            print("No valid records available for micro/macro precision/recall/F1.")
+            print("-------------------------------------------------------")
+            return
+
+        print("-------------------------------------------------------")
+        print(
+            f"{metrics['record_count']} valid records for micro/macro precision/recall/F1 calculation "
+            f"(excluding failed and zero-score classes)."
+        )
+        print(
+            f"{dataset_name.title()} micro-precision: {metrics['micro_precision']:.4f}"
+        )
+        print(f"{dataset_name.title()} micro-recall: {metrics['micro_recall']:.4f}")
+        print(f"{dataset_name.title()} micro-F1: {metrics['micro_f1']:.4f}")
+        print(
+            f"{dataset_name.title()} macro-precision: {metrics['macro_precision']:.4f}"
+        )
+        print(f"{dataset_name.title()} macro-recall: {metrics['macro_recall']:.4f}")
+        print(f"{dataset_name.title()} macro-F1: {metrics['macro_f1']:.4f}")
         print("-------------------------------------------------------")
 
     train_total = len(scores)
@@ -134,11 +233,16 @@ def print_learned_definition_stats(pickle_file_path, metric_name="F1"):
     if train_total == 0:
         print("No valid scores found. Nothing to summarize.")
         return
-    print_stats(scores, train_total, "training set")
+    print_stats(scores, train_total, "training set", train_metric_records)
 
     if val_scores:
+        print(
+            "Validation micro/macro metrics should only be computed with classes that are",
+            "common between c3po and ours, see `compare_with_c3p.py` for the rationale.",
+            "This validation are for informational purposes only.",
+        )
         val_total = len(val_scores)
-        print_stats(val_scores, val_total, "validation set")
+        print_stats(val_scores, val_total, "validation set", val_metric_records)
 
 
 def delete_class_from_pickle(

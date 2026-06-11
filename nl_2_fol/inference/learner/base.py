@@ -207,6 +207,11 @@ class BaseFOL:
             error_neg=len(cm.get("error_neg", set())),
             unknown_pos=len(cm.get("unknown_pos", set())),
             unknown_neg=len(cm.get("unknown_neg", set())),
+            fp_smiles=list(cm.get("matched_neg_samples", set())),
+            fn_smiles=list(cm.get("unmatched_pos_samples", set())),
+            timeout_smiles=list(
+                cm.get("timeout_pos", set()).union(cm.get("timeout_neg", set()))
+            ),
         )
 
     def _validate_given_class_name(self, class_name: str) -> None | str:

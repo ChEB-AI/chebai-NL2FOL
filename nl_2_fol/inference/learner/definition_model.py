@@ -40,6 +40,19 @@ class DefinitionMetrics(BaseModel):
     unknown_neg: int = Field(
         default=0, description="Unknown outcome on negative samples"
     )
+    # Track some smiles for analysis
+    fp_smiles: list[str] = Field(
+        default_factory=list,
+        description="List of all smiles which are incorrectly classified as positives",
+    )
+    fn_smiles: list[str] = Field(
+        default_factory=list,
+        description="List of all smiles which are incorrectly classified as negatives",
+    )
+    timeout_smiles: list[str] = Field(
+        default_factory=list,
+        description="List of all smiles which resulted in a timeout during evaluation",
+    )
 
 
 class FOLFormula(BaseModel):

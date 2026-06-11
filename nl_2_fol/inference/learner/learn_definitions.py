@@ -479,6 +479,13 @@ class LearnDefinitions(BaseFOL):
             )
             if learned:
                 learned_class_predicates.add(predicate)
+        if chemical_class_predicates - learned_class_predicates:
+            print(
+                "Failed to recursively learn definitions for the following predicates "
+                "which corresponds to c3po class : ",
+                chemical_class_predicates - learned_class_predicates,
+            )
+            print("Hence they will be learned as additional definitions.")
 
         raised_exception = ce.RetryException()
         other_predicates = e.missing_predicates - learned_class_predicates
@@ -486,6 +493,8 @@ class LearnDefinitions(BaseFOL):
             predicates_to_learn: dict[str, str | None] = {}
             for predicate in other_predicates:
                 if predicate in self._chebi_name_to_data_map_train:
+                    # TODO: Do we really need to restrict to train data in this case,
+                    # or we could use the entire data? (get_name_to_data_mapping_all)
                     chebi_data = self._chebi_name_to_data_map_train[predicate]
                     predicates_to_learn[predicate] = chebi_data["definition"]
                 else:
