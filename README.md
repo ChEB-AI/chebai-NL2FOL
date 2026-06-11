@@ -1,6 +1,9 @@
 # chebai-NL2FOL
 
-Natural language to First-Order Logic (FOL) translation for ChEBI.
+AI workflow for natural language to First-Order Logic (FOL) translation for ChEBI.
+
+<img width="2796" height="1024" alt="fig_landscape" src="https://github.com/user-attachments/assets/58dcf948-4645-4523-bb02-6120306063a0" />
+
 
 ## Guide: Run a custom model with Ollama on a computing cluster
 
