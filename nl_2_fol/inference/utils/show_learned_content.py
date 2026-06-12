@@ -32,13 +32,15 @@ def print_pickle_contents(
     FOUND_CLASS = False
 
     def _print_def(class_name):
-        for _, learned_def in data.learned_definitions.items():
+        for chebi_id, learned_def in data.learned_definitions.items():
             if class_name != "all" and learned_def.name != class_name:
                 continue
 
             nonlocal FOUND_CLASS
             FOUND_CLASS = True
-            print(f"Learned definition for predicate: {learned_def.name}")
+            print(
+                f"Learned definition for predicate: {learned_def.name} (CHEBI ID: {chebi_id})"
+            )
             print(
                 f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
             )
