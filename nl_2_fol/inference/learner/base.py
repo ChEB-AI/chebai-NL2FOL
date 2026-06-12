@@ -2,7 +2,7 @@ import queue
 
 from gavel.logic import logic
 
-from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner, MistralCustomFOLReasoner
+from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.sample_matching_worker import (
@@ -49,7 +49,8 @@ class BaseFOL:
             return GavelFOLReasoner()
         elif self.fol_reasoner == "mistral":
             print("Using `MistralCustomFOLReasoner` as the FOL reasoner.")
-            return MistralCustomFOLReasoner()
+            # return MistralCustomFOLReasoner()
+            raise ValueError("Support revoked")
         else:
             raise ValueError(f"Unsupported FOL reasoner: {self.fol_reasoner}")
 

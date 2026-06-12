@@ -50,13 +50,19 @@ class PerformValidation(BaseFOL):
         self.defs_file_path = defs_file_path
         self._loaded_defs = self._load_definitions(defs_file_path)
         self.counter = 0
+        self._file_save_idx : Optional[int] = None
 
     def validate(
         self,
         class_names: list[str] | None = None,
-    ):
+        file_save_index: Optional[int] = None, 
+    ):  
+
         selected_classes = None
         if class_names is not None:
+            if file_save_index is None:
+                raise ValueError("Need file save index with clasess list")
+            self._file_save_idx = file_save_index
             selected_classes = set()
             for class_name in class_names:
                 resolved_class_name = self._validate_given_class_name(class_name)
@@ -272,12 +278,13 @@ class PerformValidation(BaseFOL):
         return ("ok", chemical_class.id, val_metrics)
 
     def _save_validated_definitions(self):
-        if "_with_val" not in self.defs_file_path:
+        file_pattern_string = f"_with_val_file_idx_{self._file_save_idx}_"
+        if file_pattern_string not in self.defs_file_path:
             base_path, extension = os.path.splitext(self.defs_file_path)
             output_path = (
-                f"{base_path}_with_val{extension}"
+                f"{base_path}{file_pattern_string}{extension}"
                 if extension
-                else f"{self.defs_file_path}_with_val"
+                else f"{self.defs_file_path}{file_pattern_string}"
             )
         else:
             output_path = self.defs_file_path
