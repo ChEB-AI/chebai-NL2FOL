@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 import os
 import queue
@@ -6,6 +7,7 @@ import time
 import traceback
 from importlib import import_module
 
+import tqdm
 from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
@@ -16,6 +18,8 @@ from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 assert sys.version_info >= (3, 11), "Python 3.11 or newer is required."
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["check_if_definition_matches_samples"]
 
@@ -80,7 +84,7 @@ def _raise_worker_error(
         worker_error
     )
     if PRINT_TRACES:
-        print(error_message, error_trace, sep="\n")
+        logger.error("%s\n%s", error_message, error_trace)
 
     exception_cls = _resolve_exception_class(exc_module, exc_qualname)
     if exception_cls is not None:
@@ -157,12 +161,16 @@ def check_if_definition_matches_samples(
 
     pos_samples_list = list(pos_samples)
     neg_samples_list = list(neg_samples)
-    print(
-        f"\n[{chemical_class.id}:{chemical_class.name}:sample-matching] Starting validation for "
-        f"{chemical_class.name} | "
-        f"pos={len(pos_samples_list)} neg={len(neg_samples_list)} "
-        f"timeout={sample_matching_timeout_seconds if sample_matching_timeout_seconds is not None else 'none'}",
-        flush=True,
+    logger.info(
+        "[%s:%s:sample-matching] Starting validation for %s | pos=%d neg=%d timeout=%s",
+        chemical_class.id,
+        chemical_class.name,
+        chemical_class.name,
+        len(pos_samples_list),
+        len(neg_samples_list),
+        sample_matching_timeout_seconds
+        if sample_matching_timeout_seconds is not None
+        else "none",
     )
     ctx = multiprocessing.get_context("fork")
     pos_result_queue = ctx.Queue()
@@ -212,10 +220,11 @@ def check_if_definition_matches_samples(
                 elif outcome == "inferred_no_match":
                     inferred_no_match_pos.add(smiles)
                 elif outcome == "timeout":
-                    print(
-                        f"[{chemical_class.id}:{chemical_class.name}] Positive worker "
-                        f"reported timeout for SMILES: {smiles}",
-                        flush=True,
+                    logger.warning(
+                        "[%s:%s] Positive worker reported timeout for SMILES: %s",
+                        chemical_class.id,
+                        chemical_class.name,
+                        smiles,
                     )
                 elif outcome == "error":
                     error_pos.add(smiles)
@@ -223,17 +232,19 @@ def check_if_definition_matches_samples(
                     unknown_pos.add(smiles)
             elif event_type == "done":
                 pos_worker_completed = True
-                print(
-                    f"[{chemical_class.id}:{chemical_class.name}] Positive worker reported done.",
-                    flush=True,
+                logger.info(
+                    "[%s:%s] Positive worker reported done.",
+                    chemical_class.id,
+                    chemical_class.name,
                 )
             elif event_type == "error":
                 pos_worker_error = _parse_error_event(event)
                 error_message = pos_worker_error[0]
-                print(
-                    f"[{chemical_class.id}:{chemical_class.name}] Positive worker reported error: "
-                    f"{error_message}",
-                    flush=True,
+                logger.error(
+                    "[%s:%s] Positive worker reported error: %s",
+                    chemical_class.id,
+                    chemical_class.name,
+                    error_message,
                 )
 
     def drain_neg_queue() -> None:
@@ -258,10 +269,11 @@ def check_if_definition_matches_samples(
                 elif outcome == "inferred_no_match":
                     inferred_no_match_neg.add(smiles)
                 elif outcome == "timeout":
-                    print(
-                        f"[{chemical_class.id}:{chemical_class.name}] Negative worker "
-                        f"reported timeout for SMILES: {smiles}",
-                        flush=True,
+                    logger.warning(
+                        "[%s:%s] Negative worker reported timeout for SMILES: %s",
+                        chemical_class.id,
+                        chemical_class.name,
+                        smiles,
                     )
                     timeout_neg.add(smiles)
                 elif outcome == "error":
@@ -270,25 +282,29 @@ def check_if_definition_matches_samples(
                     unknown_neg.add(smiles)
             elif event_type == "done":
                 neg_worker_completed = True
-                print(
-                    f"[{chemical_class.id}:{chemical_class.name}] Negative worker reported done.",
-                    flush=True,
+                logger.info(
+                    "[%s:%s] Negative worker reported done.",
+                    chemical_class.id,
+                    chemical_class.name,
                 )
             elif event_type == "error":
                 neg_worker_error = _parse_error_event(event)
                 error_message = neg_worker_error[0]
-                print(
-                    f"[{chemical_class.id}:{chemical_class.name}] Negative worker reported error: "
-                    f"{error_message}",
-                    flush=True,
+                logger.error(
+                    "[%s:%s] Negative worker reported error: %s",
+                    chemical_class.id,
+                    chemical_class.name,
+                    error_message,
                 )
 
     pos_worker.start()
     neg_worker.start()
-    print(
-        f"[{chemical_class.id}:{chemical_class.name}] Spawned workers "
-        f"(pos_pid={pos_worker.pid}, neg_pid={neg_worker.pid}).",
-        flush=True,
+    logger.info(
+        "[%s:%s] Spawned workers (pos_pid=%s, neg_pid=%s).",
+        chemical_class.id,
+        chemical_class.name,
+        pos_worker.pid,
+        neg_worker.pid,
     )
 
     deadline = (
@@ -320,11 +336,15 @@ def check_if_definition_matches_samples(
         if len(timeout_pos) > MAX_TIMEOUTS or len(timeout_neg) > MAX_TIMEOUTS:
             # If a worker accumulates too many timeouts, terminate that worker to avoid runaway work.
             # See: https://github.com/sfluegel05/chemlog-peptides/issues/16
-            print(
-                f"[{chemical_class.id}:{chemical_class.name}] Worker exceeded {MAX_TIMEOUTS} "
-                f"timeouts (pos={len(timeout_pos)}, neg={len(timeout_neg)}, "
-                f"max={max(len(timeout_pos), len(timeout_neg))}); terminating positive and negative workers to prevent runaway processing.",
-                flush=True,
+            logger.warning(
+                "[%s:%s] Worker exceeded %d timeouts (pos=%d, neg=%d, max=%d); "
+                "terminating positive and negative workers to prevent runaway processing.",
+                chemical_class.id,
+                chemical_class.name,
+                MAX_TIMEOUTS,
+                len(timeout_pos),
+                len(timeout_neg),
+                max(len(timeout_pos), len(timeout_neg)),
             )
             if pos_worker.is_alive():
                 # terminate positive worker
@@ -366,19 +386,24 @@ def check_if_definition_matches_samples(
 
         now = time.monotonic()
         if deadline is not None and now - last_progress_report >= 5:
-            print(
-                f"[{chemical_class.id}:{chemical_class.name}] Progress "
-                f"pos={len(processed_pos_smiles)}/{len(pos_samples_list)} "
-                f"neg={len(processed_neg_smiles)}/{len(neg_samples_list)} "
-                f"remaining={max(0, int(deadline - now))}s",
-                flush=True,
+            logger.info(
+                "[%s:%s] Progress pos=%d/%d neg=%d/%d remaining=%ds",
+                chemical_class.id,
+                chemical_class.name,
+                len(processed_pos_smiles),
+                len(pos_samples_list),
+                len(processed_neg_smiles),
+                len(neg_samples_list),
+                max(0, int(deadline - now)),
             )
             last_progress_report = now
 
     if timed_out and (pos_worker.is_alive() or neg_worker.is_alive()):
-        print(
-            f"[{chemical_class.id}:{chemical_class.name}] Sample matching subprocesses exceeded "
-            f"{sample_matching_timeout_seconds} seconds and was terminated."
+        logger.warning(
+            "[%s:%s] Sample matching subprocesses exceeded %s seconds and was terminated.",
+            chemical_class.id,
+            chemical_class.name,
+            sample_matching_timeout_seconds,
         )
         if pos_worker.is_alive():
             pos_worker.terminate()
@@ -447,19 +472,27 @@ def check_if_definition_matches_samples(
         )
 
     if timed_out:
-        print(
-            f"[{chemical_class.id}:{chemical_class.name}] Sample matching timed out; returning partial results."
+        logger.warning(
+            "[%s:%s] Sample matching timed out; returning partial results.",
+            chemical_class.id,
+            chemical_class.name,
         )
 
-    print(
-        f"[{chemical_class.id}:{chemical_class.name}] Unmatched positive (FN) samples: {len(unmatched_pos_samples)}/"
-        f"{len(processed_pos_samples)} processed "
-        f"(total available: {len(pos_samples)})"
+    logger.info(
+        "[%s:%s] Unmatched positive (FN) samples: %d/%d processed (total available: %d)",
+        chemical_class.id,
+        chemical_class.name,
+        len(unmatched_pos_samples),
+        len(processed_pos_samples),
+        len(pos_samples),
     )
-    print(
-        f"[{chemical_class.id}:{chemical_class.name}] Matched negative (FP) samples: {len(matched_neg_samples)}/"
-        f"{len(processed_neg_samples)} processed "
-        f"(total available: {len(neg_samples)})"
+    logger.info(
+        "[%s:%s] Matched negative (FP) samples: %d/%d processed (total available: %d)",
+        chemical_class.id,
+        chemical_class.name,
+        len(matched_neg_samples),
+        len(processed_neg_samples),
+        len(neg_samples),
     )
     # Return all outcome tracking data with the standard TP/FP/TN/FN outcomes
     return {
@@ -521,32 +554,40 @@ def _check_samples_worker(
             return "unknown"
 
     try:
-        print(
-            f"[{chemical_class.id}:{chemical_class.name}] Worker PID={os.getpid()} starting "
-            f"{total_samples} samples.",
-            flush=True,
+        logger.info(
+            "[%s:%s] Worker PID=%s starting %d %s samples.",
+            chemical_class.id,
+            chemical_class.name,
+            os.getpid(),
+            total_samples,
+            label,
         )
-        for idx, chemical in enumerate(samples, start=1):
-            matched = is_matched(chemical)
-            # Record all outcome types, not just True/False
-            result_queue.put((event_type, chemical.smiles, matched))
-            if idx == 1 or idx % 25 == 0 or idx == total_samples:
-                print(
-                    f"[{chemical_class.id}:{chemical_class.name}:{label}] "
-                    f"processed {idx}/{total_samples} ",
-                    #f"(smiles={chemical.smiles}, matched={matched})",
-                    flush=True,
-                )
+        with tqdm.tqdm(
+            samples,
+            total=total_samples,
+            desc=f"[{chemical_class.id}:{chemical_class.name}:{label}]",
+        ) as progress:
+            for chemical in progress:
+                matched = is_matched(chemical)
+                # Record all outcome types, not just True/False
+                result_queue.put((event_type, chemical.smiles, matched))
 
         result_queue.put(("done",))
-        print(
-            f"[{chemical_class.id}:{chemical_class.name}:{label}] Worker PID={os.getpid()} completed.",
-            flush=True,
+        logger.info(
+            "[%s:%s:%s] Worker PID=%s completed.",
+            chemical_class.id,
+            chemical_class.name,
+            label,
+            os.getpid(),
         )
     except Exception as e:
-        print(
-            f"[{chemical_class.id}:{chemical_class.name}:{label}] Worker PID={os.getpid()} failed: {e}",
-            flush=True,
+        logger.exception(
+            "[%s:%s:%s] Worker PID=%s failed: %s",
+            chemical_class.id,
+            chemical_class.name,
+            label,
+            os.getpid(),
+            e,
         )
         error_trace = traceback.format_exc()
         exception_type = type(e)
