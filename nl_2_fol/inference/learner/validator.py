@@ -6,6 +6,7 @@ import queue
 import tempfile
 import time
 from collections import deque
+from typing import Optional
 
 import tqdm
 
@@ -50,13 +51,13 @@ class PerformValidation(BaseFOL):
         self.defs_file_path = defs_file_path
         self._loaded_defs = self._load_definitions(defs_file_path)
         self.counter = 0
-        self._file_save_idx : Optional[int] = None
+        self._file_save_idx: Optional[int] = None
 
     def validate(
         self,
         class_names: list[str] | None = None,
-        file_save_index: Optional[int] = None, 
-    ):  
+        file_save_index: Optional[int] = None,
+    ):
 
         selected_classes = None
         if class_names is not None:
