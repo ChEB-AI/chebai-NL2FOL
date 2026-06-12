@@ -32,7 +32,7 @@ WorkerError = tuple[
     dict | None,
 ]
 
-MAX_TIMEOUTS = 50
+MAX_TIMEOUTS = 30
 
 
 def _parse_error_event(event: tuple) -> WorkerError:
