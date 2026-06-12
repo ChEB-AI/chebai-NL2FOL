@@ -533,8 +533,8 @@ def _check_samples_worker(
             if idx == 1 or idx % 25 == 0 or idx == total_samples:
                 print(
                     f"[{chemical_class.id}:{chemical_class.name}:{label}] "
-                    f"processed {idx}/{total_samples} "
-                    f"(smiles={chemical.smiles}, matched={matched})",
+                    f"processed {idx}/{total_samples} ",
+                    #f"(smiles={chemical.smiles}, matched={matched})",
                     flush=True,
                 )
 
