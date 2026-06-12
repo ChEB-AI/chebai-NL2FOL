@@ -6,6 +6,8 @@ from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
 from nl_2_fol.inference.learner.validator import PerformValidation
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.llm_inference import API_PLATFORM
+from typing import Optional
+
 
 # should be the root of the repo
 # eg. G:\github-aditya0by0\chebai-NL2FOL\
