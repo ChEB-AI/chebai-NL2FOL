@@ -6,9 +6,16 @@ from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.learner.definition_model import (
     AdditionalDefinition,
     DefinitionLearningResults,
+    DefinitionMetrics,
     FOLFormula,
 )
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
+
+
+def print_metrics(metrics: DefinitionMetrics):
+    for metric_name, value in metrics.__dict__.items():
+        if metric_name not in ("fp_smiles", "fn_smiles", "timeout_smiles"):
+            print(f"{metric_name}: {value}")
 
 
 def print_pickle_contents(
@@ -35,9 +42,11 @@ def print_pickle_contents(
             print(
                 f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
             )
-            print(f"Train Metrics: {learned_def.train_metrics}")
+            print("Training Metrics:")
+            print_metrics(learned_def.train_metrics)
             if learned_def.val_metrics is not None:
-                print(f"Validation Metrics: {learned_def.val_metrics}")
+                print("Validation Metrics:")
+                print_metrics(learned_def.val_metrics)
             print(f"Formula: {learned_def.learned_FOL.formula}")
             print(f"Learned success: {learned_def.learn_success}")
 
