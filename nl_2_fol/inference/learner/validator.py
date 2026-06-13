@@ -32,6 +32,7 @@ from nl_2_fol.inference.learner.base import BaseFOL
 # As a starting point, using roughly 25–50% of available CPU cores as
 # worker processes is recommended for large symbolic validation workloads.
 MAX_PROCESSES = 32
+# Also change `_MAX_VALIDATION_WORKERS` in `sample_matching_worker.py` for corresponding seperate progress bars
 
 
 class PerformValidation(BaseFOL):
