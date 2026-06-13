@@ -394,18 +394,25 @@ if __name__ == "__main__":
             "inference",
             "learner",
             "learned",
-            "claude-opus-4-6",
-            "learned_definitions_a3_with_val.pkl",
+            # "claude-opus-4-6",
+            "claude_simon_with_val_file_idx_6_.pkl",
         ),
         slim_dataset_path=os.path.join(DATA_DIR, "classes_slim.csv"),
         structures_path=os.path.join(DATA_DIR, "structures.csv"),
     )
 
+    with open("classes_6.txt", "r") as f:
+        classes = [line.strip() for line in f]
+
     classes_to_validate = [
         learned_def.name
         for _, learned_def in Validator._loaded_defs.learned_definitions.items()
-        if learned_def.learn_success and learned_def.val_metrics is None
+        if learned_def.learn_success
+        and learned_def.val_metrics is None
+        and learned_def.name in classes
     ]
 
-    print(f"Classes to validate: {len(classes_to_validate)}")
     [print(f"{class_name}") for class_name in classes_to_validate]
+    print(f"Classes to validate: {len(classes_to_validate)}")
+
+    Validator.validate(class_names=classes, file_save_index=6)
