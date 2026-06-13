@@ -23,55 +23,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["check_if_definition_matches_samples"]
 
-# ---------------------------------------------------------------------------
-# Cross-process progress-bar coordination
-#
-# Validation forks a tree of processes: the top-level validator forks one
-# process per chemical class, and each of those forks a positive and a negative
-# sample-matching worker. Every process draws its own tqdm bar to the same
-# terminal. tqdm's position handling and write lock are per-process, so without
-# coordination these bars overwrite one another and interleave across processes.
-#
-# These shared primitives are created once in the main process at import time
-# (base.py imports this module before any fork), so every forked descendant
-# inherits the *same* lock and slot table:
-#   * a shared write lock serializes terminal writes across all processes, and
-#   * a shared slot table hands each bar a unique terminal line (recycled on
-#     close) so bars from different processes never share a line.
-# ---------------------------------------------------------------------------
-_BAR_CTX = multiprocessing.get_context("fork")
-_TQDM_WRITE_LOCK = _BAR_CTX.RLock()
-# Mirrors validator.MAX_PROCESSES (importing it here would be circular). Slot 0
-# is left for the top-level "Validating definitions" bar; each validation worker
-# needs at most two lines (positive + negative), so reserve two slots per worker.
-_MAX_VALIDATION_WORKERS = 32
-_BAR_SLOTS = _BAR_CTX.Array("b", 1 + 2 * _MAX_VALIDATION_WORKERS)
-
-# Route every tqdm bar (here and in validator.py) through the shared lock.
-tqdm.tqdm.set_lock(_TQDM_WRITE_LOCK)
-
-
-def _acquire_bar_slot() -> int:
-    """Reserve a unique terminal line for a tqdm bar and return its position.
-
-    Slot 0 is reserved for the top-level bar, so sample bars take slots >= 1.
-    If every slot is busy (more concurrent bars than reserved lines), the last
-    line is shared rather than failing.
-    """
-    with _BAR_SLOTS.get_lock():
-        for idx in range(1, len(_BAR_SLOTS)):
-            if not _BAR_SLOTS[idx]:
-                _BAR_SLOTS[idx] = 1
-                return idx
-    return len(_BAR_SLOTS) - 1
-
-
-def _release_bar_slot(position: int) -> None:
-    """Free a previously reserved terminal line so other bars can reuse it."""
-    with _BAR_SLOTS.get_lock():
-        if 0 <= position < len(_BAR_SLOTS):
-            _BAR_SLOTS[position] = 0
-
 WorkerError = tuple[
     str,
     str,
@@ -611,23 +562,15 @@ def _check_samples_worker(
             total_samples,
             label,
         )
-        # Reserve a dedicated terminal line so this bar never collides with
-        # bars from sibling/parent processes; freed for reuse when it closes.
-        bar_position = _acquire_bar_slot()
-        try:
-            with tqdm.tqdm(
-                samples,
-                total=total_samples,
-                desc=f"[{chemical_class.id}:{chemical_class.name}:{label}]",
-                position=bar_position,
-                leave=False,
-            ) as progress:
-                for chemical in progress:
-                    matched = is_matched(chemical)
-                    # Record all outcome types, not just True/False
-                    result_queue.put((event_type, chemical.smiles, matched))
-        finally:
-            _release_bar_slot(bar_position)
+        with tqdm.tqdm(
+            samples,
+            total=total_samples,
+            desc=f"[{chemical_class.id}:{chemical_class.name}:{label}]",
+        ) as progress:
+            for chemical in progress:
+                matched = is_matched(chemical)
+                # Record all outcome types, not just True/False
+                result_queue.put((event_type, chemical.smiles, matched))
 
         result_queue.put(("done",))
         logger.info(
