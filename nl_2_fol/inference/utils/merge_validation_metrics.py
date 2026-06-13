@@ -4,6 +4,8 @@ from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
 
+from . import print_metrics
+
 
 def _load_definitions(pickle_path: Path) -> DefinitionLearningResults:
     with pickle_path.open("rb") as f:
@@ -57,12 +59,14 @@ def merge_validation_metrics(
 
         if class_id not in target_definitions.learned_definitions:
             raise ValueError(
-                f"Class id {class_id} from second pickle not found in first pickle."
+                f"Class id {class_id}:{learned_def.name} from second pickle not found in first pickle."
             )
 
         if _has_validation_metric(target_definitions, class_id):
             raise ValueError(
-                f"Class id {class_id} already has validation metrics in first pickle."
+                f"Class id {class_id}:{target_definitions.learned_definitions[class_id].name} already has validation metrics in first pickle."
+                f"Target: {print_metrics(target_definitions.learned_definitions[class_id].val_metrics)}, ",
+                f"Source: {print_metrics(learned_def.val_metrics)}",
             )
         else:
             merged_count += 1
