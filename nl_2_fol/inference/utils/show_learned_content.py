@@ -8,9 +8,8 @@ from nl_2_fol.inference.learner.definition_model import (
     DefinitionLearningResults,
     FOLFormula,
 )
+from nl_2_fol.inference.utils import print_metrics
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
-
-from . import print_metrics
 
 
 def print_pickle_contents(

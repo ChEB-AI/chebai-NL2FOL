@@ -460,10 +460,8 @@ def check_if_definition_matches_samples(
         and chemical.smiles in (matched_neg_samples | unmatched_neg_samples)
     }
 
-    if (
-        split == "train"
-        and len(processed_pos_samples) == 0
-        and len(processed_neg_samples) == 0
+    if split == "train" and (
+        len(processed_pos_samples) == 0 or len(processed_neg_samples) == 0
     ):
         raise TimeoutError(
             f"[{chemical_class.id}:{chemical_class.name}] No samples were processed within "

@@ -3,8 +3,7 @@ import pickle
 from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
-
-from . import print_metrics
+from nl_2_fol.inference.utils import print_metrics
 
 
 def _load_definitions(pickle_path: Path) -> DefinitionLearningResults:
