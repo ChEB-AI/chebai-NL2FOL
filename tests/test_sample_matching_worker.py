@@ -90,10 +90,10 @@ class TestCheckIfDefinitionMatchesSamples:
     # ------------------------------------------------------------------ #
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
-    def test_timeout_returns_partial_results(
+    def test_timeout_with_only_positive_partial_results_raises_timeout_error(
         self, mock_mp, common_inputs, timeout_proc_mocks
     ):
-        """When workers are terminated due to timeout, already-queued results are returned."""
+        """When no negative samples are processed before timeout, TimeoutError is raised."""
         mock_pos_proc, mock_neg_proc = timeout_proc_mocks
 
         # pos queue holds one result emitted before the timeout
@@ -110,44 +110,15 @@ class TestCheckIfDefinitionMatchesSamples:
             "nl_2_fol.inference.learner.sample_matching_worker.time.monotonic",
             side_effect=itertools.count(100),
         ):
-            result = check_if_definition_matches_samples(
-                gavel=common_inputs["gavel"],
-                sample_matching_timeout_seconds=1,
-                chemical_class=common_inputs["chemical_class"],
-                tptp_def=common_inputs["tptp_def"],
-                pos_samples=common_inputs["pos_samples"],
-                neg_samples=common_inputs["neg_samples"],
-            )
-
-        outcomes, processed = result
-
-        # benzene was matched (True) so it is not a false-negative
-        assert len(outcomes["unmatched_pos_samples"]) == 0
-        # no neg results were processed before the timeout
-        assert len(outcomes["matched_neg_samples"]) == 0
-        assert len(processed["processed_neg_samples"]) == 0
-        # benzene was processed
-        assert len(processed["processed_pos_samples"]) == 1
-        assert next(iter(processed["processed_pos_samples"])).smiles == "c1ccccc1"
-        assert set(outcomes.keys()).issuperset(
-            {
-                "inferred_match_pos",
-                "inferred_match_neg",
-                "inferred_no_match_pos",
-                "inferred_no_match_neg",
-                "timeout_pos",
-                "timeout_neg",
-                "error_pos",
-                "error_neg",
-                "unknown_pos",
-                "unknown_neg",
-            }
-        )
-        assert all(
-            len(samples) == 0
-            for k, samples in outcomes.items()
-            if k.startswith(("inferred_", "timeout_", "error_", "unknown_"))
-        )
+            with pytest.raises(TimeoutError, match="No samples were processed"):
+                check_if_definition_matches_samples(
+                    gavel=common_inputs["gavel"],
+                    sample_matching_timeout_seconds=1,
+                    chemical_class=common_inputs["chemical_class"],
+                    tptp_def=common_inputs["tptp_def"],
+                    pos_samples=common_inputs["pos_samples"],
+                    neg_samples=common_inputs["neg_samples"],
+                )
 
         mock_pos_proc.terminate.assert_called_once()
         mock_neg_proc.terminate.assert_called_once()
@@ -156,7 +127,7 @@ class TestCheckIfDefinitionMatchesSamples:
     def test_timeout_with_partial_false_negatives(
         self, mock_mp, common_inputs, timeout_proc_mocks
     ):
-        """Partial results that include unmatched positive samples are reported correctly."""
+        """Partial positive results still raise when no negative samples are processed."""
         mock_pos_proc, mock_neg_proc = timeout_proc_mocks
 
         pos_q: queue.Queue = queue.Queue()
@@ -172,37 +143,15 @@ class TestCheckIfDefinitionMatchesSamples:
             "nl_2_fol.inference.learner.sample_matching_worker.time.monotonic",
             side_effect=itertools.count(100),
         ):
-            outcomes, processed = check_if_definition_matches_samples(
-                gavel=common_inputs["gavel"],
-                sample_matching_timeout_seconds=1,
-                chemical_class=common_inputs["chemical_class"],
-                tptp_def=common_inputs["tptp_def"],
-                pos_samples=common_inputs["pos_samples"],
-                neg_samples=common_inputs["neg_samples"],
-            )
-
-        assert "c1ccccc1" in outcomes["unmatched_pos_samples"]
-        assert len(processed["processed_pos_samples"]) == 1
-        assert len(processed["processed_neg_samples"]) == 0
-        assert set(outcomes.keys()).issuperset(
-            {
-                "inferred_match_pos",
-                "inferred_match_neg",
-                "inferred_no_match_pos",
-                "inferred_no_match_neg",
-                "timeout_pos",
-                "timeout_neg",
-                "error_pos",
-                "error_neg",
-                "unknown_pos",
-                "unknown_neg",
-            }
-        )
-        assert all(
-            len(samples) == 0
-            for k, samples in outcomes.items()
-            if k.startswith(("inferred_", "timeout_", "error_", "unknown_"))
-        )
+            with pytest.raises(TimeoutError, match="No samples were processed"):
+                check_if_definition_matches_samples(
+                    gavel=common_inputs["gavel"],
+                    sample_matching_timeout_seconds=1,
+                    chemical_class=common_inputs["chemical_class"],
+                    tptp_def=common_inputs["tptp_def"],
+                    pos_samples=common_inputs["pos_samples"],
+                    neg_samples=common_inputs["neg_samples"],
+                )
 
     @patch("nl_2_fol.inference.learner.sample_matching_worker.multiprocessing")
     def test_timeout_with_no_results_raises_timeout_error(
