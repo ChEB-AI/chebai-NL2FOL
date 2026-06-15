@@ -563,7 +563,7 @@ def _check_samples_worker(
         with tqdm.tqdm(
             samples,
             total=total_samples,
-            desc=f"[{chemical_class.id}:{chemical_class.name}:{label}]",
+            desc=f"[ChEBI:{chemical_class.id}:{chemical_class.name}:{label}:Pid:{os.getpid()}]",
         ) as progress:
             for chemical in progress:
                 matched = is_matched(chemical)
