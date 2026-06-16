@@ -1,12 +1,10 @@
 import argparse
 import csv
 import json
-import os
 import pickle
 from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
-from nl_2_fol.prompting.custom_api._test_inference import PROJECT_DIR
 
 
 def _load_c3p_trust(c3p_path: Path) -> dict[int, dict[str, float]]:
