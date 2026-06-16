@@ -1,10 +1,14 @@
 """Tests for MistralCustomFOLReasoner class."""
 
 import pytest
+
+# pytest.skip("Skipping Mistral reasoner tests.", allow_module_level=True)
 from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from rdkit import Chem
 
-from nl_2_fol.inference.fol_reasoner import MistralCustomFOLReasoner
+from nl_2_fol.inference.fol_reasoner.finetuned_mistral_reasoner.mistral_fol_to_tptp import (
+    MistralCustomFOLReasoner,
+)
 
 
 class TestMistralCustomFOLReasoner:

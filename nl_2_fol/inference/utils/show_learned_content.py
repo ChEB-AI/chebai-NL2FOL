@@ -8,6 +8,7 @@ from nl_2_fol.inference.learner.definition_model import (
     DefinitionLearningResults,
     FOLFormula,
 )
+from nl_2_fol.inference.utils import print_metrics
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
@@ -25,19 +26,21 @@ def print_pickle_contents(
     FOUND_CLASS = False
 
     def _print_def(class_name):
-        for _, learned_def in data.learned_definitions.items():
+        for chebi_id, learned_def in data.learned_definitions.items():
             if class_name != "all" and learned_def.name != class_name:
                 continue
 
             nonlocal FOUND_CLASS
             FOUND_CLASS = True
-            print(f"Learned definition for predicate: {learned_def.name}")
+            print(
+                f"Learned definition for predicate: {learned_def.name} (CHEBI ID: {chebi_id})"
+            )
             print(
                 f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
             )
-            print(f"Train Metrics: {learned_def.train_metrics}")
+            print("Training Metrics:", print_metrics(learned_def.train_metrics))
             if learned_def.val_metrics is not None:
-                print(f"Validation Metrics: {learned_def.val_metrics}")
+                print("Validation Metrics:", print_metrics(learned_def.val_metrics))
             print(f"Formula: {learned_def.learned_FOL.formula}")
             print(f"Learned success: {learned_def.learn_success}")
 
@@ -65,6 +68,7 @@ def print_pickle_contents(
                 else:
                     for c_his in conv_his:
                         print(c_his)
+                        print()
             print("---" * 10)
 
         for name, add_def in data.additional_definitions.items():

@@ -6,6 +6,8 @@ from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
 from nl_2_fol.inference.learner.validator import PerformValidation
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.llm_inference import API_PLATFORM
+from typing import Optional
+
 
 # should be the root of the repo
 # eg. G:\github-aditya0by0\chebai-NL2FOL\
@@ -68,6 +70,7 @@ class Main:
         defs_file_path: str,  # nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions.pkl
         class_name: str | None = None,
         class_names_txt_file_path: str | None = None,
+        file_save_index: Optional[int] = None,
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
@@ -104,11 +107,16 @@ class Main:
             )
 
         if class_names_txt_file_path is not None:
+            if file_save_index is None:
+                raise ValueError("Need file save index with classes list")
+
             with open(class_names_txt_file_path, "r") as f:
                 class_names = [line.strip() for line in f]
             if len(class_names) == 0:
                 raise ValueError("class_names_txt_file is empty.")
-            validator.validate(class_names=class_names)
+            validator.validate(
+                class_names=class_names, file_save_index=int(file_save_index)
+            )
         elif class_name == "all":
             # validate all classes in the definitions file (this is a single-job, non-parallel option)
             validator.validate()

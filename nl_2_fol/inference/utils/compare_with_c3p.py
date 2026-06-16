@@ -1,12 +1,10 @@
 import argparse
 import csv
 import json
-import os
 import pickle
 from pathlib import Path
 
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
-from nl_2_fol.prompting.custom_api._test_inference import PROJECT_DIR
 
 
 def _load_c3p_trust(c3p_path: Path) -> dict[int, dict[str, float]]:
@@ -224,18 +222,11 @@ def _parse_args() -> argparse.Namespace:
         help="Path to json file of o3-mini containing val scores (See: https://github.com/chemkg/c3p/pull/23)",
     )
 
-    claude_learned_fp = os.path.join(
-        PROJECT_DIR,
-        "inference",
-        "learner",
-        "learned",
-        "claude-opus-4-6",
-        "learned_definitions_a3_with_val.pkl",
-    )
     parser.add_argument(
         "--learned-pickle",
         type=Path,
-        default=claude_learned_fp,
+        required=True,
+        # default=claude_learned_fp,
         help="Path to learned definitions pickle file.",
     )
     parser.add_argument(
