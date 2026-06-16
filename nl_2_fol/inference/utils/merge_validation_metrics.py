@@ -62,11 +62,16 @@ def merge_validation_metrics(
             )
 
         if _has_validation_metric(target_definitions, class_id):
-            # raise ValueError(
-            #     f"Class id {class_id}:{target_definitions.learned_definitions[class_id].name} already has validation metrics in first pickle."
-            #     f"\n\nTarget: {print_metrics(target_definitions.learned_definitions[class_id].val_metrics)}, ",
-            #     f"\n\nSource: {print_metrics(learned_def.val_metrics)}",
-            # )
+            if (
+                learned_def.val_metrics.F1
+                != target_definitions.learned_definitions[class_id].val_metrics.F1
+            ):
+                raise ValueError(
+                    f"Class id {class_id}:{target_definitions.learned_definitions[class_id].name} f1 score doesn't match",
+                    f"\n\nTarget: {print_metrics(target_definitions.learned_definitions[class_id].val_metrics)}, ",
+                    f"\n\nSource: {print_metrics(learned_def.val_metrics)}",
+                )
+
             skipped_conflict_count += 1
         else:
             merged_count += 1

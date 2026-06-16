@@ -114,7 +114,9 @@ class Main:
                 class_names = [line.strip() for line in f]
             if len(class_names) == 0:
                 raise ValueError("class_names_txt_file is empty.")
-            validator.validate(class_names=class_names, file_save_index=int(file_save_index))
+            validator.validate(
+                class_names=class_names, file_save_index=int(file_save_index)
+            )
         elif class_name == "all":
             # validate all classes in the definitions file (this is a single-job, non-parallel option)
             validator.validate()

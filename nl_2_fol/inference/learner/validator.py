@@ -58,7 +58,6 @@ class PerformValidation(BaseFOL):
         class_names: list[str] | None = None,
         file_save_index: Optional[int] = None,
     ):
-
         selected_classes = None
         if class_names is not None:
             if file_save_index is None:
