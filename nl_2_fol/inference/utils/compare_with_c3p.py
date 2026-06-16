@@ -224,14 +224,6 @@ def _parse_args() -> argparse.Namespace:
         help="Path to json file of o3-mini containing val scores (See: https://github.com/chemkg/c3p/pull/23)",
     )
 
-    claude_learned_fp = os.path.join(
-        PROJECT_DIR,
-        "inference",
-        "learner",
-        "learned",
-        "claude-opus-4-6",
-        "learned_definitions_a3_with_val.pkl",
-    )
     parser.add_argument(
         "--learned-pickle",
         type=Path,
