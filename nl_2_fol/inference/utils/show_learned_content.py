@@ -68,6 +68,7 @@ def print_pickle_contents(
                 else:
                     for c_his in conv_his:
                         print(c_his)
+                        print()
             print("---" * 10)
 
         for name, add_def in data.additional_definitions.items():

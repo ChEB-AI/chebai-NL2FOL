@@ -235,7 +235,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--learned-pickle",
         type=Path,
-        default=claude_learned_fp,
+        required=True,
+        # default=claude_learned_fp,
         help="Path to learned definitions pickle file.",
     )
     parser.add_argument(
