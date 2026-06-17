@@ -4,6 +4,42 @@ AI workflow for natural language to First-Order Logic (FOL) translation for ChEB
 
 <img width="2796" height="1024" alt="fig_landscape" src="https://github.com/user-attachments/assets/58dcf948-4645-4523-bb02-6120306063a0" />
 
+
+## Data Files
+
+The learning and validation pipelines expect the C3PO slim dataset files under `data/` by default:
+
+```text
+data/classes_slim.csv
+data/structures.csv
+```
+
+Download them from the C3PO dataset on Hugging Face:
+
+- `classes_slim.csv`: https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
+- `structures.csv`: https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
+
+These are the same source links referenced in `nl_2_fol/inference/cli.py` and `nl_2_fol/inference/preprocessing/c3po_slim_data.py`. The C3PO dataset is associated with https://github.com/chemkg/c3p.
+
+If your files live somewhere else, pass explicit paths to the learning or validation commands:
+
+```bash
+python nl_2_fol/inference/cli.py learn \
+  --slim_dataset_path "/path/to/classes_slim.csv" \
+  --structures_data_path "/path/to/structures.csv"
+```
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_name "all" \
+  --slim_dataset_path "/path/to/classes_slim.csv" \
+  --structures_data_path "/path/to/structures.csv"
+```
+
+The C3P comparison utilities also expect score JSON files from the C3P train/validation score output referenced in the utility help text: https://github.com/chemkg/c3p/pull/23
+
+
 ## Start the Learning Pipeline
 
 Run commands from the repository root so the default `data/` and prompt-template paths resolve correctly.
