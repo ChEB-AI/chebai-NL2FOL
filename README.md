@@ -12,12 +12,11 @@ The learning and validation pipelines expect the C3PO slim dataset files under `
 ```text
 data/classes_slim.csv
 data/structures.csv
+dataset.json
 ```
 
-Download them from the C3PO dataset on Hugging Face:
+Download them from the C3PO dataset on Hugging Face: https://huggingface.co/datasets/MonarchInit/C3PO/tree/main
 
-- `classes_slim.csv`: https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
-- `structures.csv`: https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
 
 These are the same source links referenced in `nl_2_fol/inference/cli.py` and `nl_2_fol/inference/preprocessing/c3po_slim_data.py`. The C3PO dataset is associated with https://github.com/chemkg/c3p.
 
