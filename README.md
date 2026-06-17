@@ -4,6 +4,100 @@ AI workflow for natural language to First-Order Logic (FOL) translation for ChEB
 
 <img width="2796" height="1024" alt="fig_landscape" src="https://github.com/user-attachments/assets/58dcf948-4645-4523-bb02-6120306063a0" />
 
+## Start the Learning Pipeline
+
+Run commands from the repository root so the default `data/` and prompt-template paths resolve correctly.
+
+To learn definitions with the default Anthropic configuration:
+
+```bash
+python nl_2_fol/inference/cli.py learn
+```
+
+To learn definitions with the local Ollama Mistral configuration:
+
+```bash
+python nl_2_fol/inference/cli.py learn_mistral
+```
+
+To learn a single ChEBI class instead of all classes:
+
+```bash
+python nl_2_fol/inference/cli.py learn --class_name "ethanol"
+python nl_2_fol/inference/cli.py learn_mistral --class_name "ethanol"
+```
+
+Useful options:
+
+```bash
+python nl_2_fol/inference/cli.py learn \
+  --api_platform "anthropic" \
+  --model_name "claude-opus-4-6" \
+  --max_attempts 3 \
+  --f1_threshold 0.8
+```
+
+Learning output is saved under:
+
+```text
+nl_2_fol/inference/learner/learned/<model_name>/learned_definitions_a<max_attempts>.pkl
+```
+
+For example, with `model_name="claude-opus-4-6"` and `max_attempts=3`, the definitions file is:
+
+```text
+nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl
+```
+
+## Start the Validation Pipeline
+
+After learning has produced a definitions pickle, validate the learned definitions with:
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_name "all"
+```
+
+To validate only one class:
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_name "ethanol"
+```
+
+Single-class validation writes a small result pickle named after the resolved class in the current working directory, for example `ethanol.pkl`.
+
+For HPC or long validation runs, split the work across jobs by passing a text file with one class name per line. Use a unique `file_save_index` for each job:
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_names_txt_file_path "classes_0.txt" \
+  --file_save_index 0
+```
+
+Full or split validation writes a new definitions pickle next to the input file, for example:
+
+```text
+nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_None_.pkl
+```
+
+When `class_names_txt_file_path` is used, the index appears in the file name, for example:
+
+```text
+nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl
+```
+
+Use `--help` to inspect the full set of options:
+
+```bash
+python nl_2_fol/inference/cli.py learn --help
+python nl_2_fol/inference/cli.py learn_mistral --help
+python nl_2_fol/inference/cli.py validate --help
+```
+
 
 ## Guide: Run a custom model with Ollama on a computing cluster
 
