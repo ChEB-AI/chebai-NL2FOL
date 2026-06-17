@@ -5,6 +5,202 @@ AI workflow for natural language to First-Order Logic (FOL) translation for ChEB
 <img width="2796" height="1024" alt="fig_landscape" src="https://github.com/user-attachments/assets/58dcf948-4645-4523-bb02-6120306063a0" />
 
 
+## Data Files
+
+The learning and validation pipelines expect the C3PO slim dataset files under `data/` by default:
+
+```text
+data/classes_slim.csv
+data/structures.csv
+```
+
+Download them from the C3PO dataset on Hugging Face:
+
+- `classes_slim.csv`: https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
+- `structures.csv`: https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
+
+These are the same source links referenced in `nl_2_fol/inference/cli.py` and `nl_2_fol/inference/preprocessing/c3po_slim_data.py`. The C3PO dataset is associated with https://github.com/chemkg/c3p.
+
+If your files live somewhere else, pass explicit paths to the learning or validation commands:
+
+```bash
+python nl_2_fol/inference/cli.py learn \
+  --slim_dataset_path "/path/to/classes_slim.csv" \
+  --structures_data_path "/path/to/structures.csv"
+```
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_name "all" \
+  --slim_dataset_path "/path/to/classes_slim.csv" \
+  --structures_data_path "/path/to/structures.csv"
+```
+
+The C3P comparison utilities also expect score JSON files from the C3P train/validation score output referenced in the utility help text: https://github.com/chemkg/c3p/pull/23
+
+
+## Start the Learning Pipeline
+
+Run commands from the repository root so the default `data/` and prompt-template paths resolve correctly.
+
+To learn definitions with the default Anthropic configuration:
+
+```bash
+python nl_2_fol/inference/cli.py learn
+```
+
+To learn definitions with the local Ollama Mistral configuration:
+
+```bash
+python nl_2_fol/inference/cli.py learn_mistral
+```
+
+To learn a single ChEBI class instead of all classes:
+
+```bash
+python nl_2_fol/inference/cli.py learn --class_name "ethanol"
+python nl_2_fol/inference/cli.py learn_mistral --class_name "ethanol"
+```
+
+Useful options:
+
+```bash
+python nl_2_fol/inference/cli.py learn \
+  --api_platform "anthropic" \
+  --model_name "claude-opus-4-6" \
+  --max_attempts 3 \
+  --f1_threshold 0.8
+```
+
+Learning output is saved under:
+
+```text
+nl_2_fol/inference/learner/learned/<model_name>/learned_definitions_a<max_attempts>.pkl
+```
+
+For example, with `model_name="claude-opus-4-6"` and `max_attempts=3`, the definitions file is:
+
+```text
+nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl
+```
+
+## Start the Validation Pipeline
+
+After learning has produced a definitions pickle, validate the learned definitions with:
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_name "all"
+```
+
+To validate only one class:
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_name "ethanol"
+```
+
+Single-class validation writes a small result pickle named after the resolved class in the current working directory, for example `ethanol.pkl`.
+
+For HPC or long validation runs, split the work across jobs by passing a text file with one class name per line. Use a unique `file_save_index` for each job:
+
+```bash
+python nl_2_fol/inference/cli.py validate \
+  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  --class_names_txt_file_path "classes_0.txt" \
+  --file_save_index 0
+```
+
+Full or split validation writes a new definitions pickle next to the input file, for example:
+
+```text
+nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_None_.pkl
+```
+
+When `class_names_txt_file_path` is used, the index appears in the file name, for example:
+
+```text
+nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl
+```
+
+Use `--help` to inspect the full set of options:
+
+```bash
+python nl_2_fol/inference/cli.py learn --help
+python nl_2_fol/inference/cli.py learn_mistral --help
+python nl_2_fol/inference/cli.py validate --help
+```
+
+## Utility Scripts
+
+Helper scripts for inspecting, editing, merging, and comparing learned definitions live in:
+
+```text
+nl_2_fol/inference/utils/
+```
+
+Most scripts expect paths to learned definition pickles produced by the learning or validation pipeline.
+
+### Inspect or Edit Learned Definitions
+
+Use `show_learned_content.py` to inspect a learned definitions pickle:
+
+```bash
+python nl_2_fol/inference/utils/show_learned_content.py \
+  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  show
+```
+
+Show one class:
+
+```bash
+python nl_2_fol/inference/utils/show_learned_content.py \
+  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  show \
+  --class-name "ethanol"
+```
+
+Include prompt history while inspecting a class:
+
+```bash
+python nl_2_fol/inference/utils/show_learned_content.py \
+  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  show \
+  --class-name "ethanol" \
+  --system-prompt \
+  --conversation-history
+```
+
+### Merge Validation Metrics
+
+Use `merge_validation_metrics.py` to merge validation metrics from one validated pickle into another definitions pickle:
+
+```bash
+python nl_2_fol/inference/utils/merge_validation_metrics.py \
+  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl" \
+  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_merged.pkl"
+```
+
+The first path is the target/base pickle, the second path is the source pickle containing validation metrics, and the third path is the output pickle.
+
+### Compare With C3P
+
+Use `compare_with_c3p.py` to compare validated learned definitions against C3P score JSON files and export a CSV:
+
+```bash
+python nl_2_fol/inference/utils/compare_with_c3p.py \
+  --ensemble-c3p-json "c3p_ensemble_train_val_scores.json" \
+  --o3-mini-c3p-json "c3p_o3_mini_train_val_scores.json" \
+  --learned-pickle "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl" \
+  --output-csv "comparison_with_c3p_ensemble_o3_mini.csv"
+```
+
+
+
 ## Guide: Run a custom model with Ollama on a computing cluster
 
 This example uses the Mistral FOL model:
