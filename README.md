@@ -98,6 +98,72 @@ python nl_2_fol/inference/cli.py learn_mistral --help
 python nl_2_fol/inference/cli.py validate --help
 ```
 
+## Utility Scripts
+
+Helper scripts for inspecting, editing, merging, and comparing learned definitions live in:
+
+```text
+nl_2_fol/inference/utils/
+```
+
+Most scripts expect paths to learned definition pickles produced by the learning or validation pipeline.
+
+### Inspect or Edit Learned Definitions
+
+Use `show_learned_content.py` to inspect a learned definitions pickle:
+
+```bash
+python nl_2_fol/inference/utils/show_learned_content.py \
+  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  show
+```
+
+Show one class:
+
+```bash
+python nl_2_fol/inference/utils/show_learned_content.py \
+  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  show \
+  --class-name "ethanol"
+```
+
+Include prompt history while inspecting a class:
+
+```bash
+python nl_2_fol/inference/utils/show_learned_content.py \
+  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  show \
+  --class-name "ethanol" \
+  --system-prompt \
+  --conversation-history
+```
+
+### Merge Validation Metrics
+
+Use `merge_validation_metrics.py` to merge validation metrics from one validated pickle into another definitions pickle:
+
+```bash
+python nl_2_fol/inference/utils/merge_validation_metrics.py \
+  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
+  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl" \
+  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_merged.pkl"
+```
+
+The first path is the target/base pickle, the second path is the source pickle containing validation metrics, and the third path is the output pickle.
+
+### Compare With C3P
+
+Use `compare_with_c3p.py` to compare validated learned definitions against C3P score JSON files and export a CSV:
+
+```bash
+python nl_2_fol/inference/utils/compare_with_c3p.py \
+  --ensemble-c3p-json "c3p_ensemble_train_val_scores.json" \
+  --o3-mini-c3p-json "c3p_o3_mini_train_val_scores.json" \
+  --learned-pickle "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl" \
+  --output-csv "comparison_with_c3p_ensemble_o3_mini.csv"
+```
+
+
 
 ## Guide: Run a custom model with Ollama on a computing cluster
 
