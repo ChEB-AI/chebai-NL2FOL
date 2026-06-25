@@ -18,6 +18,9 @@ class ASPDefinition(FOLDefinition):
     def __init__(self, predicate_name: str, variables: List[str], definition: str):
         super().__init__(predicate_name, variables, definition)
 
+    def _implication_operator(self):
+        return ":-"
+
 
 class ASPModelChecker(AbstractModelCheckerWrapper):
     def __init__(self):

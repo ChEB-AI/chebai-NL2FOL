@@ -12,7 +12,7 @@ from nl_2_fol.inference.preprocessing import CHEBI_ID
 class NL2FOLChebiClassifier:
     def __init__(self, definitions_path: str):
         self.definitions_path = definitions_path
-        self._gavel = ChemlogModelChecker()
+        self._model_checker = ChemlogModelChecker()
         self.class_definitions = self._load_definitions(definitions_path)
 
     def classify_smiles(self, smiles: str) -> dict[str, list | None]:
@@ -26,7 +26,7 @@ class NL2FOLChebiClassifier:
         classification = []
 
         for chebi_id, learned_def in self.class_definitions.items():
-            outcome = self._gavel.does_mol_match_tptp_definition(
+            outcome = self._model_checker.does_mol_match_tptp_definition(
                 mol, learned_def.learned_FOL.formula
             )
             if outcome == ModelCheckerOutcome.MODEL_FOUND:
@@ -60,7 +60,7 @@ class NL2FOLChebiClassifier:
         successful_learned_definitions: dict[CHEBI_ID, def_model.LearnedDefinition] = {}
         for chebi_id, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
-                self._gavel.add_background_definition(
+                self._model_checker.add_background_definition(
                     learned_def.learned_FOL.definition
                 )
                 successful_learned_definitions[chebi_id] = learned_def
@@ -71,7 +71,9 @@ class NL2FOLChebiClassifier:
         counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(add_def.fol_formula.definition)
+                self._model_checker.add_background_definition(
+                    add_def.fol_formula.definition
+                )
                 counter += 1
 
         print(f"Loaded {counter} additional definitions")

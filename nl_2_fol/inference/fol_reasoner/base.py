@@ -1,4 +1,5 @@
 import json
+from abc import abstractmethod
 from pathlib import Path
 from typing import List
 
@@ -11,8 +12,18 @@ class FOLDefinition:
         self.variables = variables
         self.definition = definition
 
+    @property
+    @abstractmethod
+    def _implication_operator(self):
+        return "IFF"
+
     def __str__(self):
-        return str(self.definition)
+        variables = self.variables
+        if variables:
+            head = f"{self.predicate_name}({', '.join(str(var) for var in variables)})"
+        else:
+            head = self.predicate_name
+        return f"{head} {self._implication_operator} {self.definition}"
 
 
 class AbstractModelCheckerWrapper:

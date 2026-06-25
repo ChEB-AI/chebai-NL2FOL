@@ -29,13 +29,8 @@ class ChemlogDefinition(FOLDefinition):
     ):
         super().__init__(predicate_name, variables, definition)
 
-    def __str__(self):
-        variables = self.variables
-        if variables:
-            head = f"{self.predicate_name}({', '.join(str(var) for var in variables)})"
-        else:
-            head = self.predicate_name
-        return f"{head} <=> {self.definition}"
+    def _implication_operator(self):
+        return "<=>"
 
 
 class ChemlogModelChecker(AbstractModelCheckerWrapper):
