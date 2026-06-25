@@ -5,14 +5,14 @@ import pickle
 import pytest
 
 from nl_2_fol.classifier.classify import NL2FOLChebiClassifier
-from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
 from nl_2_fol.inference.learner import definition_model as def_model
 
 
 @pytest.fixture(scope="module")
 def sample_learning_results():
     """Create a sample DefinitionLearningResults object for testing."""
-    gavel = GavelFOLReasoner()
+    gavel = ChemlogModelChecker()
     pred_vars_carbon, formula_carbon = gavel.get_tptp_fol_definition(
         "carbonCompound <=> ?[X]: (c(X))"
     )

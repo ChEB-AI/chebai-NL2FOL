@@ -4,7 +4,7 @@ import pickle
 from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from rdkit import Chem
 
-from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.preprocessing import CHEBI_ID
 
@@ -12,7 +12,7 @@ from nl_2_fol.inference.preprocessing import CHEBI_ID
 class NL2FOLChebiClassifier:
     def __init__(self, definitions_path: str):
         self.definitions_path = definitions_path
-        self._gavel = GavelFOLReasoner()
+        self._gavel = ChemlogModelChecker()
         self.class_definitions = self._load_definitions(definitions_path)
 
     def classify_smiles(self, smiles: str) -> dict[str, list | None]:

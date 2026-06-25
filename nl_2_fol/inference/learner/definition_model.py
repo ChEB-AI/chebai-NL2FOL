@@ -1,7 +1,5 @@
 from typing import Any
 
-from gavel.logic import logic
-from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, ConfigDict, Field
 
 from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
@@ -80,9 +78,7 @@ class LearnedDefinition(BaseModel):
     name: str = Field(..., description="rdfs:label of the class in CHEBI")
     definition: str = Field(..., description="definition of the structure from CHEBI")
 
-    additional_defs_used: (
-        dict[str, FOLDefinition] | None
-    ) = Field(
+    additional_defs_used: dict[str, FOLDefinition] | None = Field(
         default=None,
         description="[Field Only for Record, NOT added to Gavel] Additional definitions "
         "used in the learned definition, if any. "
@@ -133,16 +129,14 @@ class ScoredDefinition(BaseModel):
 
     definition: FOLDefinition
     train_metrics: DefinitionMetrics
-    temp_additional_defs: (
-        dict[str, FOLDefinition] | None
-    ) = None
+    temp_additional_defs: dict[str, FOLDefinition] | None = None
 
 
 if __name__ == "__main__":
     # Example usage
-    from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+    from nl_2_fol.inference.fol_reasoner import ChemlogModelChecker
 
-    gavel = GavelFOLReasoner()
+    gavel = ChemlogModelChecker()
     fol_definition_1 = gavel.parse_definition(
         "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
     )
@@ -158,9 +152,7 @@ if __name__ == "__main__":
                 train_metrics=DefinitionMetrics(
                     TP=10, FP=2, FN=3, TN=85, F1=0.83, PPV=0.83, NPV=0.97
                 ),
-                learned_FOL=FOLFormula(
-                    definition=fol_definition_1 
-                ),
+                learned_FOL=FOLFormula(definition=fol_definition_1),
                 prompts_history={
                     "What is the definition of CHEBI:12345?": "A chemical class used for demonstration purposes.",
                     "List the properties of CHEBI:12345.": "Properties of CHEBI:12345.",
@@ -172,9 +164,7 @@ if __name__ == "__main__":
                 train_metrics=DefinitionMetrics(
                     TP=8, FP=1, FN=4, TN=87, F1=0.80, PPV=0.89, NPV=0.96
                 ),
-                learned_FOL=FOLFormula(
-                    definition=fol_definition_2
-                ),
+                learned_FOL=FOLFormula(definition=fol_definition_2),
                 prompts_history={
                     "What is the definition of CHEBI:56645?": "A chemical class used for demonstration purposes.",
                     "List the properties of CHEBI:56645.": "Properties of CHEBI:56645.",
@@ -185,9 +175,7 @@ if __name__ == "__main__":
         },
         additional_definitions={
             "Example": AdditionalDefinition(
-                fol_formula=FOLFormula(
-                    definition=fol_definition_3
-                ),
+                fol_formula=FOLFormula(definition=fol_definition_3),
                 used_for=[12345, 56645],
             )
         },

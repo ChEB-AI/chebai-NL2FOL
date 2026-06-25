@@ -2,7 +2,7 @@ import argparse
 import pickle
 from pathlib import Path
 
-from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner import ChemlogModelChecker
 from nl_2_fol.inference.learner.definition_model import (
     AdditionalDefinition,
     DefinitionLearningResults,
@@ -333,7 +333,7 @@ def upsert_additional_definition_in_pickle(
     original_pickle_bytes = input_path.read_bytes()
     data: DefinitionLearningResults = pickle.loads(original_pickle_bytes)
 
-    reasoner = GavelFOLReasoner()
+    reasoner = ChemlogModelChecker()
     pred_variables, parsed_formula = reasoner.parse_definition(fol_definition)
 
     predicate_name = predicate_name.strip()

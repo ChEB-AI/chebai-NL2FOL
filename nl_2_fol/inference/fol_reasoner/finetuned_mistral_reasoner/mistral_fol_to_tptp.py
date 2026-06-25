@@ -2,14 +2,14 @@ import re
 
 from gavel.logic import logic
 
-from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
 from nl_2_fol.inference.fol_reasoner.finetuned_mistral_reasoner.cfg import (
     CFGParser,
 )
 from nl_2_fol.inference.learner.custom_exceptions import parse_exception
 
 
-class MistralCustomFOLReasoner(GavelFOLReasoner):
+class MistralCustomFOLReasoner(ChemlogModelChecker):
     def __init__(self):
         super().__init__()
         self.math_to_tptp_parser = CFGParser()

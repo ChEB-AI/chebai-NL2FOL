@@ -6,7 +6,7 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
-from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
 from nl_2_fol.inference.learner.custom_exceptions import MissingPredicateException
 
 
@@ -16,7 +16,7 @@ class TestGavelFOLReasoner:
     @pytest.fixture
     def reasoner(self):
         """Create a GavelFOLReasoner instance for testing."""
-        return GavelFOLReasoner()
+        return ChemlogModelChecker()
 
     def test_initialization(self, reasoner):
         """Test that GavelFOLReasoner initializes correctly."""
@@ -63,7 +63,7 @@ class TestGavelFOLReasoner:
         formula = "failed_placeholder_predicate <=> failed_placeholder_predicate"
         reasoner.get_tptp_fol_definition(formula)
 
-    def test_get_tptp_fol_definition_simple(self, reasoner: GavelFOLReasoner):
+    def test_get_tptp_fol_definition_simple(self, reasoner: ChemlogModelChecker):
         """Test parsing a simple FOL definition."""
         formula_str = "simple_pred(x) <=> (p(x) & q(x))"
         pred_vars, formula = reasoner.get_tptp_fol_definition(formula_str)
@@ -72,7 +72,7 @@ class TestGavelFOLReasoner:
         assert isinstance(formula, logic.QuantifiedFormula)
         assert formula.quantifier == logic.Quantifier.EXISTENTIAL
 
-    def test_extract_predicate_variables_single(self, reasoner: GavelFOLReasoner):
+    def test_extract_predicate_variables_single(self, reasoner: ChemlogModelChecker):
         """Test extracting a single variable from predicate definition."""
         formula_str = "new_predicate(X1) <=> ?[X2]: (has_bond(X1, X2) & o(X2))"
         tptp = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).")[0].formula
@@ -82,7 +82,7 @@ class TestGavelFOLReasoner:
         assert isinstance(variables[0], logic.Variable)
         assert str(variables[0]) == "X1"
 
-    def test_extract_predicate_variables_multiple(self, reasoner: GavelFOLReasoner):
+    def test_extract_predicate_variables_multiple(self, reasoner: ChemlogModelChecker):
         """Test extracting multiple variables from predicate definition."""
         formula_str = "multi_pred(X1, X2, X3) <=> (p(X1) & q(X2, X3))"
         tptp = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).")[0].formula
@@ -92,7 +92,7 @@ class TestGavelFOLReasoner:
         assert all(isinstance(v, logic.Variable) for v in variables)
         assert [str(v) for v in variables] == ["X1", "X2", "X3"]
 
-    def test_extract_predicate_variables_none(self, reasoner: GavelFOLReasoner):
+    def test_extract_predicate_variables_none(self, reasoner: ChemlogModelChecker):
         """Test extracting variables from a predicate with no arguments."""
         formula_str = "nullary_pred <=> (p & q)"
         tptp = TPTPParser().parse(f"fof(temp, axiom, {formula_str}).")[0].formula
@@ -100,7 +100,7 @@ class TestGavelFOLReasoner:
 
         assert len(variables) == 0
 
-    def test_convert_to_background_definitions(self, reasoner: GavelFOLReasoner):
+    def test_convert_to_background_definitions(self, reasoner: ChemlogModelChecker):
         """Test converting string definitions to background definition format."""
         predicates = {
             "new_pred": "new_pred(X1) <=> ?[X2]: (has_bond(X1, X2) & o(X2))",
@@ -124,7 +124,7 @@ class TestGavelFOLReasoner:
         assert [str(v) for v in multi_pred_vars] == ["X1", "X2"]
         assert isinstance(multi_pred_formula, logic.QuantifiedFormula)
 
-    def test_extract_predicates_from_formula(self, reasoner: GavelFOLReasoner):
+    def test_extract_predicates_from_formula(self, reasoner: ChemlogModelChecker):
         """Test extracting all predicates from a formula."""
         formula_str = "test_pred(X) <=> (p(X) & q(X) & r(X))"
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
@@ -135,7 +135,7 @@ class TestGavelFOLReasoner:
         assert "q" in predicates
         assert "r" in predicates
 
-    def test_missing_predicate_detection(self, reasoner: GavelFOLReasoner):
+    def test_missing_predicate_detection(self, reasoner: ChemlogModelChecker):
         """Test that missing predicates are detected."""
         # This formula references an undefined predicate
         formula_str = "test_pred(X) <=> undefined_pred(X)"
@@ -149,7 +149,7 @@ class TestGavelFOLReasoner:
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
     def test_extract_unknown_predicates_respects_all_definition_sources(
-        self, reasoner: GavelFOLReasoner
+        self, reasoner: ChemlogModelChecker
     ):
         """Test unknown predicates exclude base, background, and temporary defs."""
         bg_vars, bg_formula = reasoner.get_tptp_fol_definition("bg_pred(X) <=> c(X)")
@@ -168,7 +168,7 @@ class TestGavelFOLReasoner:
 
         assert missing == {"unknown_pred"}
 
-    def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
+    def test_missing_predicate_exception_raised(self, reasoner: ChemlogModelChecker):
         """Test that errors in does_mol_match_tptp_definition are properly raised."""
         formula_str = "test_pred(X) <=> (ptest(X) & qtest(X))"
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
@@ -185,7 +185,7 @@ class TestGavelFOLReasoner:
         assert "ptest" in error_message
         assert "qtest" in error_message
 
-    def test_predicate_arity_exception(self, reasoner: GavelFOLReasoner):
+    def test_predicate_arity_exception(self, reasoner: ChemlogModelChecker):
         """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
         cdef = reasoner.convert_to_background_definitions(
             {"ptest": "ptest <=> has_bond(X, Y)"}  # ptest has no variables
@@ -211,7 +211,7 @@ class TestGavelFOLReasoner:
             in error_message
         )
 
-    def test_model_checking(self, reasoner: GavelFOLReasoner):
+    def test_model_checking(self, reasoner: ChemlogModelChecker):
         """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
         formula_str = "cation <=> net_charge_positive"
 
@@ -243,7 +243,7 @@ class TestGavelFOLReasoner:
         _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
         reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
-    def test_model_checking_success(self, reasoner: GavelFOLReasoner):
+    def test_model_checking_success(self, reasoner: ChemlogModelChecker):
         mol = Chem.MolFromSmiles(
             "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
         )
@@ -302,7 +302,7 @@ class TestGavelFOLReasoner:
         ):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
-    def test_ambiguous_formula_without_brackets(self, reasoner: GavelFOLReasoner):
+    def test_ambiguous_formula_without_brackets(self, reasoner: ChemlogModelChecker):
         """Test that ambiguous formulas without proper brackets raise an error."""
         # Formula without brackets: A <=> B & C is parsed as (A <=> B) & C, not A <=> (B & C)
         ambiguous_formula = "glycerolipid(x) <=> lipid(x) & ?[C1, C2]: (c(C1) & c(C2))"
@@ -318,7 +318,7 @@ class TestGavelFOLReasoner:
         )
         assert "ambiguous" in error_message.lower()
 
-    def test_properly_bracketed_formula(self, reasoner: GavelFOLReasoner):
+    def test_properly_bracketed_formula(self, reasoner: ChemlogModelChecker):
         """Test that properly bracketed formulas parse successfully."""
         # Formula with proper brackets: A <=> (B & C)
         properly_bracketed_formula = (
@@ -332,7 +332,7 @@ class TestGavelFOLReasoner:
         assert isinstance(parsed_formula, logic.QuantifiedFormula)
         assert len(pred_vars) == 0
 
-    def test_model_checking_success_consistency(self, reasoner: GavelFOLReasoner):
+    def test_model_checking_success_consistency(self, reasoner: ChemlogModelChecker):
         carbonMonoxide = Chem.MolFromSmiles("[C-]#[O+]")  # CHEBI:17245
         ethanol = Chem.MolFromSmiles("CCO")
         thionitrousAcid = Chem.MolFromSmiles("SN=O")  # CHEBI:65308
@@ -391,7 +391,7 @@ class TestGavelFOLReasoner:
             "Expected thionitrous acid to not match the definition, but it did."
         )
 
-    def test_few_shots_examples_model_checking(self, reasoner: GavelFOLReasoner):
+    def test_few_shots_examples_model_checking(self, reasoner: ChemlogModelChecker):
         """Test few-shot examples from nl_2_fol/prompting/prompt_templates/few_shots/with_DL_style.json"""
         # Test carboxylic acid formula
         few_shot_formula_1 = "carboxylicAcid <=> (carbonOxoacid & ?[A1, A2, A3]: (c(A1) & o(A2) & o(A3) & has_1_hs(A3) & bDOUBLE(A1, A2) & bSINGLE(A1, A3)))"

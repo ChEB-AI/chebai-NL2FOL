@@ -9,8 +9,8 @@ from rdkit import Chem
 
 from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
-    FOLDefinition,
     AbstractModelCheckerWrapper,
+    FOLDefinition,
 )
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
@@ -38,7 +38,7 @@ class GavelDefinition(FOLDefinition):
         return f"{head} <=> {self.definition}"
 
 
-class GavelFOLReasoner(AbstractModelCheckerWrapper):
+class ChemlogModelChecker(AbstractModelCheckerWrapper):
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         super().__init__()
@@ -243,7 +243,7 @@ class GavelFOLReasoner(AbstractModelCheckerWrapper):
 if __name__ == "__main__":
     # Example usage
 
-    fol_parser = GavelFOLReasoner()
+    fol_parser = ChemlogModelChecker()
     llm_for = "tripeptide <=> (oligopeptide & ?[C1, O1, N1, C2, O2, N2]: (c(C1) & o(O1) & bDOUBLE(C1, O1) & n(N1) & bSINGLE(C1, N1) & has_1_hs(N1) & c(C2) & o(O2) & bDOUBLE(C2, O2) & n(N2) & bSINGLE(C2, N2) & has_1_hs(N2) & C1 != C2 & O1 != O2 & N1 != N2 & ![C3, O3, N3]: ((c(C3) & o(O3) & bDOUBLE(C3, O3) & n(N3) & bSINGLE(C3, N3) & has_1_hs(N3) & peptide(C3, O3, N3)) => ((C3 = C1 & O3 = O1 & N3 = N1) | (C3 = C2 & O3 = O2 & N3 = N2)))))"
     fol_parser.parse_definition(llm_for)
     mol = Chem.MolFromSmiles(
