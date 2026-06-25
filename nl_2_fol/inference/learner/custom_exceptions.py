@@ -3,10 +3,9 @@ from functools import wraps
 
 from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.preprocessing import SMILES_STRING
-from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
 
 
-def tptp_parse_exception(func):
+def parse_exception(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -131,15 +130,15 @@ class LowF1ScoreException(Exception):
     def __init__(
         self,
         current_f1_score: float,
-        pos_samples: set[ChemicalStructure],
-        neg_samples: set[ChemicalStructure],
+        pos_samples: set,
+        neg_samples: set,
         matched_neg_samples: set[SMILES_STRING],
         unmatched_pos_samples: set[SMILES_STRING],
         max_examples: int,
         chebi_name_to_data_mapping: dict[str, dict],
     ) -> None:
         def get_chemical_details(
-            chemicals: set[ChemicalStructure],
+            chemicals: set,
             matched_smiles: set[SMILES_STRING],
         ) -> list[tuple[str, str | None]]:
             chemical_details: list[tuple[str, str | None]] = []
@@ -239,6 +238,7 @@ class LowF1ScoreException(Exception):
 if __name__ == "__main__":
     # Example usage of the custom exceptions
     from rdkit import Chem
+    from nl_2_fol.inference.preprocessing.c3po_slim_data import ChemicalStructure
 
     try:
         raise MissingPredicateException({"UnknownPredicate1", "UnknownPredicate2"})
