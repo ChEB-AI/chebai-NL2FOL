@@ -5,7 +5,7 @@ import pickle
 import pytest
 
 from nl_2_fol.classifier.classify import NL2FOLChebiClassifier
-from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
+from nl_2_fol.inference.fol_reasoner import ChemlogModelChecker
 from nl_2_fol.inference.learner import definition_model as def_model
 
 

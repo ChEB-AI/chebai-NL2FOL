@@ -6,7 +6,7 @@ import tqdm
 from gavel.logic import logic
 from langchain_core.messages import HumanMessage
 
-from nl_2_fol.inference.fol_reasoner.base import FOLDefinition
+from nl_2_fol.inference.fol_reasoner import FOLDefinition
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL

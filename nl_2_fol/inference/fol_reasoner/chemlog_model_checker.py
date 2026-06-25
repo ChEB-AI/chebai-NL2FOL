@@ -20,7 +20,7 @@ from nl_2_fol.inference.learner.custom_exceptions import (
 )
 
 
-class GavelDefinition(FOLDefinition):
+class ChemlogFOLDefinition(FOLDefinition):
     def __init__(
         self,
         predicate_name: str,
@@ -44,7 +44,7 @@ class ChemlogModelChecker(AbstractModelCheckerWrapper):
         super().__init__()
 
     @parse_exception
-    def parse_definition(self, formula: str) -> GavelDefinition:
+    def parse_definition(self, formula: str) -> ChemlogFOLDefinition:
         """Parses a formula in TPTP format into gavel's internal representation.
 
         Parsing Process:
@@ -100,7 +100,7 @@ class ChemlogModelChecker(AbstractModelCheckerWrapper):
             print(
                 f"Input formula: {formula}\n\t Parsed Right Side as: {tptp_right_side}"
             )
-        return GavelDefinition(
+        return ChemlogFOLDefinition(
             predicate_name=tptp_parsed.left.predicate,
             variables=pred_variables,
             definition=tptp_right_side,
@@ -111,7 +111,7 @@ class ChemlogModelChecker(AbstractModelCheckerWrapper):
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-        temp_additional_defs: dict[str, GavelDefinition] | None = None,
+        temp_additional_defs: dict[str, ChemlogFOLDefinition] | None = None,
     ) -> ModelCheckerOutcome:
         """Checks if a given molecule matches a logical definition using model checking.
 

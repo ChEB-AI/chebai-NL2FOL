@@ -4,7 +4,7 @@ import pickle
 from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from rdkit import Chem
 
-from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
+from nl_2_fol.inference.fol_reasoner import ChemlogModelChecker
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.preprocessing import CHEBI_ID
 

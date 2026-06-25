@@ -1,9 +1,8 @@
+import json
+from pathlib import Path
 from typing import List
 
 from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
-
-import json
-from pathlib import Path
 
 
 class FOLDefinition:

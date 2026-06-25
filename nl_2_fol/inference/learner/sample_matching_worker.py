@@ -13,9 +13,9 @@ from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from gavel.logic.logic import QuantifiedFormula
 
 from nl_2_fol.inference import PRINT_TRACES
-from nl_2_fol.inference.fol_reasoner import ChemlogModelChecker
-from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPModelChecker
-from nl_2_fol.inference.fol_reasoner.base import (
+from nl_2_fol.inference.fol_reasoner import (
+    ASPModelChecker,
+    ChemlogModelChecker,
     FOLDefinition,
 )
 from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
