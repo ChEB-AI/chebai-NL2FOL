@@ -3,7 +3,7 @@ import re
 from gavel.logic import logic
 
 from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import ChemlogModelChecker
-from nl_2_fol.inference.fol_reasoner.finetuned_mistral_reasoner.cfg import (
+from nl_2_fol.inference.fol_reasoner.f_mistral_model_checker.cfg import (
     CFGParser,
 )
 from nl_2_fol.inference.learner.custom_exceptions import parse_exception
