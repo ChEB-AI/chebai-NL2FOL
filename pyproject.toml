@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chebai-NL2FOL"
-version = "0.0.0"
+version = "0.0.1"
 description = "Translation of Natural language to First Order Logic for ChEBI."
 authors = []
 maintainers = []
