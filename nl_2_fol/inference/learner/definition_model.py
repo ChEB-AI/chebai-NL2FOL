@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
+from nl_2_fol.inference.fol_reasoner.base import FOLDefinition
 from nl_2_fol.inference.preprocessing import CHEBI_ID
 
 

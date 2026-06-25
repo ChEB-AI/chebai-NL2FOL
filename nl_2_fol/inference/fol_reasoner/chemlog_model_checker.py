@@ -8,7 +8,7 @@ from gavel.logic import logic
 from rdkit import Chem
 
 from nl_2_fol.inference import PRINT_TRACES
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
+from nl_2_fol.inference.fol_reasoner.base import (
     AbstractModelCheckerWrapper,
     FOLDefinition,
 )

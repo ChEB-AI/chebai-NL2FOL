@@ -5,8 +5,8 @@ from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
 import json
 from pathlib import Path
 
+
 class FOLDefinition:
-    
     def __init__(self, predicate_name: str, variables: List, definition):
         self.predicate_name = predicate_name
         self.variables = variables
@@ -15,29 +15,24 @@ class FOLDefinition:
     def __str__(self):
         return str(self.definition)
 
-class AbstractModelCheckerWrapper:
 
+class AbstractModelCheckerWrapper:
     def __init__(self) -> None:
         self._base_predicates: dict[str, str] = GAVEL_PREDICATES
-        self.background_definitions: dict[
-            str, FOLDefinition
-        ] = {}
+        self.background_definitions: dict[str, FOLDefinition] = {}
 
     def parse_definition(self, definition: str) -> FOLDefinition:
         """Parse a definition string into a FOLDefinition object."""
         raise NotImplementedError
-    
+
     def _extract_predicate_names(self, formula) -> set[str]:
         """Extract predicate names from a formula."""
         raise NotImplementedError
-    
+
     def extract_unknown_predicates(
         self,
         formula,
-        temp_additional_defs: dict[
-            str, FOLDefinition
-        ]
-        | None = None,
+        temp_additional_defs: dict[str, FOLDefinition] | None = None,
     ) -> set[str]:
         predicates = self._extract_predicate_names(formula)
         missing_predicates = predicates - self._base_predicates.keys()
@@ -51,7 +46,7 @@ class AbstractModelCheckerWrapper:
 
         # {Token('LOWER_WORD', 'predicate_name')} -> {'predicate_name'}
         return {str(pred) for pred in missing_predicates}
-    
+
     def add_background_definition(
         self,
         definition: FOLDefinition,
@@ -91,9 +86,7 @@ class AbstractModelCheckerWrapper:
         loaded_definitions = {}
         for item in payload:
             predicate_name = item["predicate"]
-            definition = self.parse_definition(
-                item["definition"]
-            )
+            definition = self.parse_definition(item["definition"])
             loaded_definitions[predicate_name] = definition
 
         if replace:

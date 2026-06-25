@@ -14,10 +14,10 @@ from gavel.logic.logic import QuantifiedFormula
 
 from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner import ChemlogModelChecker
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
+from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPModelChecker
+from nl_2_fol.inference.fol_reasoner.base import (
     FOLDefinition,
 )
-from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPModelChecker
 from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
