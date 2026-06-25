@@ -245,17 +245,17 @@ class PerformValidation(BaseFOL):
 
             val_metrics = self._score_definition(
                 chemical_class=chemical_class,
-                parsed_def=learned_def.learned_FOL.definition.definition,
+                tptp_def=learned_def.learned_FOL.formula,
                 sample_match_timeout_seconds=None,
                 max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
                 temp_additional_defs=None,
             )[0]
         except Exception as e:
             self.counter += 1
-            print(f"Parsed Definition: {learned_def.learned_FOL.definition.definition}")
+            print(f"Parsed Definition: {learned_def.learned_FOL.formula}")
             print(
                 "Variables:",
-                [str(var) for var in learned_def.learned_FOL.definition.variables],
+                [str(var) for var in learned_def.learned_FOL.pred_variables],
             )
 
             if (
@@ -263,9 +263,12 @@ class PerformValidation(BaseFOL):
                 and learned_def.additional_defs_used
             ):
                 print("Additional definitions used during learning:")
-                for add_def_name, add_def in learned_def.additional_defs_used.items():
+                for add_def_name, (
+                    def_vars,
+                    add_def,
+                ) in learned_def.additional_defs_used.items():
                     print(
-                        f"\t{add_def_name}: {add_def.definition} \n\tVariables: {[str(var) for var in add_def.variables]}"
+                        f"\t{add_def_name}: {add_def} \n\tVariables: {[str(var) for var in def_vars]}"
                     )
             print(
                 f"Error during validation of definition for class {class_name}: \n\t{e}"
@@ -358,7 +361,9 @@ class PerformValidation(BaseFOL):
         for _, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
                 self._fol_reasoner.add_background_definition(
-                    learned_def.learned_FOL.definition
+                    learned_def.name,
+                    learned_def.learned_FOL.pred_variables,
+                    learned_def.learned_FOL.formula,
                 )
                 counter += 1
 
@@ -368,7 +373,9 @@ class PerformValidation(BaseFOL):
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
                 self._fol_reasoner.add_background_definition(
-                    add_def.fol_formula.definition
+                    name,
+                    add_def.fol_formula.pred_variables,
+                    add_def.fol_formula.formula,
                 )
                 counter += 1
         print(f"Loaded {counter} additional definitions")

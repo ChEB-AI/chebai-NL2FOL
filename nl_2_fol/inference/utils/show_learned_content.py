@@ -334,7 +334,7 @@ def upsert_additional_definition_in_pickle(
     data: DefinitionLearningResults = pickle.loads(original_pickle_bytes)
 
     reasoner = GavelFOLReasoner()
-    pred_variables, parsed_formula = reasoner.parse_definition(fol_definition)
+    pred_variables, parsed_formula = reasoner.get_tptp_fol_definition(fol_definition)
 
     predicate_name = predicate_name.strip()
     normalized_used_for = list(dict.fromkeys(int(x) for x in used_for_ids))

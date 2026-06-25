@@ -1,12 +1,11 @@
 import os
 import pickle
-from typing import Literal
 
 import tqdm
 from gavel.logic import logic
+from gavel.logic.logic import QuantifiedFormula
 from langchain_core.messages import HumanMessage
 
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
@@ -28,7 +27,7 @@ class LearnDefinitions(BaseFOL):
         max_attempts: int = 4,
         f1_threshold: float = 0.8,
         chebi_version: int = 244,
-        fol_reasoner: Literal["gavel", "asp"] = "gavel",
+        fol_reasoner="gavel",
     ):
         super().__init__(
             slim_dataset_path=slim_dataset_path,
@@ -143,7 +142,7 @@ class LearnDefinitions(BaseFOL):
 
         print(
             f"Failed to parse FOL definition for CHEBI:{chemical_class.id}: {chemical_class.name}:\n",
-            f"\tRaised exception: {raised_exception}\n",
+            f"\tRaised exception: {raised_exception}]\n",
         )
         outofbox_max_attempts, curr_outofbox = 1, 0
         undef_retry_context: str | None = None
@@ -200,7 +199,6 @@ class LearnDefinitions(BaseFOL):
                         attempts += 1
                         print(
                             f"Retrying learning for {chemical_class.name} due to unparseable additional definition for out-of-box predicate. Attempt {attempts + 3}"
-                            f"\nRaised exception: {e}\n"
                         )
                         undef_retry_context = (
                             "[IMPORTANT] Previously generated additional definitions "
@@ -277,13 +275,14 @@ class LearnDefinitions(BaseFOL):
             )
             # If no generated FOL could be parsed/scored, persist a safe parsed
             # placeholder definition along with prompt history for traceability.
-            placeholder_def = (
-                self._fol_reasoner.parse_definition(
+            pred_variables, placeholder_tptp_def = (
+                self._fol_reasoner.get_tptp_fol_definition(
                     self._fol_reasoner.dummy_formula
                 )
             )
             best_scored_def = def_model.ScoredDefinition(
-                definition=placeholder_def,
+                pred_variables=pred_variables,
+                tptp_def=placeholder_tptp_def,
                 train_metrics=def_model.DefinitionMetrics(
                     F1=0.0,
                     TN=0,
@@ -326,7 +325,7 @@ class LearnDefinitions(BaseFOL):
 
     def _validate_additional_predicates(
         self,
-        add_bck_def: dict[str, FOLDefinition],
+        add_bck_def: dict[str, tuple[list[logic.Variable], QuantifiedFormula]],
         current_class_name: str,
     ):
         # Formula 1: class A -> class B & class C
@@ -336,12 +335,12 @@ class LearnDefinitions(BaseFOL):
             "Validating additional background predicate definitions: "
             f"{len(add_bck_def)} candidate(s)."
         )
-        for pred_name, fol_def in list(add_bck_def.items()):
+        for pred_name, (vars, defn) in list(add_bck_def.items()):
             print(
                 f"[validate_additional] Checking definition of predicate '{pred_name}'"
             )
             # first extract the unknown predicates from the formula
-            unknown_predicates = self._fol_reasoner.extract_unknown_predicates(fol_def.definition)
+            unknown_predicates = self._fol_reasoner.extract_unknown_predicates(defn)
             print(
                 f"[validate_additional] Unknown predicates found in definition of predicate '{pred_name}': "
                 f"{unknown_predicates}"
@@ -397,8 +396,8 @@ class LearnDefinitions(BaseFOL):
                     )
                     raise Exception(
                         "Additional background definition provided for missing predicate "
-                        f"{pred_name} contains unknown predicate "
-                        f"{unknown_pred_name} which we don't "
+                        f"{unknown_pred_name} contains unknown predicates "
+                        f"{self._fol_reasoner.extract_unknown_predicates(defn)} which we don't "
                         "have definitions for. Hence we cannot validate it."
                     )
                 else:
@@ -512,7 +511,7 @@ class LearnDefinitions(BaseFOL):
         chemical_class: dm.ChemicalClass,
         low_score_defs_collector: dict[int, def_model.ScoredDefinition],
         temp_additional_defs: dict[
-            str, def_model.FOLDefinition
+            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
         ]
         | None = None,
     ) -> None:
@@ -523,7 +522,7 @@ class LearnDefinitions(BaseFOL):
         Raises an exception if parsing or validation fails, otherwise returns None.
         """
 
-        parsed_definition = self._fol_reasoner.parse_definition(
+        pred_variables, tptp_def = self._fol_reasoner.get_tptp_fol_definition(
             result.FOL_formula
         )
 
@@ -535,13 +534,14 @@ class LearnDefinitions(BaseFOL):
             processed_neg_samples,
         ) = self._score_definition(
             chemical_class=chemical_class,
-            parsed_def=parsed_definition.definition,
+            tptp_def=tptp_def,
             sample_match_timeout_seconds=self._SAMPLE_MATCH_TIMEOUT_SECONDS,
             max_neg_samples=self._MAX_NEGATIVE_SAMPLES,
             temp_additional_defs=temp_additional_defs,
         )
         scored_def = def_model.ScoredDefinition(
-            definition=parsed_definition,
+            pred_variables=pred_variables,
+            tptp_def=tptp_def,
             train_metrics=train_metrics,
             temp_additional_defs=temp_additional_defs,
         )
@@ -578,20 +578,23 @@ class LearnDefinitions(BaseFOL):
     ):
         if scored_def.temp_additional_defs and learn_success:
             # Make temp additional defs permanent, as the main FOL using them has passed the f1 threshold
-            for def_name, d in scored_def.temp_additional_defs.items():
+            for def_name, (
+                pred_vars,
+                background_def,
+            ) in scored_def.temp_additional_defs.items():
                 if def_name not in self.definitions.additional_definitions:
                     self.definitions.additional_definitions[def_name] = (
                         def_model.AdditionalDefinition(
                             used_for=[chemical_class.id],
                             fol_formula=def_model.FOLFormula(
-                                definition=d
+                                formula=background_def, pred_variables=pred_vars
                             ),
                             learn_success=learn_success,
                         )
                     )
-                    self._add_generated_predicates_to_prompt_obj(def_name, d.variables)
+                    self._add_generated_predicates_to_prompt_obj(def_name, pred_vars)
                     self._fol_reasoner.add_background_definition(
-                        d
+                        def_name, pred_vars, background_def
                     )
                 else:
                     # Already learned valid predicate definition is used and
@@ -609,7 +612,8 @@ class LearnDefinitions(BaseFOL):
             def_model.LearnedDefinition(
                 train_metrics=scored_def.train_metrics,
                 learned_FOL=def_model.FOLFormula(
-                    definition=scored_def.definition
+                    formula=scored_def.tptp_def,
+                    pred_variables=scored_def.pred_variables,
                 ),
                 # llm may rename `3OxoSteroid` to `threeOxoSteroid` hence use chemical.name
                 # See:  https://github.com/ChEB-AI/chebai-NL2FOL/issues/13
@@ -624,10 +628,10 @@ class LearnDefinitions(BaseFOL):
         )
         if learn_success:
             self._fol_reasoner.add_background_definition(
-                scored_def.definition
+                chemical_class.name, scored_def.pred_variables, scored_def.tptp_def
             )
             self._add_generated_predicates_to_prompt_obj(
-                chemical_class.name, scored_def.definition.variables
+                chemical_class.name, scored_def.pred_variables
             )
         print(
             f"Learned definition for {chemical_class.id}:{chemical_class.name} "
@@ -689,10 +693,12 @@ class LearnDefinitions(BaseFOL):
         for _, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
                 self._fol_reasoner.add_background_definition(
-                    learned_def.learned_FOL.definition
+                    learned_def.name,
+                    learned_def.learned_FOL.pred_variables,
+                    learned_def.learned_FOL.formula,
                 )
                 self._add_generated_predicates_to_prompt_obj(
-                    learned_def.name, learned_def.learned_FOL.definition.variables
+                    learned_def.name, learned_def.learned_FOL.pred_variables
                 )
                 loaded_def_names.append(learned_def.name)
                 self._learned_classes.add(learned_def.name)
@@ -706,10 +712,12 @@ class LearnDefinitions(BaseFOL):
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
                 self._fol_reasoner.add_background_definition(
-                    add_def.fol_formula.definition
+                    name,
+                    add_def.fol_formula.pred_variables,
+                    add_def.fol_formula.formula,
                 )
                 self._add_generated_predicates_to_prompt_obj(
-                    name, add_def.fol_formula.definition.variables
+                    name, add_def.fol_formula.pred_variables
                 )
                 loaded_additional_def_names.append(name)
                 self._learned_classes.add(name)

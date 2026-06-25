@@ -4,7 +4,6 @@ from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 from pydantic import BaseModel, ConfigDict, Field
 
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
 from nl_2_fol.inference.preprocessing import CHEBI_ID
 
 
@@ -59,7 +58,12 @@ class DefinitionMetrics(BaseModel):
 class FOLFormula(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    definition: FOLDefinition
+    formula: QuantifiedFormula = Field(
+        ..., description="TPTP FOL formula representing the definition"
+    )
+    pred_variables: list[logic.Variable] = Field(
+        ..., description="List of predicate variables used in the formula"
+    )
 
 
 class LearnedDefinition(BaseModel):
@@ -81,7 +85,7 @@ class LearnedDefinition(BaseModel):
     definition: str = Field(..., description="definition of the structure from CHEBI")
 
     additional_defs_used: (
-        dict[str, FOLDefinition] | None
+        dict[str, tuple[list[logic.Variable], QuantifiedFormula]] | None
     ) = Field(
         default=None,
         description="[Field Only for Record, NOT added to Gavel] Additional definitions "
@@ -131,10 +135,11 @@ class DefinitionLearningResults(BaseModel):
 class ScoredDefinition(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    definition: FOLDefinition
+    pred_variables: list[logic.Variable]
+    tptp_def: QuantifiedFormula
     train_metrics: DefinitionMetrics
     temp_additional_defs: (
-        dict[str, FOLDefinition] | None
+        dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]] | None
     ) = None
 
 
@@ -143,13 +148,13 @@ if __name__ == "__main__":
     from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 
     gavel = GavelFOLReasoner()
-    fol_definition_1 = gavel.parse_definition(
+    pred_variables, fol_formula = gavel.get_tptp_fol_definition(
         "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
     )
-    fol_definition_2 = gavel.parse_definition(
+    pred_variables_2, fol_formula_2 = gavel.get_tptp_fol_definition(
         "twoPlusCarbonCompound <=> ?[X, Y]: (c(X) & c(Y) & has_bond_to(X, Y) & X != Y)"
     )
-    fol_definition_3 = gavel.parse_definition(
+    pred_variables_3, fol_formula_3 = gavel.get_tptp_fol_definition(
         "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)"
     )
     results = DefinitionLearningResults(
@@ -159,7 +164,7 @@ if __name__ == "__main__":
                     TP=10, FP=2, FN=3, TN=85, F1=0.83, PPV=0.83, NPV=0.97
                 ),
                 learned_FOL=FOLFormula(
-                    definition=fol_definition_1 
+                    formula=fol_formula, pred_variables=pred_variables
                 ),
                 prompts_history={
                     "What is the definition of CHEBI:12345?": "A chemical class used for demonstration purposes.",
@@ -173,7 +178,7 @@ if __name__ == "__main__":
                     TP=8, FP=1, FN=4, TN=87, F1=0.80, PPV=0.89, NPV=0.96
                 ),
                 learned_FOL=FOLFormula(
-                    definition=fol_definition_2
+                    formula=fol_formula_2, pred_variables=pred_variables_2
                 ),
                 prompts_history={
                     "What is the definition of CHEBI:56645?": "A chemical class used for demonstration purposes.",
@@ -186,7 +191,7 @@ if __name__ == "__main__":
         additional_definitions={
             "Example": AdditionalDefinition(
                 fol_formula=FOLFormula(
-                    definition=fol_definition_3
+                    formula=fol_formula_3, pred_variables=pred_variables_3
                 ),
                 used_for=[12345, 56645],
             )
