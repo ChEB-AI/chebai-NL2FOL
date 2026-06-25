@@ -8,7 +8,10 @@ from gavel.logic import logic
 from rdkit import Chem
 
 from nl_2_fol.inference import PRINT_TRACES
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition, AbstractModelCheckerWrapper
+from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
+    FOLDefinition,
+    AbstractModelCheckerWrapper,
+)
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
@@ -16,9 +19,14 @@ from nl_2_fol.inference.learner.custom_exceptions import (
     parse_exception,
 )
 
+
 class GavelDefinition(FOLDefinition):
-    
-    def __init__(self, predicate_name: str, variables: List[logic.Variable], definition: logic.QuantifiedFormula):
+    def __init__(
+        self,
+        predicate_name: str,
+        variables: List[logic.Variable],
+        definition: logic.QuantifiedFormula,
+    ):
         super().__init__(predicate_name, variables, definition)
 
     def __str__(self):
@@ -29,16 +37,14 @@ class GavelDefinition(FOLDefinition):
             head = self.predicate_name
         return f"{head} <=> {self.definition}"
 
-    
+
 class GavelFOLReasoner(AbstractModelCheckerWrapper):
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
         super().__init__()
 
     @parse_exception
-    def parse_definition(
-        self, formula: str
-    ) -> GavelDefinition:
+    def parse_definition(self, formula: str) -> GavelDefinition:
         """Parses a formula in TPTP format into gavel's internal representation.
 
         Parsing Process:
@@ -97,7 +103,7 @@ class GavelFOLReasoner(AbstractModelCheckerWrapper):
         return GavelDefinition(
             predicate_name=tptp_parsed.left.predicate,
             variables=pred_variables,
-            definition=tptp_right_side
+            definition=tptp_right_side,
         )
 
     @model_check_exception
@@ -105,10 +111,7 @@ class GavelFOLReasoner(AbstractModelCheckerWrapper):
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-        temp_additional_defs: dict[
-            str, GavelDefinition
-        ]
-        | None = None,
+        temp_additional_defs: dict[str, GavelDefinition] | None = None,
     ) -> ModelCheckerOutcome:
         """Checks if a given molecule matches a logical definition using model checking.
 
@@ -190,8 +193,6 @@ class GavelFOLReasoner(AbstractModelCheckerWrapper):
         universe, extensions = mol_to_fol_atoms(mol)
         # rename / add custom extensions if needed
         return universe, extensions
-
-
 
     def _extract_predicate_names(self, formula: logic.QuantifiedFormula) -> set[str]:
         """Extract all predicates from a parsed TPTP formula."""

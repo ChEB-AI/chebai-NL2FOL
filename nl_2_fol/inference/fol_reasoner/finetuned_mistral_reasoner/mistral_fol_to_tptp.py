@@ -2,10 +2,10 @@ import re
 
 from gavel.logic import logic
 
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
 from nl_2_fol.inference.fol_reasoner.finetuned_mistral_reasoner.cfg import (
     CFGParser,
 )
-from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
 from nl_2_fol.inference.learner.custom_exceptions import parse_exception
 
 

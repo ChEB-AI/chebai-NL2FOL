@@ -6,7 +6,7 @@ from gavel.dialects.tptp.parser import TPTPParser
 from gavel.logic import logic
 from rdkit import Chem
 
-from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
 from nl_2_fol.inference.learner.custom_exceptions import MissingPredicateException
 
 

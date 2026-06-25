@@ -4,7 +4,7 @@ import pickle
 from chemlog.fol_classification.model_checking import ModelCheckerOutcome
 from rdkit import Chem
 
-from nl_2_fol.inference.fol_reasoner.model_check_molecule import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.chemlog_model_checker import GavelFOLReasoner
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.preprocessing import CHEBI_ID
 
@@ -71,9 +71,7 @@ class NL2FOLChebiClassifier:
         counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(
-                    add_def.fol_formula.definition
-                )
+                self._gavel.add_background_definition(add_def.fol_formula.definition)
                 counter += 1
 
         print(f"Loaded {counter} additional definitions")
