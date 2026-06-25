@@ -2,6 +2,7 @@ from gavel.logic import logic
 
 if __name__ == "__main__":
     from chemlog.fol_classification.fol_utils import normalize_fol_formula
+
     demo_formula = logic.QuantifiedFormula(
         logic.Quantifier.EXISTENTIAL,
         [logic.Variable("x")],
