@@ -33,5 +33,3 @@
     }
   }
 ]
-
-hydroxy(X) :- o(X), has_1_hs(X), bSINGLE(X, Y).
