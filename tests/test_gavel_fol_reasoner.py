@@ -66,7 +66,7 @@ class TestGavelFOLReasoner:
     def test_get_tptp_fol_definition_simple(self, reasoner: GavelFOLReasoner):
         """Test parsing a simple FOL definition."""
         formula_str = "simple_pred(x) <=> (p(x) & q(x))"
-        pred_vars, formula = reasoner.get_tptp_fol_definition(formula_str)
+        pred_vars, formula = reasoner.parse_definition(formula_str)
 
         assert len(pred_vars) == 0
         assert isinstance(formula, logic.QuantifiedFormula)
@@ -127,9 +127,9 @@ class TestGavelFOLReasoner:
     def test_extract_predicates_from_formula(self, reasoner: GavelFOLReasoner):
         """Test extracting all predicates from a formula."""
         formula_str = "test_pred(X) <=> (p(X) & q(X) & r(X))"
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
-        predicates = reasoner._extract_predicates(parsed_formula)
+        predicates = reasoner._extract_predicate_names(parsed_formula)
 
         assert "p" in predicates
         assert "q" in predicates
@@ -139,7 +139,7 @@ class TestGavelFOLReasoner:
         """Test that missing predicates are detected."""
         # This formula references an undefined predicate
         formula_str = "test_pred(X) <=> undefined_pred(X)"
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
         # Create a simple molecule
         mol = Chem.MolFromSmiles("C")
@@ -152,15 +152,15 @@ class TestGavelFOLReasoner:
         self, reasoner: GavelFOLReasoner
     ):
         """Test unknown predicates exclude base, background, and temporary defs."""
-        bg_vars, bg_formula = reasoner.get_tptp_fol_definition("bg_pred(X) <=> c(X)")
+        bg_vars, bg_formula = reasoner.parse_definition("bg_pred(X) <=> c(X)")
         reasoner.add_background_definition("bg_pred", bg_vars, bg_formula)
 
-        temp_vars, temp_formula = reasoner.get_tptp_fol_definition(
+        temp_vars, temp_formula = reasoner.parse_definition(
             "temp_pred(X) <=> o(X)"
         )
         temp_defs = {"temp_pred": (temp_vars, temp_formula)}
 
-        _, parsed_formula = reasoner.get_tptp_fol_definition(
+        _, parsed_formula = reasoner.parse_definition(
             "test_pred(X) <=> (c(X) & bg_pred(X) & temp_pred(X) & unknown_pred(X))"
         )
 
@@ -171,7 +171,7 @@ class TestGavelFOLReasoner:
     def test_missing_predicate_exception_raised(self, reasoner: GavelFOLReasoner):
         """Test that errors in does_mol_match_tptp_definition are properly raised."""
         formula_str = "test_pred(X) <=> (ptest(X) & qtest(X))"
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
         # Create a simple molecule
         mol = Chem.MolFromSmiles("C")
@@ -197,7 +197,7 @@ class TestGavelFOLReasoner:
         # which should cause an error during model checking
         formula_str = "test_pred(X) <=> (ptest(X))"
 
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
         # Create a simple molecule
         mol = Chem.MolFromSmiles("C")
@@ -215,7 +215,7 @@ class TestGavelFOLReasoner:
         """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
         formula_str = "cation <=> net_charge_positive"
 
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
         mol = Chem.MolFromSmiles(
             "C(=O)(C1=CC=C(C=C1F)OCCCCCC[NH+](CC=C)C)C=2C=CC(=CC2)Br"
@@ -234,13 +234,13 @@ class TestGavelFOLReasoner:
             "& o(O2) & o(O3) & bSINGLE(C1, C2) & bSINGLE(C2, C3) & bSINGLE(C1, O1) & "
             "bSINGLE(C2, O2) & bSINGLE(C3, O3))"
         )
-        _, parsed_add_def = reasoner.get_tptp_fol_definition(add_def)
+        _, parsed_add_def = reasoner.parse_definition(add_def)
         reasoner.add_background_definition("glycerolipid", [], parsed_add_def)
 
         mol = Chem.MolFromSmiles(
             "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
         )
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
         reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
     def test_model_checking_success(self, reasoner: GavelFOLReasoner):
@@ -263,7 +263,7 @@ class TestGavelFOLReasoner:
         parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
         for pred_name, (vars, formula) in parsed_add_def.items():
             reasoner.add_background_definition(pred_name, vars, formula)
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
         with pytest.raises(
             Exception,
@@ -292,7 +292,7 @@ class TestGavelFOLReasoner:
         for pred_name, (vars, formula) in cdef_dict.items():
             reasoner.add_background_definition(pred_name, vars, formula)
 
-        _, parsed_formula = reasoner.get_tptp_fol_definition(formula_str)
+        _, parsed_formula = reasoner.parse_definition(formula_str)
 
         with pytest.raises(
             Exception,
@@ -308,7 +308,7 @@ class TestGavelFOLReasoner:
         ambiguous_formula = "glycerolipid(x) <=> lipid(x) & ?[C1, C2]: (c(C1) & c(C2))"
 
         with pytest.raises(Exception) as exc_info:
-            reasoner.get_tptp_fol_definition(ambiguous_formula)
+            reasoner.parse_definition(ambiguous_formula)
 
         error_message = str(exc_info.value)
         assert "Invalid FOL formula structure" in error_message
@@ -325,7 +325,7 @@ class TestGavelFOLReasoner:
             "glycerolipid(x) <=> (lipid(x) & ?[C1, C2]: (c(C1) & c(C2)))"
         )
 
-        pred_vars, parsed_formula = reasoner.get_tptp_fol_definition(
+        pred_vars, parsed_formula = reasoner.parse_definition(
             properly_bracketed_formula
         )
 
@@ -341,7 +341,7 @@ class TestGavelFOLReasoner:
         definition_str = (
             "carbonMonoxide <=> ?[A1, A2]: (c(A1) & o(A2) & has_bond_to(A1,A2))"
         )
-        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        definition_to_match = reasoner.parse_definition(definition_str)[1]
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
@@ -364,7 +364,7 @@ class TestGavelFOLReasoner:
 
         # Logical definition to match (more accurate version - requires knowing what a oneCarbonCompound is)
         definition_str = "carbonMonoxide <=> ?[A1, A2]: (oneCarbonCompound & c(A1) & o(A2) & has_bond_to(A1,A2))"
-        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        definition_to_match = reasoner.parse_definition(definition_str)[1]
 
         add_defs_dict = {
             "oneCarbonCompound": "oneCarbonCompound <=> ?[X]: (c(X) & ~twoPlusCarbonCompound)",
@@ -405,7 +405,7 @@ class TestGavelFOLReasoner:
             reasoner.add_background_definition(pred_name, vars, formula)
 
         # Create and test carboxylic acid molecule
-        _, parsed_formula_1 = reasoner.get_tptp_fol_definition(few_shot_formula_1)
+        _, parsed_formula_1 = reasoner.parse_definition(few_shot_formula_1)
 
         # Test molecule that matches carboxylic acid pattern
         carboxylic_acid_mol = Chem.MolFromSmiles("CC(=O)O")  # Acetic acid
@@ -440,7 +440,7 @@ class TestGavelFOLReasoner:
             reasoner.add_background_definition(pred_name, vars, formula)
 
         # Create and test azide molecules
-        _, parsed_formula_2 = reasoner.get_tptp_fol_definition(few_shot_formula_2)
+        _, parsed_formula_2 = reasoner.parse_definition(few_shot_formula_2)
 
         # Test molecule that matches azide pattern
         azide_mol = Chem.MolFromSmiles("[N-][N+]#N")  # Azide group

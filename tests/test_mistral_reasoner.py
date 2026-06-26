@@ -30,7 +30,7 @@ class TestMistralCustomFOLReasoner:
 
         # Logical definition to match (I removed `OneCarbonCompound` for simplicity)
         definition_str = "CarbonMonoxide ↔ (∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
-        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        definition_to_match = reasoner.parse_definition(definition_str)[1]
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
@@ -53,7 +53,7 @@ class TestMistralCustomFOLReasoner:
         # `TwoPlusCarbonCompound`. This should allow carbon monoxide to match, but not
         # ethanol or thionitrous acid.
         definition_str = "CarbonMonoxide ↔ (∃x ∃y (OneCarbonCompound ∧ C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
-        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        definition_to_match = reasoner.parse_definition(definition_str)[1]
         add_defs_dict = {
             "onecarboncompound": "OneCarbonCompound ↔ (∃x (C(x) ∧ ¬TwoPlusCarbonCompound))",
             "twopluscarboncompound": "TwoPlusCarbonCompound ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))",
@@ -93,7 +93,7 @@ class TestMistralCustomFOLReasoner:
             reasoner.add_background_definition(pred_name, vars, formula)
 
         # Create and test carboxylic acid molecule
-        _, parsed_formula_1 = reasoner.get_tptp_fol_definition(few_shot_formula_1)
+        _, parsed_formula_1 = reasoner.parse_definition(few_shot_formula_1)
 
         # Test molecule that matches carboxylic acid pattern
         carboxylic_acid_mol = Chem.MolFromSmiles("CC(=O)O")  # Acetic acid
@@ -128,7 +128,7 @@ class TestMistralCustomFOLReasoner:
             reasoner.add_background_definition(pred_name, vars, formula)
 
         # Create and test azide molecules
-        _, parsed_formula_2 = reasoner.get_tptp_fol_definition(few_shot_formula_2)
+        _, parsed_formula_2 = reasoner.parse_definition(few_shot_formula_2)
 
         # Test molecule that matches azide pattern
         azide_mol = Chem.MolFromSmiles("[N-][N+]#N")  # Azide group
