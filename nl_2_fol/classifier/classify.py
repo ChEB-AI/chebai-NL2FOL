@@ -71,9 +71,7 @@ class NL2FOLChebiClassifier:
         counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(
-                    add_def.fol_formula.definition
-                )
+                self._gavel.add_background_definition(add_def.fol_formula.definition)
                 counter += 1
 
         print(f"Loaded {counter} additional definitions")

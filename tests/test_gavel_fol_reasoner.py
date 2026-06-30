@@ -157,9 +157,7 @@ class TestGavelFOLReasoner:
         bg_definition = reasoner.parse_definition("bg_pred(X) <=> c(X)")
         reasoner.add_background_definition(bg_definition)
 
-        temp_definition = reasoner.parse_definition(
-            "temp_pred(X) <=> o(X)"
-        )
+        temp_definition = reasoner.parse_definition("temp_pred(X) <=> o(X)")
         temp_defs = {"temp_pred": temp_definition}
 
         parsed_formula = reasoner.parse_definition(
@@ -330,9 +328,7 @@ class TestGavelFOLReasoner:
             "glycerolipid(x) <=> (lipid(x) & ?[C1, C2]: (c(C1) & c(C2)))"
         )
 
-        parsed_definition = reasoner.parse_definition(
-            properly_bracketed_formula
-        )
+        parsed_definition = reasoner.parse_definition(properly_bracketed_formula)
 
         assert isinstance(parsed_definition.definition, logic.QuantifiedFormula)
         assert len(parsed_definition.variables) == 0

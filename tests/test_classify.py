@@ -13,9 +13,7 @@ from nl_2_fol.inference.learner import definition_model as def_model
 def sample_learning_results():
     """Create a sample DefinitionLearningResults object for testing."""
     gavel = GavelFOLReasoner()
-    carbon_definition = gavel.parse_definition(
-        "carbonCompound <=> ?[X]: (c(X))"
-    )
+    carbon_definition = gavel.parse_definition("carbonCompound <=> ?[X]: (c(X))")
 
     metrics = def_model.DefinitionMetrics(
         TP=10, FP=2, FN=3, TN=85, F1=0.83, PPV=0.83, NPV=0.97

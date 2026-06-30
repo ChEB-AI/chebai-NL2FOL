@@ -26,7 +26,7 @@ class BaseFOL:
         structures_path: str,
         chebi_version: int,
         split: Literal["train", "val"],
-        fol_reasoner: Literal["gavel", "mistral", "asp"]="gavel",
+        fol_reasoner: Literal["gavel", "mistral", "asp"] = "gavel",
     ):
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
@@ -56,7 +56,9 @@ class BaseFOL:
             raise ValueError("Support revoked")
         elif self.fol_reasoner == "asp":
             print("Using `ASPModelChecker` as the FOL reasoner.")
-            from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPModelChecker
+            from nl_2_fol.inference.fol_reasoner.asp_model_checker import (
+                ASPModelChecker,
+            )
 
             return ASPModelChecker()
         else:
@@ -69,10 +71,7 @@ class BaseFOL:
         parsed_def: logic.QuantifiedFormula | str,
         sample_match_timeout_seconds: int | None,
         max_neg_samples: int,
-        temp_additional_defs: dict[
-            str, def_model.FOLDefinition
-        ]
-        | None,
+        temp_additional_defs: dict[str, def_model.FOLDefinition] | None,
     ) -> tuple[
         def_model.DefinitionMetrics,
         set[dm.SMILES_STRING],
@@ -85,7 +84,11 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        matching_func = check_if_definition_matches_samples if self.fol_reasoner in ["gavel", "mistral"] else check_if_definition_matches_samples_clingo
+        matching_func = (
+            check_if_definition_matches_samples
+            if self.fol_reasoner in ["gavel", "mistral"]
+            else check_if_definition_matches_samples_clingo
+        )
 
         match_result_dict, processed_samples_dict = matching_func(
             self._fol_reasoner,

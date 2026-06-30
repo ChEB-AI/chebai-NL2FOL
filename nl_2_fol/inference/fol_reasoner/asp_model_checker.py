@@ -1,10 +1,10 @@
 from typing import List
 import pandas as pd
-from rdkit import Chem
-from gavel.logic import logic
 
-from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
-from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition, AbstractModelCheckerWrapper
+from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
+    FOLDefinition,
+    AbstractModelCheckerWrapper,
+)
 
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
@@ -13,14 +13,13 @@ from nl_2_fol.inference.learner.custom_exceptions import (
     parse_exception,
 )
 
+
 class ASPDefinition(FOLDefinition):
-    
     def __init__(self, predicate_name: str, variables: List[str], definition: str):
         super().__init__(predicate_name, variables, definition)
 
 
 class ASPModelChecker(AbstractModelCheckerWrapper):
-
     def __init__(self):
         super().__init__()
         self._base_predicates["has_atom"] = "molecule has this atom"
@@ -37,29 +36,28 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         head = definition.split(":-")[0]
         head = head.strip()
         predicate_name = head.split("(")[0].strip()
-        variables = [var.strip() for var in head[head.find("(")+1:head.find(")")].split(",")]
+        variables = [
+            var.strip() for var in head[head.find("(") + 1 : head.find(")")].split(",")
+        ]
 
         from clingo.ast import parse_string
+
         try:
-            parse_string(definition, lambda stm: None)  # We just want to check if it parses, not do anything with the AST
+            parse_string(
+                definition, lambda stm: None
+            )  # We just want to check if it parses, not do anything with the AST
         except Exception as e:
             print(f"Error parsing formula with clingo: {e}")
-            raise Exception(
-                f"Error parsing formula with clingo:\n{e}"
-            )
+            raise Exception(f"Error parsing formula with clingo:\n{e}")
 
         return ASPDefinition(predicate_name, variables, definition)
-
 
     @model_check_exception
     def do_molecules_match_asp_definition(
         self,
         molecules_df: pd.DataFrame,
         definition_to_match: str,
-        temp_additional_defs: dict[
-            str, ASPDefinition
-        ]
-        | None = None,
+        temp_additional_defs: dict[str, ASPDefinition] | None = None,
         timeout: int | None = None,
     ) -> List:
         """Checks for each molecule if it matches a logical definition using model checking.
@@ -105,21 +103,31 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         )
         try:
             from chebILP.clingo_eval import evaluate_with_clingo
+
             asp_def = self.parse_definition(definition_to_match)
-            positives = evaluate_with_clingo(rules, background_facts, [asp_def.predicate_name], molecules_df.index, timeout=timeout)
+            positives = evaluate_with_clingo(
+                rules,
+                background_facts,
+                [asp_def.predicate_name],
+                molecules_df.index,
+                timeout=timeout,
+            )
 
         except Exception as e:
             print(f"Error occured for formula: {definition_to_match}")
             raise Exception(f"{exception_prefix}{e}")
-        return positives[asp_def.predicate_name] if asp_def.predicate_name in positives else []
+        return (
+            positives[asp_def.predicate_name]
+            if asp_def.predicate_name in positives
+            else []
+        )
 
     @mol_to_fol_exception
     def _molecules_df_to_bk(self, molecules_df: pd.DataFrame) -> list[str]:
         """Convert a dataframe of RDKit molecules to ASP background facts."""
         from chebILP.ilp_problem_builder import build_background_chemlog
+
         return build_background_chemlog(molecules_df)[0]
-
-
 
     def _extract_predicate_names(self, formula: str) -> set[str]:
         """Extract all predicate names from an ASP formula."""
@@ -137,7 +145,11 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
                 if "#" in literal:
                     # aggregators, e.g. #count{X : p(X), q(X)} = 2
                     # extract the inner part of the aggregator and recursively extract predicate names from it
-                    literal_inner = literal[literal.find("{")+1:literal.rfind("}")].split(":")[1].strip()
+                    literal_inner = (
+                        literal[literal.find("{") + 1 : literal.rfind("}")]
+                        .split(":")[1]
+                        .strip()
+                    )
                     inner_predicates = self._extract_predicate_names(literal_inner)
                     predicates.update(inner_predicates)
                 if "=" in literal or ">" in literal or "<" in literal:
@@ -146,7 +158,6 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
                     literal = literal[4:].strip()
                 pred_name = literal.split("(")[0].strip()
                 predicates.add(pred_name)
-
 
         return predicates
 

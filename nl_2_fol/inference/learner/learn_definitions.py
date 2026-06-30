@@ -277,10 +277,8 @@ class LearnDefinitions(BaseFOL):
             )
             # If no generated FOL could be parsed/scored, persist a safe parsed
             # placeholder definition along with prompt history for traceability.
-            placeholder_def = (
-                self._fol_reasoner.parse_definition(
-                    self._fol_reasoner.dummy_formula
-                )
+            placeholder_def = self._fol_reasoner.parse_definition(
+                self._fol_reasoner.dummy_formula
             )
             best_scored_def = def_model.ScoredDefinition(
                 definition=placeholder_def,
@@ -341,7 +339,9 @@ class LearnDefinitions(BaseFOL):
                 f"[validate_additional] Checking definition of predicate '{pred_name}'"
             )
             # first extract the unknown predicates from the formula
-            unknown_predicates = self._fol_reasoner.extract_unknown_predicates(fol_def.definition)
+            unknown_predicates = self._fol_reasoner.extract_unknown_predicates(
+                fol_def.definition
+            )
             print(
                 f"[validate_additional] Unknown predicates found in definition of predicate '{pred_name}': "
                 f"{unknown_predicates}"
@@ -511,10 +511,7 @@ class LearnDefinitions(BaseFOL):
         result: CHEBIFOLOutput,
         chemical_class: dm.ChemicalClass,
         low_score_defs_collector: dict[int, def_model.ScoredDefinition],
-        temp_additional_defs: dict[
-            str, def_model.FOLDefinition
-        ]
-        | None = None,
+        temp_additional_defs: dict[str, def_model.FOLDefinition] | None = None,
     ) -> None:
         """
         Parses the generated FOL definition and validates it against the positive
@@ -523,9 +520,7 @@ class LearnDefinitions(BaseFOL):
         Raises an exception if parsing or validation fails, otherwise returns None.
         """
 
-        parsed_definition = self._fol_reasoner.parse_definition(
-            result.FOL_formula
-        )
+        parsed_definition = self._fol_reasoner.parse_definition(result.FOL_formula)
 
         (
             train_metrics,
@@ -583,16 +578,12 @@ class LearnDefinitions(BaseFOL):
                     self.definitions.additional_definitions[def_name] = (
                         def_model.AdditionalDefinition(
                             used_for=[chemical_class.id],
-                            fol_formula=def_model.FOLFormula(
-                                definition=d
-                            ),
+                            fol_formula=def_model.FOLFormula(definition=d),
                             learn_success=learn_success,
                         )
                     )
                     self._add_generated_predicates_to_prompt_obj(def_name, d.variables)
-                    self._fol_reasoner.add_background_definition(
-                        d
-                    )
+                    self._fol_reasoner.add_background_definition(d)
                 else:
                     # Already learned valid predicate definition is used and
                     # the redudant defintion is removed in `_validate_additional_predicates`
@@ -608,9 +599,7 @@ class LearnDefinitions(BaseFOL):
         self.definitions.learned_definitions[chemical_class.id] = (
             def_model.LearnedDefinition(
                 train_metrics=scored_def.train_metrics,
-                learned_FOL=def_model.FOLFormula(
-                    definition=scored_def.definition
-                ),
+                learned_FOL=def_model.FOLFormula(definition=scored_def.definition),
                 # llm may rename `3OxoSteroid` to `threeOxoSteroid` hence use chemical.name
                 # See:  https://github.com/ChEB-AI/chebai-NL2FOL/issues/13
                 name=chemical_class.name,
@@ -623,9 +612,7 @@ class LearnDefinitions(BaseFOL):
             )
         )
         if learn_success:
-            self._fol_reasoner.add_background_definition(
-                scored_def.definition
-            )
+            self._fol_reasoner.add_background_definition(scored_def.definition)
             self._add_generated_predicates_to_prompt_obj(
                 chemical_class.name, scored_def.definition.variables
             )
