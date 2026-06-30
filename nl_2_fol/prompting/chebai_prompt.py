@@ -42,6 +42,7 @@ class ChebiPrompt:
         # To keep track of predicates generated across iterations, for prompting
         self.generated_predicates_names: set[str] = set()
         self._memory_store = {}
+        self._relevant_predicates: set[str] = set()
         self._current_session_id: str | None = None  # Track current session
 
         self._llm = get_llm_for_inference(self.platform, self.model_name)
@@ -87,6 +88,7 @@ class ChebiPrompt:
         """Utility method to clear conversation history for a session."""
         if session_id in self._memory_store:
             del self._memory_store[session_id]
+        self._relevant_predicates.clear()
 
     def _get_prompt_template(self) -> ChatPromptTemplate:
         system_prompt = self._get_system_prompt()
