@@ -10,7 +10,7 @@ authors = []
 maintainers = []
 readme = "README.md"
 license = { text = "AGPL-3.0" }
-requires-python = ">=3.11, <3.14"
+requires-python = ">=3.14"
 dependencies = [
     "gavel @git+https://github.com/gavel-tool/python-gavel.git",
     "chemlog @git+https://github.com/sfluegel05/chemlog-peptides.git",
