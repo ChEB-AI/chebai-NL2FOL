@@ -93,7 +93,6 @@ class TestASPModelChecker:
         reasoner.parse_definition(definition)
 
     def test_parse_definition_with_colon(self, reasoner: ASPModelChecker):
-
         # ":" insteadd of ":-"
         definition = (
             "diol(M) : has_atom(M, O1), o(O1), has_atom(M, O2), o(O2), O1 != O2."
