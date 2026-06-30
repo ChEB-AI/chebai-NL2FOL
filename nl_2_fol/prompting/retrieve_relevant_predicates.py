@@ -2,7 +2,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 
-class IncrementalSemanticRetriever:
+class SemanticPredicateRetriever:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -79,7 +79,7 @@ class IncrementalSemanticRetriever:
 
 
 if __name__ == "__main__":
-    retriever = IncrementalSemanticRetriever()
+    retriever = SemanticPredicateRetriever()
     retriever.add_predicates(
         ["refund policy", "shipping delay", "account cancellation"]
     )

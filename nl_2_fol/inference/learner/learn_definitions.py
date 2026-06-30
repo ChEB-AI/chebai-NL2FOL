@@ -3,7 +3,6 @@ import pickle
 from typing import Literal
 
 import tqdm
-from gavel.logic import logic
 from langchain_core.messages import HumanMessage
 
 from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
@@ -582,7 +581,9 @@ class LearnDefinitions(BaseFOL):
                             learn_success=learn_success,
                         )
                     )
-                    self._add_generated_predicates_to_prompt_obj(def_name, d.variables)
+                    self.chebi_prompt_obj.add_predicates_to_retriever(
+                        def_name, d.variables
+                    )
                     self._fol_reasoner.add_background_definition(d)
                 else:
                     # Already learned valid predicate definition is used and
@@ -613,7 +614,7 @@ class LearnDefinitions(BaseFOL):
         )
         if learn_success:
             self._fol_reasoner.add_background_definition(scored_def.definition)
-            self._add_generated_predicates_to_prompt_obj(
+            self.chebi_prompt_obj.add_predicates_to_retriever(
                 chemical_class.name, scored_def.definition.variables
             )
         print(
@@ -630,25 +631,6 @@ class LearnDefinitions(BaseFOL):
                 self._failed_classes.remove(chemical_class.name)
         self._save_definitions()
         self._post_cleanup(session_id=chemical_class.name)
-
-    def _add_generated_predicates_to_prompt_obj(
-        self,
-        pred_name: str,
-        vars: list[logic.Variable],
-    ) -> None:
-        """Add a predicate with its variables to the prompt object.
-
-        Example: if pred_name='oligopeptide' and vars=[x0, x1],
-                 this will add 'oligopeptide(x0, x1)' to generated_predicates_names
-
-        If no variables, only the predicate name is added.
-        """
-        if len(vars) > 0:
-            variables_str = ", ".join(str(var) for var in vars)
-            predicate_with_vars = f"{pred_name}({variables_str})"
-        else:
-            predicate_with_vars = pred_name
-        self.chebi_prompt_obj.generated_predicates_names.add(predicate_with_vars)
 
     def _load_definitions(
         self,
@@ -678,7 +660,7 @@ class LearnDefinitions(BaseFOL):
                 self._fol_reasoner.add_background_definition(
                     learned_def.learned_FOL.definition
                 )
-                self._add_generated_predicates_to_prompt_obj(
+                self.chebi_prompt_obj.add_predicates_to_retriever(
                     learned_def.name, learned_def.learned_FOL.definition.variables
                 )
                 loaded_def_names.append(learned_def.name)
@@ -695,7 +677,7 @@ class LearnDefinitions(BaseFOL):
                 self._fol_reasoner.add_background_definition(
                     add_def.fol_formula.definition
                 )
-                self._add_generated_predicates_to_prompt_obj(
+                self.chebi_prompt_obj.add_predicates_to_retriever(
                     name, add_def.fol_formula.definition.variables
                 )
                 loaded_additional_def_names.append(name)
