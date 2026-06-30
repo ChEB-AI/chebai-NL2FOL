@@ -27,7 +27,7 @@ class NL2FOLChebiClassifier:
 
         for chebi_id, learned_def in self.class_definitions.items():
             outcome = self._gavel.does_mol_match_tptp_definition(
-                mol, learned_def.learned_FOL.formula
+                mol, learned_def.learned_FOL.definition.definition
             )
             if outcome == ModelCheckerOutcome.MODEL_FOUND:
                 classification.append({"chebi_id": chebi_id, "name": learned_def.name})
