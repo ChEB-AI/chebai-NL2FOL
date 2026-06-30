@@ -10,7 +10,7 @@ authors = []
 maintainers = []
 readme = "README.md"
 license = { text = "AGPL-3.0" }
-requires-python = ">=3.11, <3.14"
+requires-python = ">=3.14"
 dependencies = [
     "chemlog >=1.0.7",
     "rdkit",
@@ -24,7 +24,8 @@ dev = [
     "dotenv",
     "pytest>=7.0",
     "tqdm",
-    "z3-solver>=4.15.3.0"
+    "z3-solver>=4.15.3.0",
+    "chebILP"
 ]
 
 linter = [ "ruff",

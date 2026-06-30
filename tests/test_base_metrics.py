@@ -14,6 +14,7 @@ def test_score_definition_uses_definite_outcomes_for_metrics(monkeypatch):
     base_fol = BaseFOL.__new__(BaseFOL)
 
     base_fol._fol_reasoner = MagicMock()
+    base_fol.fol_reasoner = "gavel"
     base_fol.split = "train"
 
     chemical_class = MagicMock()
@@ -79,7 +80,7 @@ def test_score_definition_uses_definite_outcomes_for_metrics(monkeypatch):
     ) = BaseFOL._score_definition(
         base_fol,
         chemical_class=chemical_class,
-        tptp_def=MagicMock(),
+        parsed_def=MagicMock(),
         sample_match_timeout_seconds=None,
         max_neg_samples=1000,
         temp_additional_defs=None,

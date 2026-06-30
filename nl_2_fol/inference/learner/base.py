@@ -7,9 +7,12 @@ from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.sample_matching_worker import (
     check_if_definition_matches_samples,
+    check_if_definition_matches_samples_clingo,
 )
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
+
+from typing import Literal
 
 
 class BaseFOL:
@@ -22,8 +25,8 @@ class BaseFOL:
         slim_dataset_path: str,
         structures_path: str,
         chebi_version: int,
-        split: str,
-        fol_reasoner="gavel",
+        split: Literal["train", "val"],
+        fol_reasoner: Literal["gavel", "mistral", "asp"] = "gavel",
     ):
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
@@ -51,6 +54,13 @@ class BaseFOL:
             print("Using `MistralCustomFOLReasoner` as the FOL reasoner.")
             # return MistralCustomFOLReasoner()
             raise ValueError("Support revoked")
+        elif self.fol_reasoner == "asp":
+            print("Using `ASPModelChecker` as the FOL reasoner.")
+            from nl_2_fol.inference.fol_reasoner.asp_model_checker import (
+                ASPModelChecker,
+            )
+
+            return ASPModelChecker()
         else:
             raise ValueError(f"Unsupported FOL reasoner: {self.fol_reasoner}")
 
@@ -58,13 +68,10 @@ class BaseFOL:
         self,
         *,
         chemical_class: dm.ChemicalClass,
-        tptp_def: logic.QuantifiedFormula,
+        parsed_def: logic.QuantifiedFormula | str,
         sample_match_timeout_seconds: int | None,
         max_neg_samples: int,
-        temp_additional_defs: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ]
-        | None,
+        temp_additional_defs: dict[str, def_model.FOLDefinition] | None,
     ) -> tuple[
         def_model.DefinitionMetrics,
         set[dm.SMILES_STRING],
@@ -77,11 +84,17 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        match_result_dict, processed_samples_dict = check_if_definition_matches_samples(
+        matching_func = (
+            check_if_definition_matches_samples
+            if self.fol_reasoner in ["gavel", "mistral"]
+            else check_if_definition_matches_samples_clingo
+        )
+
+        match_result_dict, processed_samples_dict = matching_func(
             self._fol_reasoner,
             sample_match_timeout_seconds,
             chemical_class,
-            tptp_def,
+            parsed_def,
             pos_samples,
             neg_samples,
             temp_additional_defs,

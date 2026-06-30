@@ -30,7 +30,7 @@ class TestMistralCustomFOLReasoner:
 
         # Logical definition to match (I removed `OneCarbonCompound` for simplicity)
         definition_str = "CarbonMonoxide ↔ (∃x ∃y (C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
-        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        definition_to_match = reasoner.parse_definition(definition_str).definition
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
         )
@@ -53,14 +53,14 @@ class TestMistralCustomFOLReasoner:
         # `TwoPlusCarbonCompound`. This should allow carbon monoxide to match, but not
         # ethanol or thionitrous acid.
         definition_str = "CarbonMonoxide ↔ (∃x ∃y (OneCarbonCompound ∧ C(x) ∧ O(y) ∧ HasBondTo(x, y)))"
-        definition_to_match = reasoner.get_tptp_fol_definition(definition_str)[1]
+        definition_to_match = reasoner.parse_definition(definition_str).definition
         add_defs_dict = {
             "onecarboncompound": "OneCarbonCompound ↔ (∃x (C(x) ∧ ¬TwoPlusCarbonCompound))",
             "twopluscarboncompound": "TwoPlusCarbonCompound ↔ (∃x ∃y (C(x) ∧ C(y) ∧ HasBondTo(x, y) ∧ x ≠ y))",
         }
         parsed_add_def = reasoner.convert_to_background_definitions(add_defs_dict)
-        for pred_name, (vars, formula) in parsed_add_def.items():
-            reasoner.add_background_definition(pred_name, vars, formula)
+        for definition in parsed_add_def.values():
+            reasoner.add_background_definition(definition)
 
         matches = reasoner.does_mol_match_tptp_definition(
             carbonMonoxide, definition_to_match
@@ -89,11 +89,11 @@ class TestMistralCustomFOLReasoner:
         # Add background definitions for carboxylic acid test
         add_defs_dict_1 = {"carbonoxoacid": "CarbonOxoacid ↔ (∃x ∃y (C(x) ∧ O(y)))"}
         parsed_add_def_1 = reasoner.convert_to_background_definitions(add_defs_dict_1)
-        for pred_name, (vars, formula) in parsed_add_def_1.items():
-            reasoner.add_background_definition(pred_name, vars, formula)
+        for definition in parsed_add_def_1.values():
+            reasoner.add_background_definition(definition)
 
         # Create and test carboxylic acid molecule
-        _, parsed_formula_1 = reasoner.get_tptp_fol_definition(few_shot_formula_1)
+        parsed_formula_1 = reasoner.parse_definition(few_shot_formula_1).definition
 
         # Test molecule that matches carboxylic acid pattern
         carboxylic_acid_mol = Chem.MolFromSmiles("CC(=O)O")  # Acetic acid
@@ -124,11 +124,11 @@ class TestMistralCustomFOLReasoner:
             "nitrogenmolecularentity": "NitrogenMolecularEntity ↔ (∃x N(x))"
         }
         parsed_add_def_2 = reasoner.convert_to_background_definitions(add_defs_dict_2)
-        for pred_name, (vars, formula) in parsed_add_def_2.items():
-            reasoner.add_background_definition(pred_name, vars, formula)
+        for definition in parsed_add_def_2.values():
+            reasoner.add_background_definition(definition)
 
         # Create and test azide molecules
-        _, parsed_formula_2 = reasoner.get_tptp_fol_definition(few_shot_formula_2)
+        parsed_formula_2 = reasoner.parse_definition(few_shot_formula_2).definition
 
         # Test molecule that matches azide pattern
         azide_mol = Chem.MolFromSmiles("[N-][N+]#N")  # Azide group

@@ -219,5 +219,4 @@ nl_2_fol/inference/learner/learned
 *.err
 *.csv
 *.txt
-*.json
 *.ipynb

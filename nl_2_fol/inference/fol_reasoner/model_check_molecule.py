@@ -1,5 +1,4 @@
-import json
-from pathlib import Path
+from typing import List
 
 from chemlog.fol_classification.fol_utils import normalize_fol_formula
 from chemlog.fol_classification.model_checking import ModelChecker, ModelCheckerOutcome
@@ -9,27 +8,43 @@ from gavel.logic import logic
 from rdkit import Chem
 
 from nl_2_fol.inference import PRINT_TRACES
-from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
+from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
+    FOLDefinition,
+    AbstractModelCheckerWrapper,
+)
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
     mol_to_fol_exception,
-    tptp_parse_exception,
+    parse_exception,
 )
 
 
-class GavelFOLReasoner:
+class GavelDefinition(FOLDefinition):
+    def __init__(
+        self,
+        predicate_name: str,
+        variables: List[logic.Variable],
+        definition: logic.QuantifiedFormula,
+    ):
+        super().__init__(predicate_name, variables, definition)
+
+    def __str__(self):
+        variables = self.variables
+        if variables:
+            head = f"{self.predicate_name}({', '.join(str(var) for var in variables)})"
+        else:
+            head = self.predicate_name
+        return f"{head} <=> {self.definition}"
+
+
+class GavelFOLReasoner(AbstractModelCheckerWrapper):
     def __init__(self) -> None:
         self._tptp_parser = TPTPParser()
-        self._base_predicates: dict[str, str] = GAVEL_PREDICATES
-        self.background_definitions: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ] = {}
+        super().__init__()
 
-    @tptp_parse_exception
-    def get_tptp_fol_definition(
-        self, formula: str
-    ) -> tuple[list[logic.Variable], logic.QuantifiedFormula]:
+    @parse_exception
+    def parse_definition(self, formula: str) -> GavelDefinition:
         """Parses a formula in TPTP format into gavel's internal representation.
 
         Parsing Process:
@@ -85,17 +100,18 @@ class GavelFOLReasoner:
             print(
                 f"Input formula: {formula}\n\t Parsed Right Side as: {tptp_right_side}"
             )
-        return pred_variables, tptp_right_side
+        return GavelDefinition(
+            predicate_name=tptp_parsed.left.predicate,
+            variables=pred_variables,
+            definition=tptp_right_side,
+        )
 
     @model_check_exception
     def does_mol_match_tptp_definition(
         self,
         molecule: Chem.Mol,
         definition_to_match: logic.QuantifiedFormula,
-        temp_additional_defs: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ]
-        | None = None,
+        temp_additional_defs: dict[str, GavelDefinition] | None = None,
     ) -> ModelCheckerOutcome:
         """Checks if a given molecule matches a logical definition using model checking.
 
@@ -131,6 +147,7 @@ class GavelFOLReasoner:
             **self.background_definitions,
             **(temp_additional_defs or {}),
         }
+        bck_def = {name: (d.variables, d.definition) for name, d in bck_def.items()}
         model_checker = ModelChecker(universe, extensions, bck_def, all_different=True)
 
         exception_prefix = (
@@ -177,28 +194,7 @@ class GavelFOLReasoner:
         # rename / add custom extensions if needed
         return universe, extensions
 
-    def extract_unknown_predicates(
-        self,
-        formula: logic.QuantifiedFormula,
-        temp_additional_defs: dict[
-            str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-        ]
-        | None = None,
-    ) -> set[str]:
-        predicates = self._extract_predicates(formula)
-        missing_predicates = predicates - self._base_predicates.keys()
-        missing_predicates = (
-            missing_predicates - self.background_definitions.keys()
-            if self.background_definitions
-            else missing_predicates
-        )
-        if temp_additional_defs:
-            missing_predicates = missing_predicates - temp_additional_defs.keys()
-
-        # {Token('LOWER_WORD', 'predicate_name')} -> {'predicate_name'}
-        return {str(pred) for pred in missing_predicates}
-
-    def _extract_predicates(self, formula: logic.QuantifiedFormula) -> set[str]:
+    def _extract_predicate_names(self, formula: logic.QuantifiedFormula) -> set[str]:
         """Extract all predicates from a parsed TPTP formula."""
         predicates = set()
 
@@ -239,75 +235,6 @@ class GavelFOLReasoner:
 
         return variables
 
-    def add_background_definition(
-        self,
-        name: str,
-        variables: list[logic.Variable],
-        definition: logic.QuantifiedFormula,
-    ):
-        """Add a single background definition with extracted free variables."""
-        self.background_definitions[name] = (variables, definition)
-
-    def save_background_definitions_to_json(self, file_path: str | Path) -> None:
-        payload = []
-        for predicate_name, (
-            variables,
-            definition,
-        ) in self.background_definitions.items():
-            if variables:
-                head = f"{predicate_name}({', '.join(str(var) for var in variables)})"
-            else:
-                head = predicate_name
-            payload.append(
-                {
-                    "predicate": predicate_name,
-                    "definition": f"{head} <=> {definition}",
-                }
-            )
-
-        Path(file_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-    def load_background_definitions_from_json(
-        self,
-        file_path: str | Path,
-        *,
-        replace: bool = True,
-    ) -> dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]]:
-        """Load background definitions from a JSON file.
-
-        Args:
-            file_path: JSON file created by `save_background_definitions_to_json`.
-            replace: If True, clear the current background definitions before loading.
-
-        Returns:
-            The loaded background definitions in the internal tuple format.
-        """
-        payload = json.loads(Path(file_path).read_text(encoding="utf-8"))
-
-        loaded_definitions = {}
-        for item in payload:
-            predicate_name = item["predicate"]
-            pred_variables, fol_formula = self.get_tptp_fol_definition(
-                item["definition"]
-            )
-            loaded_definitions[predicate_name] = (pred_variables, fol_formula)
-
-        if replace:
-            self.background_definitions.clear()
-        self.background_definitions.update(loaded_definitions)
-        return loaded_definitions
-
-    def convert_to_background_definitions(
-        self,
-        predicates: dict[str, str],
-    ) -> dict[str, tuple[list[logic.Variable], logic.QuantifiedFormula]]:
-        """Convert a dictionary of predicate definitions (as strings) to the internal format."""
-        converted = {}
-        for name, def_str in predicates.items():
-            pred_vars, fol_formula = self.get_tptp_fol_definition(def_str)
-            converted[name] = (pred_vars, fol_formula)
-        return converted
-
     @property
     def dummy_formula(self) -> str:
         return "failed_placeholder_predicate(X) <=> (c(X) & ~c(X))"
@@ -318,12 +245,12 @@ if __name__ == "__main__":
 
     fol_parser = GavelFOLReasoner()
     llm_for = "tripeptide <=> (oligopeptide & ?[C1, O1, N1, C2, O2, N2]: (c(C1) & o(O1) & bDOUBLE(C1, O1) & n(N1) & bSINGLE(C1, N1) & has_1_hs(N1) & c(C2) & o(O2) & bDOUBLE(C2, O2) & n(N2) & bSINGLE(C2, N2) & has_1_hs(N2) & C1 != C2 & O1 != O2 & N1 != N2 & ![C3, O3, N3]: ((c(C3) & o(O3) & bDOUBLE(C3, O3) & n(N3) & bSINGLE(C3, N3) & has_1_hs(N3) & peptide(C3, O3, N3)) => ((C3 = C1 & O3 = O1 & N3 = N1) | (C3 = C2 & O3 = O2 & N3 = N2)))))"
-    fol_parser.get_tptp_fol_definition(llm_for)
+    fol_parser.parse_definition(llm_for)
     mol = Chem.MolFromSmiles(
         "C(=O)([C@@H](NC(=O)OCC=1C=CC=CC1)C(C)C)N[C@H](C(=O)N[C@H](C(=O)CF)CC(=O)OC)C"
     )
     matches = fol_parser.does_mol_match_tptp_definition(
-        mol, fol_parser.get_tptp_fol_definition(llm_for)[1]
+        mol, fol_parser.parse_definition(llm_for)[1]
     )
     print(
         f"Tripeptide matches definition: {matches == ModelCheckerOutcome.MODEL_FOUND}"

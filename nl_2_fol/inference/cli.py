@@ -6,7 +6,7 @@ from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
 from nl_2_fol.inference.learner.validator import PerformValidation
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.llm_inference import API_PLATFORM
-from typing import Optional
+from typing import Literal, Optional
 
 
 # should be the root of the repo
@@ -42,6 +42,7 @@ class Main:
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
         max_attempts: int = 3,
         f1_threshold: float = 0.8,
+        fol_reasoner: Literal["gavel", "asp"] = "gavel",
     ):
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
@@ -58,7 +59,7 @@ class Main:
             structures_path=structures_data_path,
             max_attempts=max_attempts,
             f1_threshold=f1_threshold,
-            fol_reasoner="gavel",
+            fol_reasoner=fol_reasoner,
         )
         if class_name == "all":
             learner.learn_fol_definitions()

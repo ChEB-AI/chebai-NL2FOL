@@ -6,14 +6,15 @@ import sys
 import time
 import traceback
 from importlib import import_module
-
+import pandas as pd
 import tqdm
 from chemlog.fol_classification.model_checking import ModelCheckerOutcome
-from gavel.logic import logic
 from gavel.logic.logic import QuantifiedFormula
 
 from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
+from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
+from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPModelChecker
 from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
@@ -119,6 +120,87 @@ def _raise_worker_error(
     raise fallback_exception
 
 
+def check_if_definition_matches_samples_clingo(
+    model_checker: ASPModelChecker,
+    sample_matching_timeout_seconds: int | None,
+    chemical_class: dm.ChemicalClass,
+    asp_def: str,
+    pos_samples: set[dm.ChemicalStructure],
+    neg_samples: set[dm.ChemicalStructure],
+    temp_additional_defs: dict[str, FOLDefinition] | None = None,
+    split: str = "train",
+) -> tuple[dict[str, set[dm.SMILES_STRING]], dict[str, set[dm.ChemicalStructure]]]:
+    # normally, the index would be the actual ChEBI ID. here, a dummy index is used instead since ChemicalStructure does not store the ChEBI ID
+    indexed_samples = {
+        i: s for i, s in enumerate(list(pos_samples) + list(neg_samples))
+    }
+    molecules_df = pd.DataFrame(
+        {"mol": [s.mol for s in indexed_samples.values()]},
+        index=list(indexed_samples.keys()),
+    )
+
+    matched_ids = model_checker.do_molecules_match_asp_definition(
+        molecules_df,
+        asp_def,
+        temp_additional_defs=temp_additional_defs,
+        timeout=sample_matching_timeout_seconds,
+    )
+
+    if matched_ids is None:
+        raise Exception(
+            f"[{chemical_class.id}:{chemical_class.name}] Model checker returned None for definition: {asp_def}"
+        )
+    print(f"Matched IDs: (total {len(matched_ids)})")
+    matched_pos_samples = {
+        i for i in matched_ids if i in indexed_samples and i < len(pos_samples)
+    }
+    matched_neg_samples = {
+        i for i in matched_ids if i in indexed_samples and i >= len(pos_samples)
+    }
+    unmatched_pos_samples = {
+        i
+        for i in indexed_samples
+        if i < len(pos_samples) and i not in matched_pos_samples
+    }
+    unmatched_neg_samples = {
+        i
+        for i in indexed_samples
+        if i >= len(pos_samples) and i not in matched_neg_samples
+    }
+
+    print(
+        f"#TPs: {len(matched_pos_samples)}, #FNs: {len(unmatched_pos_samples)}, #TNs: {len(unmatched_neg_samples)}, #FPs: {len(matched_neg_samples)}"
+    )
+
+    return {
+        "matched_pos_samples": set(
+            indexed_samples[s].smiles for s in matched_pos_samples
+        ),  # TPs
+        "unmatched_neg_samples": set(
+            indexed_samples[s].smiles for s in unmatched_neg_samples
+        ),  # TNs
+        "unmatched_pos_samples": set(
+            indexed_samples[s].smiles for s in unmatched_pos_samples
+        ),  # FNs
+        "matched_neg_samples": set(
+            indexed_samples[s].smiles for s in matched_neg_samples
+        ),  # FPs
+        "inferred_match_pos": set(),
+        "inferred_match_neg": set(),
+        "inferred_no_match_pos": set(),
+        "inferred_no_match_neg": set(),
+        "timeout_pos": set(),
+        "timeout_neg": set(),
+        "error_pos": set(),
+        "error_neg": set(),
+        "unknown_pos": set(),
+        "unknown_neg": set(),
+    }, {
+        "processed_pos_samples": pos_samples,
+        "processed_neg_samples": neg_samples,
+    }
+
+
 def check_if_definition_matches_samples(
     gavel: GavelFOLReasoner,
     sample_matching_timeout_seconds: int | None,
@@ -126,10 +208,7 @@ def check_if_definition_matches_samples(
     tptp_def: QuantifiedFormula,
     pos_samples: set[dm.ChemicalStructure],
     neg_samples: set[dm.ChemicalStructure],
-    temp_additional_defs: dict[
-        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-    ]
-    | None = None,
+    temp_additional_defs: dict[str, FOLDefinition] | None = None,
     split: str = "train",
 ) -> tuple[dict[str, set[dm.SMILES_STRING]], dict[str, set[dm.ChemicalStructure]]]:
     # Track definite outcomes
@@ -521,10 +600,7 @@ def _check_samples_worker(
     tptp_def: QuantifiedFormula,
     samples: list[dm.ChemicalStructure],
     event_type: str,
-    temp_additional_defs: dict[
-        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-    ]
-    | None = None,
+    temp_additional_defs: dict[str, FOLDefinition] | None = None,
 ) -> None:
     label = "positive" if event_type == "pos_checked" else "negative"
     total_samples = len(samples)
@@ -619,10 +695,7 @@ def check_positive_samples_worker(
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
     pos_samples: list[dm.ChemicalStructure],
-    temp_additional_defs: dict[
-        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-    ]
-    | None = None,
+    temp_additional_defs: dict[str, FOLDefinition] | None = None,
 ) -> None:
     _check_samples_worker(
         chemical_class,
@@ -641,10 +714,7 @@ def check_negative_samples_worker(
     gavel: GavelFOLReasoner,
     tptp_def: QuantifiedFormula,
     neg_samples: list[dm.ChemicalStructure],
-    temp_additional_defs: dict[
-        str, tuple[list[logic.Variable], logic.QuantifiedFormula]
-    ]
-    | None = None,
+    temp_additional_defs: dict[str, FOLDefinition] | None = None,
 ) -> None:
     _check_samples_worker(
         chemical_class,

@@ -27,7 +27,7 @@ class NL2FOLChebiClassifier:
 
         for chebi_id, learned_def in self.class_definitions.items():
             outcome = self._gavel.does_mol_match_tptp_definition(
-                mol, learned_def.learned_FOL.formula
+                mol, learned_def.learned_FOL.definition.definition
             )
             if outcome == ModelCheckerOutcome.MODEL_FOUND:
                 classification.append({"chebi_id": chebi_id, "name": learned_def.name})
@@ -61,9 +61,7 @@ class NL2FOLChebiClassifier:
         for chebi_id, learned_def in new_definitions.learned_definitions.items():
             if learned_def.learn_success:
                 self._gavel.add_background_definition(
-                    learned_def.name,
-                    learned_def.learned_FOL.pred_variables,
-                    learned_def.learned_FOL.formula,
+                    learned_def.learned_FOL.definition
                 )
                 successful_learned_definitions[chebi_id] = learned_def
                 counter += 1
@@ -73,11 +71,7 @@ class NL2FOLChebiClassifier:
         counter = 0
         for name, add_def in new_definitions.additional_definitions.items():
             if add_def.learn_success:
-                self._gavel.add_background_definition(
-                    name,
-                    add_def.fol_formula.pred_variables,
-                    add_def.fol_formula.formula,
-                )
+                self._gavel.add_background_definition(add_def.fol_formula.definition)
                 counter += 1
 
         print(f"Loaded {counter} additional definitions")

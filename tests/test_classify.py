@@ -13,9 +13,7 @@ from nl_2_fol.inference.learner import definition_model as def_model
 def sample_learning_results():
     """Create a sample DefinitionLearningResults object for testing."""
     gavel = GavelFOLReasoner()
-    pred_vars_carbon, formula_carbon = gavel.get_tptp_fol_definition(
-        "carbonCompound <=> ?[X]: (c(X))"
-    )
+    carbon_definition = gavel.parse_definition("carbonCompound <=> ?[X]: (c(X))")
 
     metrics = def_model.DefinitionMetrics(
         TP=10, FP=2, FN=3, TN=85, F1=0.83, PPV=0.83, NPV=0.97
@@ -23,10 +21,7 @@ def sample_learning_results():
 
     learned_def = def_model.LearnedDefinition(
         train_metrics=metrics,
-        learned_FOL=def_model.FOLFormula(
-            formula=formula_carbon,
-            pred_variables=pred_vars_carbon,
-        ),
+        learned_FOL=def_model.FOLFormula(definition=carbon_definition),
         prompts_history={},
         name="carbon compound",
         definition="A compound containing at least one carbon atom.",
@@ -35,10 +30,7 @@ def sample_learning_results():
 
     failed_def = def_model.LearnedDefinition(
         train_metrics=metrics,
-        learned_FOL=def_model.FOLFormula(
-            formula=formula_carbon,
-            pred_variables=pred_vars_carbon,
-        ),
+        learned_FOL=def_model.FOLFormula(definition=carbon_definition),
         prompts_history={},
         name="failed compound",
         definition="A compound that failed to learn.",
