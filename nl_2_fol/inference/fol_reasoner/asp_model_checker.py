@@ -1,11 +1,11 @@
 from typing import List
+
 import pandas as pd
 
 from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
-    FOLDefinition,
     AbstractModelCheckerWrapper,
+    FOLDefinition,
 )
-
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
