@@ -3,6 +3,15 @@ from sentence_transformers import SentenceTransformer
 
 
 class IncrementalSemanticRetriever:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is not None:
+            raise Exception(f"{cls.__name__} instance already exists")
+
+        cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, model_name="all-MiniLM-L6-v2"):
         self.model = SentenceTransformer(model_name)
         self.predicates = []
@@ -23,6 +32,9 @@ class IncrementalSemanticRetriever:
             self.embeddings = np.vstack([self.embeddings, new_embedding])
 
     def add_predicates(self, predicates: list[str]):
+        if len(set(predicates)) != len(predicates):
+            raise ValueError("Duplicate predicates found.")
+
         if any(predicate in self.predicates for predicate in predicates):
             raise ValueError("One or more predicates already exist in the retriever.")
 
