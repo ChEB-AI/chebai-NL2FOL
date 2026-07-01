@@ -43,6 +43,7 @@ class Main:
         max_attempts: int = 3,
         f1_threshold: float = 0.8,
         fol_reasoner: Literal["gavel", "asp"] = "gavel",
+        predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
     ):
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
@@ -51,6 +52,7 @@ class Main:
             few_shot_prompt_fp=few_shot_prompt_fp,
             err_failure_prompt_fp=err_failure_prompt_fp,
             undef_failure_prompt_fp=undef_failure_prompt_fp,
+            predicate_prompt_mode=predicate_prompt_mode,
         )
 
         learner = LearnDefinitions(
@@ -151,6 +153,7 @@ class Main:
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
         max_attempts: int = 3,
         f1_threshold: float = 0.8,
+        predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
     ):
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
@@ -159,6 +162,7 @@ class Main:
             few_shot_prompt_fp=few_shot_prompt_fp,
             err_failure_prompt_fp=err_failure_prompt_fp,
             undef_failure_prompt_fp=undef_failure_prompt_fp,
+            predicate_prompt_mode=predicate_prompt_mode,
         )
 
         learner = LearnDefinitions(

@@ -1,13 +1,11 @@
-from typing import List
-
-from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
-
 import json
 from pathlib import Path
 
+from nl_2_fol.inference.fol_reasoner.base_predicates import GAVEL_PREDICATES
+
 
 class FOLDefinition:
-    def __init__(self, predicate_name: str, variables: List, definition):
+    def __init__(self, predicate_name: str, variables: list[str], definition):
         self.predicate_name = predicate_name
         self.variables = variables
         self.definition = definition
