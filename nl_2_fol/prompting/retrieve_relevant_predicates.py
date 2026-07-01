@@ -6,16 +6,18 @@ class SemanticPredicateRetriever:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance is not None:
-            raise Exception(f"{cls.__name__} instance already exists")
-
-        cls._instance = super().__new__(cls)
+        # Singelton pattern to ensure only one instance of the class is created and re-used
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, model_name="all-MiniLM-L6-v2"):
+        if getattr(self, "_initialized", False):
+            return
         self.model = SentenceTransformer(model_name)
         self.predicates = []
         self.embeddings = None
+        self._initialized = True
 
     def add_predicate(self, predicate: str):
         if predicate in self.predicates:
@@ -54,9 +56,7 @@ class SemanticPredicateRetriever:
             return []
 
         if top_k is not None and (top_k <= 0):
-            raise ValueError(
-                f"top_k must be a positive integer less than or equal to the number of predicates ({len(self.predicates)})."
-            )
+            raise ValueError("top_k must be a positive integer less.")
         if top_k is not None and top_k > len(self.predicates):
             return [predicate for predicate in self.predicates]
 

@@ -487,6 +487,7 @@ class ChebiPrompt:
         # Typical English tokenization is roughly 1 token per 4 chars.
         return max(1, len(text) // 4)
 
+    @ce.stop_program_upon_failure
     def add_predicates_to_memory(self, predicate_name: str, vars: list[str]) -> None:
         """Add predicates to the prompt predicate store.
 

@@ -25,7 +25,8 @@ dev = [
     "pytest>=7.0",
     "tqdm",
     "z3-solver>=4.15.3.0",
-    "chebILP"
+    "chebILP",
+    "sentence_transformers"
 ]
 
 linter = [ "ruff",
