@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Callable, cast
+from typing import Callable, Literal, cast
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.language_models.base import BaseLanguageModel
@@ -35,15 +35,22 @@ class ChebiPrompt:
         few_shot_prompt_fp: str,
         err_failure_prompt_fp: str,
         undef_failure_prompt_fp: str,
+        predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
     ):
+        if predicate_prompt_mode not in {"relevant", "all"}:
+            raise ValueError(
+                "predicate_prompt_mode must be either 'relevant' or 'all'."
+            )
         self.platform: API_PLATFORM = platform
         self.model_name: str = model_name
         self.system_prompt_fp: str = system_prompt_fp
         self.few_shot_prompt_fp: str = few_shot_prompt_fp
         self.err_failure_prompt_fp: str = err_failure_prompt_fp
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
+        self.predicate_prompt_mode = predicate_prompt_mode
         # To keep track of predicates generated across iterations, for prompting
         self._memory_store = {}
+        self.generated_predicates_names: set[str] = set()
         self._relevant_predicates: list[str] = []
         self._current_session_id: str | None = None  # Track current session
 
@@ -56,7 +63,11 @@ class ChebiPrompt:
             # For self hosted models, set no token limit as we don't incur a direct cost
             self.MAX_INPUT_TOKENS = None
 
-        self._predicate_retriever = SemanticPredicateRetriever()
+        self._predicate_retriever = (
+            SemanticPredicateRetriever()
+            if self.predicate_prompt_mode == "relevant"
+            else None
+        )
 
     # -------- Conversation Chain Construction --------------------- ##
     def _get_conversation_chain(self) -> Runnable:
@@ -125,16 +136,22 @@ class ChebiPrompt:
         # context window, other models handles from 200,000 to 1,000,000 tokens
         # There are around 367 c3p0 slim classes, so there can be at most 367 predicates,
         # And consider another 100 predicates as an additional predicates, hence managable
-        if len(self._relevant_predicates) > 0:
+        predicates = self._get_predicates_for_system_prompt()
+        if len(predicates) > 0:
             return (
                 "\nAlso, here is the list of predicates along with their arguments that "
                 "were already defined in previous iterations for other CHEBI classes.\n"
                 "If any predicate has no arguments, then just the predicate name is shown "
                 "without parentheses. You can reuse these predicates if they are "
                 "applicable to the current class definition.\n"
-                f"Predicate List: {', '.join(self._relevant_predicates)}"
+                f"Predicate List: {', '.join(predicates)}"
             )
         return ""
+
+    def _get_predicates_for_system_prompt(self) -> list[str]:
+        if self.predicate_prompt_mode == "all":
+            return sorted(self.generated_predicates_names)
+        return self._relevant_predicates
 
     ## ------- Few-Shot Prompt Construction ------------------------- ##
     def _get_few_shot_prompt(self) -> FewShotChatMessagePromptTemplate:
@@ -180,6 +197,7 @@ class ChebiPrompt:
         self, *, input_text: str, session_id: str
     ) -> CHEBIFOLOutput:
         try:
+            self._refresh_relevant_predicates(input_text)
             # Get session history
             history = self.get_session_history(session_id)
 
@@ -316,7 +334,8 @@ class ChebiPrompt:
         system_prompt_fp={self.system_prompt_fp},
         few_shot_prompt_fp={self.few_shot_prompt_fp},
         err_failure_prompt_fp={self.err_failure_prompt_fp},
-        undef_failure_prompt_fp={self.undef_failure_prompt_fp})
+        undef_failure_prompt_fp={self.undef_failure_prompt_fp},
+        predicate_prompt_mode={self.predicate_prompt_mode})
         """
 
     @ce.stop_program_upon_failure
@@ -468,11 +487,11 @@ class ChebiPrompt:
         # Typical English tokenization is roughly 1 token per 4 chars.
         return max(1, len(text) // 4)
 
-    def add_predicates_to_retriever(self, predicate_name: str, vars: list[str]) -> None:
-        """Add predicates to the semantic retriever's index.
+    def add_predicates_to_memory(self, predicate_name: str, vars: list[str]) -> None:
+        """Add predicates to the prompt predicate store.
 
         Example: if pred_name='oligopeptide' and vars=[x0, x1],
-                 this will add 'oligopeptide(x0, x1)' to retriever.
+                 this will add 'oligopeptide(x0, x1)'.
 
         If no variables, only the predicate name is added.
         """
@@ -482,7 +501,28 @@ class ChebiPrompt:
         else:
             predicate_with_vars = predicate_name
 
-        self._predicate_retriever.add_predicate(predicate_with_vars)
+        if self.predicate_prompt_mode == "all":
+            if predicate_with_vars in self.generated_predicates_names:
+                return
+            self.generated_predicates_names.add(predicate_with_vars)
+        elif (
+            self.predicate_prompt_mode == "relevant"
+            and self._predicate_retriever is not None
+        ):
+            self._predicate_retriever.add_predicate(predicate_with_vars)
+        else:
+            raise ValueError(
+                "Invalid predicate_prompt_mode or missing predicate retriever."
+            )
+
+    def _refresh_relevant_predicates(self, input_text: str) -> None:
+        if self.predicate_prompt_mode != "relevant":
+            return
+        if self._predicate_retriever is None:
+            return
+        self._relevant_predicates = (
+            self._predicate_retriever.retrieve_relevant_predicates(input_text)
+        )
 
 
 if __name__ == "__main__":
@@ -506,8 +546,8 @@ if __name__ == "__main__":
     chebi_def = """CHEBI:16236 - ethanol: A primary alcohol that
         is ethane in which one of the hydrogens is substituted
         by a hydroxy group."""
-    chebai_prompt.add_predicates_to_retriever("primary_alcohol", [])
-    chebai_prompt.add_predicates_to_retriever("hydroxy_group", [])
+    chebai_prompt.add_predicates_to_memory("primary_alcohol", [])
+    chebai_prompt.add_predicates_to_memory("hydroxy_group", [])
 
     # Use the same session_id across all invocations to maintain conversation history
     test_session_id = "test_session"

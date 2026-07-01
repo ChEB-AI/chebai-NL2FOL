@@ -581,7 +581,7 @@ class LearnDefinitions(BaseFOL):
                             learn_success=learn_success,
                         )
                     )
-                    self.chebi_prompt_obj.add_predicates_to_retriever(
+                    self.chebi_prompt_obj.add_predicates_to_memory(
                         def_name, d.variables
                     )
                     self._fol_reasoner.add_background_definition(d)
@@ -614,7 +614,7 @@ class LearnDefinitions(BaseFOL):
         )
         if learn_success:
             self._fol_reasoner.add_background_definition(scored_def.definition)
-            self.chebi_prompt_obj.add_predicates_to_retriever(
+            self.chebi_prompt_obj.add_predicates_to_memory(
                 chemical_class.name, scored_def.definition.variables
             )
         print(
@@ -660,7 +660,7 @@ class LearnDefinitions(BaseFOL):
                 self._fol_reasoner.add_background_definition(
                     learned_def.learned_FOL.definition
                 )
-                self.chebi_prompt_obj.add_predicates_to_retriever(
+                self.chebi_prompt_obj.add_predicates_to_memory(
                     learned_def.name, learned_def.learned_FOL.definition.variables
                 )
                 loaded_def_names.append(learned_def.name)
@@ -677,7 +677,7 @@ class LearnDefinitions(BaseFOL):
                 self._fol_reasoner.add_background_definition(
                     add_def.fol_formula.definition
                 )
-                self.chebi_prompt_obj.add_predicates_to_retriever(
+                self.chebi_prompt_obj.add_predicates_to_memory(
                     name, add_def.fol_formula.definition.variables
                 )
                 loaded_additional_def_names.append(name)
