@@ -88,13 +88,13 @@ class ChEBIDataWrapper(ChEBIData):
 
     def _get_chebi_id_to_data_mapping(self) -> pd.DataFrame:
         df = self._preprocess_data()
-        df["name"] = df["name"].apply(to_camel_case)
+        df["predicate_name"] = df["name"].apply(to_camel_case)
         return df
 
     def _preprocess_data(self) -> pd.DataFrame:
         data_dict = self.process_chebi()
         df = pd.DataFrame.from_dict(data_dict, orient="index")
-        df = df[["smiles", "definition", "name"]]
+        df = df[["smiles", "definition", "name", "parents"]]
         df["name"] = df["name"].str.lower().str.strip()
         df = df.dropna(subset=["definition", "name"])
         return df

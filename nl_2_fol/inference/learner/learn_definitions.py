@@ -51,6 +51,9 @@ class LearnDefinitions(BaseFOL):
         self._chebi_name_to_data_map_train = (
             self._entire_chebi_data.get_name_to_data_mapping_train()
         )
+        self._chebi_id_to_data_mapping_all = (
+            self._entire_chebi_data.get_chebi_id_to_data_mapping_all()
+        )
 
     def learn_fol_definitions(self):
         with TeeStream.capture_learning_output(self.learning_log_path):
@@ -118,7 +121,7 @@ class LearnDefinitions(BaseFOL):
         try:
             # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
             # of the hydrogens is substituted by a hydroxy group."""
-            input_text = f"CHEBI:{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
+            input_text = self._build_initial_input_text(chemical_class)
             result = self.chebi_prompt_obj.invoke_llm_first_call(
                 input_text=input_text, session_id=chemical_class.name
             )
@@ -320,6 +323,27 @@ class LearnDefinitions(BaseFOL):
         # This is to clean up the session history after learning a definition for a chemical
         # class or attempts are exhausted, so avoid uncessary runtime memory usage
         self.chebi_prompt_obj.delete_session_history(session_id=session_id)
+
+    def _build_initial_input_text(self, chemical_class: dm.ChemicalClass) -> str:
+        entity = f"CHEBI:{chemical_class.id} - {chemical_class.name}"
+        input_text = f"{entity}: {chemical_class.definition}"
+        mappings: dict = self._chebi_id_to_data_mapping_all[chemical_class.id]
+        parents = mappings.get("parents", [])
+        if not parents:
+            return input_text
+
+        input_text += f"\n\nOutgoing Relation(s)\n {chemical_class.name} is a "
+        parents = [
+            parent for parent in parents if parent in self._chebi_id_to_data_mapping_all
+        ]
+        for parent in parents:
+            parent_name = self._chebi_id_to_data_mapping_all[parent]["name"]
+            if parents.index(parent) == len(parents) - 1:
+                input_text += "and " if len(parents) > 1 else ""
+                input_text += f"{parent_name}."
+            else:
+                input_text += f"{parent_name}, "
+        return input_text
 
     def _validate_additional_predicates(
         self,
