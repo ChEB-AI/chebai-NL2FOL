@@ -3,7 +3,7 @@
     "human": "CHEBI:33575 - carboxylic acid: A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. Carboxylic acids are the most common type of organic acid.\n\nOutgoing Relation(s)\n carboxylic acid is a carbon oxoacid, carbonyl compound, and organic acid.",
     "ai": {
       "intermediate_output": {
-        "relevant_definition": "A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. carboxylic acid is a carbon oxoacid, carbonyl compound, and organic acid.",
+        "relevant_definition": "A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. Carboxylic acid is a carbon oxoacid, carbonyl compound, and organic acid.",
         "superclasses": "carbon oxoacid, carbonyl compound, organic acid",
         "explanation": "The class is defined by its superclass and the -C(=O)OH group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
       },
@@ -11,10 +11,10 @@
     }
   },
   {
-    "human": "CHEBI:22680 - azide: Any nitrogen molecular entity containing the group ‒N3.",
+    "human": "CHEBI:22680 - azide: Any nitrogen molecular entity containing the group ‒N3. azide is a nitrogen molecular entity.",
     "ai": {
       "intermediate_output": {
-        "relevant_definition": "Any nitrogen molecular entity containing the group ‒N3.",
+        "relevant_definition": "Any nitrogen molecular entity containing the group ‒N3. Azide is a nitrogen molecular entity.",
         "superclasses": "nitrogen molecular entity",
         "explanation": "The class is defined by its superclass and the -N3 group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
       },
