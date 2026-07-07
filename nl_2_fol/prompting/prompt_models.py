@@ -9,7 +9,7 @@ class IntermediateOutput(BaseModel):
     relevant_definition: str = Field(
         ..., description="Relevant part of the CHEBI definition"
     )
-    superclass: str = Field(..., description="Superclass of the CHEBI class")
+    superclasses: str = Field(..., description="Superclass(es) of the CHEBI class")
     explanation: str = Field(..., description="How the class is defined")
 
 
@@ -28,7 +28,7 @@ class CHEBIFOLOutput(BaseModel):
             for parser in (json.loads, ast.literal_eval):
                 try:
                     parsed = parser(stripped)
-                except (json.JSONDecodeError, ValueError, SyntaxError):
+                except json.JSONDecodeError, ValueError, SyntaxError:
                     continue
                 if isinstance(parsed, dict):
                     return parsed
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     # Example usage
     intermediate_output = IntermediateOutput(
         relevant_definition="A carbon monoxide is a compound that consists of one carbon atom and one oxygen atom.",
-        superclass="carbon compound",
+        superclasses="carbon compound",
         explanation="The definition states that a carbon monoxide is a compound made of one carbon and one oxygen, which matches the superclass 'carbon compound'.",
     )
     fol_output = CHEBIFOLOutput(
