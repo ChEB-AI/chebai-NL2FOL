@@ -58,7 +58,10 @@ class ChemicalClass(BaseModel):
         ...,
         description="list of SMILES strings of all positive examples of the class",
     )
-    num_of_members: int = Field(..., description="number of members the class has")
+    num_of_members: int = Field(
+        ...,
+        description="number of (transitive) subclasses/descendants in the ChEBI hierarchy",
+    )
 
     def lite_copy(self) -> "ChemicalClass":
         """
