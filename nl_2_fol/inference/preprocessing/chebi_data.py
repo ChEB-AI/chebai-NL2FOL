@@ -134,7 +134,8 @@ class ChEBIDataWrapper(ChEBIData):
                 with open(self.undirected_hierarchy_path, "wb") as f:
                     pickle.dump(g.to_undirected(), f)
             with open(self.trans_hierarchy_path, "wb") as f:
-                pickle.dump(nx.transitive_closure(g), f)
+                g = nx.transitive_closure(g)
+                pickle.dump(g, f)
             return g
         with open(self.trans_hierarchy_path, "rb") as f:
             return pickle.load(f)
