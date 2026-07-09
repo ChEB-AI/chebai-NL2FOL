@@ -7,7 +7,7 @@
         "superclasses": "carbon oxoacid, carbonyl compound, organic acid",
         "explanation": "The class is defined by its superclass and the -C(=O)OH group. I will translate the group with a conjunction of predicates defining the type of the atoms and their bonds."
       },
-      "FOL_formula": "carboxylicAcid(M) :- carbonOxoacid(M), has_atom(M, A1), c(A1), o(A2), o(A3), has_1_hs(A3), bDOUBLE(A1, A2), bSINGLE(A1, A3), A2 != A3."
+      "FOL_formula": "carboxylicAcid(M) :- carbonOxoacid(M), carbonylCompound(M), organicAcid(M), has_atom(M, A1), c(A1), o(A2), o(A3), has_1_hs(A3), bDOUBLE(A1, A2), bSINGLE(A1, A3), A2 != A3."
     }
   },
   {
@@ -26,10 +26,10 @@
     "ai": {
       "intermediate_output": {
         "relevant_definition": "A compound that contains two hydroxy groups. Diol is polyol.",
-        "superclasses": "organic hydroxy compound, polyol",
+        "superclasses": "polyol",
         "explanation": "The class is defined by two hydroxy groups. I will use an auxiliary predicate to represent the hydroxy group and add a count aggregate to ensure that there are exactly two such groups."
       },
-      "FOL_formula": "diol(M) :- organicHydroxyCompound(M), #count{ X : has_atom(M, X), hydroxy(X) } = 2."
+      "FOL_formula": "diol(M) :- polyol(M), #count{ X : has_atom(M, X), hydroxy(X) } = 2."
     }
   }
 ]
