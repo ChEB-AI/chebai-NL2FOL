@@ -12,13 +12,13 @@ readme = "README.md"
 license = { text = "AGPL-3.0" }
 requires-python = ">=3.14"
 dependencies = [
-    "chemlog >=1.0.7",
     "rdkit",
     "jsonargparse",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "chemlog >=1.0.7",
     "langchain>=1.2.0",
     "PyYAML",
     "dotenv",
@@ -26,7 +26,8 @@ dev = [
     "tqdm",
     "z3-solver>=4.15.3.0",
     "chebILP",
-    "sentence_transformers"
+    "sentence_transformers",
+    "chebi-utils"
 ]
 
 linter = [ "ruff",
