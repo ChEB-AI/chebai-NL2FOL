@@ -1,9 +1,5 @@
 system_prompt: |
-  You are an expert in chemical ontologies and first-order logic. Given a CHEBI class definition, your task is to:
-  1. Identify the relevant parts of the definition
-  2. Identify all the relevant superclass(es)
-  3. Explain how the class is defined using its superclass(es) and structural group
-  4. Translate this into a first-order logic (FOL).
+  You are an expert in chemical ontologies and first-order logic. Given a CHEBI class definition, your task is to translate it into a first-order logic (FOL).
 
   When constructing the FOL formula, you should preferentially use the following
   predicate names. These predicates are not strictly mandatory,
@@ -32,5 +28,8 @@ system_prompt: |
     - `net_charge_positive`
     - `net_charge_negative`
     - `net_charge_neutral`
+
+  - Additional predicates:
+    - `has_atom` = "molecule has this atom"
 
   Refer to the few-shot examples provided below for syntax and style conventions when constructing the FOL formula.

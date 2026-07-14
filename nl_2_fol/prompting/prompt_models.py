@@ -9,13 +9,27 @@ class IntermediateOutput(BaseModel):
     relevant_definition: str = Field(
         ..., description="Relevant part of the CHEBI definition"
     )
-    superclass: str = Field(..., description="Superclass of the CHEBI class")
+    superclasses: str = Field(..., description="Superclass(es) of the CHEBI class")
     explanation: str = Field(..., description="How the class is defined")
 
 
-class CHEBIFOLOutput(BaseModel):
-    intermediate_output: IntermediateOutput
+class ChEBI_FOL_AT(BaseModel):
+    """Model for parsing ChEBI FOL definitions from LLM response."""
+
     FOL_formula: str = Field(..., description="First-order logic formula")
+
+    @field_validator("FOL_formula", mode="before")
+    @classmethod
+    def _coerce_fol_formula(cls, value):
+        if isinstance(value, list):
+            return " ".join(
+                part.strip() for part in value if isinstance(part, str) and part.strip()
+            )
+        return value
+
+
+class CHEBIFOLOutput(ChEBI_FOL_AT):
+    intermediate_output: IntermediateOutput
 
     @field_validator("intermediate_output", mode="before")
     @classmethod
@@ -28,20 +42,11 @@ class CHEBIFOLOutput(BaseModel):
             for parser in (json.loads, ast.literal_eval):
                 try:
                     parsed = parser(stripped)
-                except (json.JSONDecodeError, ValueError, SyntaxError):
+                except json.JSONDecodeError, ValueError, SyntaxError:
                     continue
                 if isinstance(parsed, dict):
                     return parsed
 
-        return value
-
-    @field_validator("FOL_formula", mode="before")
-    @classmethod
-    def _coerce_fol_formula(cls, value):
-        if isinstance(value, list):
-            return " ".join(
-                part.strip() for part in value if isinstance(part, str) and part.strip()
-            )
         return value
 
 
@@ -58,7 +63,7 @@ if __name__ == "__main__":
     # Example usage
     intermediate_output = IntermediateOutput(
         relevant_definition="A carbon monoxide is a compound that consists of one carbon atom and one oxygen atom.",
-        superclass="carbon compound",
+        superclasses="carbon compound",
         explanation="The definition states that a carbon monoxide is a compound made of one carbon and one oxygen, which matches the superclass 'carbon compound'.",
     )
     fol_output = CHEBIFOLOutput(

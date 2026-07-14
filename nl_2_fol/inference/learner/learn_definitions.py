@@ -12,7 +12,7 @@ from nl_2_fol.inference.learner.base import BaseFOL
 from nl_2_fol.inference.learner.tee_stream import TeeStream
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
-from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
+from nl_2_fol.prompting.prompt_models import ChEBI_FOL_AT
 
 
 class LearnDefinitions(BaseFOL):
@@ -50,6 +50,9 @@ class LearnDefinitions(BaseFOL):
 
         self._chebi_name_to_data_map_train = (
             self._entire_chebi_data.get_name_to_data_mapping_train()
+        )
+        self._chebi_id_to_data_mapping_all = (
+            self._entire_chebi_data.get_chebi_id_to_data_mapping_all()
         )
 
     def learn_fol_definitions(self):
@@ -118,7 +121,7 @@ class LearnDefinitions(BaseFOL):
         try:
             # """CHEBI:16236 - ethanol: A primary alcohol that is ethane in which one
             # of the hydrogens is substituted by a hydroxy group."""
-            input_text = f"CHEBI:{chemical_class.id} - {chemical_class.name}: {chemical_class.definition}"
+            input_text = self._build_initial_input_text(chemical_class)
             result = self.chebi_prompt_obj.invoke_llm_first_call(
                 input_text=input_text, session_id=chemical_class.name
             )
@@ -321,6 +324,27 @@ class LearnDefinitions(BaseFOL):
         # class or attempts are exhausted, so avoid uncessary runtime memory usage
         self.chebi_prompt_obj.delete_session_history(session_id=session_id)
 
+    def _build_initial_input_text(self, chemical_class: dm.ChemicalClass) -> str:
+        entity = f"CHEBI:{chemical_class.id} - {chemical_class.name}"
+        input_text = f"{entity}: {chemical_class.definition}"
+        mappings: dict = self._chebi_id_to_data_mapping_all[chemical_class.id]
+        parents = mappings.get("parents", [])
+        if not parents:
+            return input_text
+
+        input_text += f"\n\nOutgoing Relation(s)\n {chemical_class.name} is a "
+        parents = [
+            parent for parent in parents if parent in self._chebi_id_to_data_mapping_all
+        ]
+        for parent in parents:
+            parent_name = self._chebi_id_to_data_mapping_all[parent]["name"]
+            if parents.index(parent) == len(parents) - 1:
+                input_text += "and " if len(parents) > 1 else ""
+                input_text += f"{parent_name}."
+            else:
+                input_text += f"{parent_name}, "
+        return input_text
+
     def _validate_additional_predicates(
         self,
         add_bck_def: dict[str, FOLDefinition],
@@ -507,7 +531,7 @@ class LearnDefinitions(BaseFOL):
 
     def _parse_and_validate_generated_definition(
         self,
-        result: CHEBIFOLOutput,
+        result: ChEBI_FOL_AT,
         chemical_class: dm.ChemicalClass,
         low_score_defs_collector: dict[int, def_model.ScoredDefinition],
         temp_additional_defs: dict[str, def_model.FOLDefinition] | None = None,

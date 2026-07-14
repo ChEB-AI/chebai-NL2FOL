@@ -1,0 +1,20 @@
+[
+  {
+    "human": "CHEBI:33575 - carboxylic acid: A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. Carboxylic acids are the most common type of organic acid.\n\nOutgoing Relation(s)\n carboxylic acid is a carbon oxoacid, carbonyl compound, and organic acid.",
+    "ai": {
+      "FOL_formula": "carboxylicAcid(M) :- carbonOxoacid(M), carbonylCompound(M), organicAcid(M), has_atom(M, A1), c(A1), o(A2), o(A3), has_1_hs(A3), bDOUBLE(A1, A2), bSINGLE(A1, A3), A2 != A3."
+    }
+  },
+  {
+    "human": "CHEBI:22680 - azide: Any nitrogen molecular entity containing the group ‒N3.  azide is a nitrogen molecular entity.",
+    "ai": {
+      "FOL_formula": "azide(M) :- nitrogenMolecularEntity(M), has_atom(M, A1), n(A1), charge0(A1), n(A2), charge1(A2), n(A3), charge_m1(A3), bDOUBLE(A1, A2), bDOUBLE(A2, A3)."
+    }
+  },
+  {
+    "human": "CHEBI:23824 - diol: A compound that contains two hydroxy groups, generally assumed to be, but not necessarily, alcoholic. Aliphatic diols are also called glycols. diol is polyol.",
+    "ai": {
+      "FOL_formula": "diol(M) :- polyol(M), #count{ X : has_atom(M, X), hydroxy(X) } = 2."
+    }
+  }
+]
