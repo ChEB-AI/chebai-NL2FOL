@@ -192,7 +192,7 @@ class ChEBIDataWrapper:
 
     def download_chebi(self) -> None:
         if not os.path.exists(self.chebi_path):
-            download_chebi_obo(self.chebi_version, self.base_dir)
+            download_chebi_obo(self.chebi_version, os.path.dirname(self.chebi_path))
 
     def process_chebi(self) -> dict:
         self.download_chebi()
@@ -217,7 +217,7 @@ class ChEBIDataWrapper:
                     term = _term_data(term)
                     if term is None:
                         continue
-                    chebi_id = term.pop("id")
+                    chebi_id = int(term.pop("id"))
                     res[chebi_id] = term
             with open(self.chebi_dict_path, "wb") as f:
                 pickle.dump(res, f)
