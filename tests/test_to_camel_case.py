@@ -6,6 +6,11 @@ from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 @pytest.mark.parametrize(
     "raw_name, expected",
     [
+        ("15G256ν", "15G256ν"),
+        ("Albogrisin B′", "albogrisinB′"),
+        ("Alterochromide B'", "alterochromideB'"),
+        ("Alterochromide A''", "alterochromideA''"),
+        ("Ganoderic acid Σ", "ganodericAcidΣ"),
         ("epoxy fatty acid", "epoxyFattyAcid"),
         ("  epoxy   fatty-acid  ", "epoxyFattyAcid"),
         ("omega 3 fatty acid", "omega3FattyAcid"),
