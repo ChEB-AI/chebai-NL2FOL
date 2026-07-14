@@ -38,7 +38,6 @@ class LearnDefinitions(BaseFOL):
         )
         self.chebi_prompt_obj = chebi_prompt_obj
         self._user_max_attempts = max_attempts
-        self.actual_max_attempts = max_attempts
         self.f1_threshold = f1_threshold
 
         # Stores chemical classes which failed to learn FOL in previous programs calls,
@@ -109,7 +108,7 @@ class LearnDefinitions(BaseFOL):
     def _learn(self, chemical_class: dm.ChemicalClass) -> bool:
         """Returns True if learning was successful, False otherwise."""
         attempts = 0
-        self.actual_max_attempts = (
+        actual_max_attempts = (
             self._user_max_attempts + 2
             if chemical_class.num_of_members >= 500
             else self._user_max_attempts
@@ -152,7 +151,7 @@ class LearnDefinitions(BaseFOL):
         )
         outofbox_max_attempts, curr_outofbox = 1, 0
         undef_retry_context: str | None = None
-        while attempts < self.actual_max_attempts:
+        while attempts < actual_max_attempts:
             print(
                 f"Attempt {attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
             )
@@ -223,7 +222,7 @@ class LearnDefinitions(BaseFOL):
                     attempts += 1
                     print(
                         f"Failed to validate out-of-box predicate definitions for {chemical_class.name}. "
-                        f"Consuming attempt {attempts + 1}/{self.actual_max_attempts + 1} and retrying."
+                        f"Consuming attempt {attempts + 1}/{actual_max_attempts + 1} and retrying."
                     )
                     continue
             elif isinstance(raised_exception, ce.RetryException):
