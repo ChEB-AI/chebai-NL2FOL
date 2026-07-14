@@ -12,7 +12,7 @@ from nl_2_fol.inference.learner.base import BaseFOL
 from nl_2_fol.inference.learner.tee_stream import TeeStream
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
-from nl_2_fol.prompting.prompt_models import CHEBIFOLOutput
+from nl_2_fol.prompting.prompt_models import ChEBI_FOL_AT
 
 
 class LearnDefinitions(BaseFOL):
@@ -531,7 +531,7 @@ class LearnDefinitions(BaseFOL):
 
     def _parse_and_validate_generated_definition(
         self,
-        result: CHEBIFOLOutput,
+        result: ChEBI_FOL_AT,
         chemical_class: dm.ChemicalClass,
         low_score_defs_collector: dict[int, def_model.ScoredDefinition],
         temp_additional_defs: dict[str, def_model.FOLDefinition] | None = None,

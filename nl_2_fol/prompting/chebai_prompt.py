@@ -15,6 +15,7 @@ from langchain_core.runnables import Runnable
 from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
 from nl_2_fol.prompting.prompt_models import (
+    ChEBI_FOL_AT,
     CHEBIFOLOutput,
     OutOfBoxPredicateDefinitions,
 )
@@ -36,6 +37,7 @@ class ChebiPrompt:
         err_failure_prompt_fp: str,
         undef_failure_prompt_fp: str,
         predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
+        structured_output_type: str = "ChEBI_FOL_AT",
     ):
         if predicate_prompt_mode not in {"relevant", "all"}:
             raise ValueError(
@@ -48,6 +50,7 @@ class ChebiPrompt:
         self.err_failure_prompt_fp: str = err_failure_prompt_fp
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
         self.predicate_prompt_mode = predicate_prompt_mode
+        self.structured_output_type = structured_output_type
         # To keep track of predicates generated across iterations, for prompting
         self._memory_store = {}
         self.generated_predicates_names: set[str] = set()
@@ -72,7 +75,12 @@ class ChebiPrompt:
     # -------- Conversation Chain Construction --------------------- ##
     def _get_conversation_chain(self) -> Runnable:
         prompt = self._get_prompt_template()
-        structured_llm = self._llm.with_structured_output(CHEBIFOLOutput)
+        if self.structured_output_type == "ChEBI_FOL_AT":
+            structured_llm = self._llm.with_structured_output(ChEBI_FOL_AT)
+        elif self.structured_output_type == "CHEBIFOLOutput":
+            structured_llm = self._llm.with_structured_output(CHEBIFOLOutput)
+        else:
+            raise ValueError("Invalid structured_output_type")
         return prompt | structured_llm
 
     def _get_undef_failure_chain(self) -> Runnable:
@@ -195,7 +203,7 @@ class ChebiPrompt:
     @ce.stop_program_upon_failure
     def invoke_llm_first_call(
         self, *, input_text: str, session_id: str
-    ) -> CHEBIFOLOutput:
+    ) -> ChEBI_FOL_AT:
         try:
             self._refresh_relevant_predicates(input_text)
             # Get session history
@@ -228,7 +236,7 @@ class ChebiPrompt:
     @ce.stop_program_upon_failure
     def invoke_llm_with_error_failure_prompt(
         self, *, error_message: str, session_id: str
-    ) -> CHEBIFOLOutput:
+    ) -> ChEBI_FOL_AT:
         try:
             error_prompt = self._get_err_failure_prompt(error_message)
             # Get session history
