@@ -58,6 +58,10 @@ class ChemicalClass(BaseModel):
         ...,
         description="list of SMILES strings of all positive examples of the class",
     )
+    num_of_members: int = Field(
+        ...,
+        description="number of (transitive) subclasses/descendants in the ChEBI hierarchy",
+    )
 
     def lite_copy(self) -> "ChemicalClass":
         """
@@ -170,8 +174,13 @@ def load_c3po_slim_dataset(
     chemlog_chebi_class = ChEBIDataWrapper(
         chebi_version=chebi_version, validation_smiles=validation_smiles
     )
+
     slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
     slim_df["name"] = slim_df["name"].apply(to_camel_case)
+    trans_hierarchy_graph = chemlog_chebi_class.get_trans_hierarchy()
+    slim_df["num_of_members"] = slim_df["id"].apply(
+        lambda chebi_id: int(trans_hierarchy_graph.out_degree(chebi_id))
+    )
 
     # Sorting abstract classes first, specific classes later,
     # This to ensure when FOL definition for specific class is generated, all
@@ -228,6 +237,7 @@ def load_c3po_slim_dataset(
             all_positive_examples=parse_positive_examples(
                 str(row.all_positive_examples)
             ),
+            num_of_members=int(row.num_of_members),  # type: ignore
         )
         for row in tqdm.tqdm(
             slim_df.itertuples(), total=len(slim_df), desc="Loading classes"

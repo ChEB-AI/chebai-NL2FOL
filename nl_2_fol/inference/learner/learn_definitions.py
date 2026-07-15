@@ -37,7 +37,7 @@ class LearnDefinitions(BaseFOL):
             fol_reasoner=fol_reasoner,
         )
         self.chebi_prompt_obj = chebi_prompt_obj
-        self.max_attempts = max_attempts
+        self._user_max_attempts = max_attempts
         self.f1_threshold = f1_threshold
 
         # Stores chemical classes which failed to learn FOL in previous programs calls,
@@ -111,6 +111,13 @@ class LearnDefinitions(BaseFOL):
     def _learn(self, chemical_class: dm.ChemicalClass) -> bool:
         """Returns True if learning was successful, False otherwise."""
         attempts = 0
+        # ---- commenting, incase we decide to have more attempts for larger classes in future
+        # actual_max_attempts = (
+        #     self._user_max_attempts + 2
+        #     if chemical_class.num_of_members >= 500
+        #     else self._user_max_attempts
+        # )
+        actual_max_attempts = self._user_max_attempts
 
         # Tracks all the definitions which scored below threshold from all attempts
         # If no generated def pass the threshold, then we accept the one with best score
@@ -149,7 +156,7 @@ class LearnDefinitions(BaseFOL):
         )
         outofbox_max_attempts, curr_outofbox = 1, 0
         undef_retry_context: str | None = None
-        while attempts < self.max_attempts:
+        while attempts < actual_max_attempts:
             print(
                 f"Attempt {attempts + 2} for CHEBI:{chemical_class.id}: {chemical_class.name}"
             )
@@ -220,7 +227,7 @@ class LearnDefinitions(BaseFOL):
                     attempts += 1
                     print(
                         f"Failed to validate out-of-box predicate definitions for {chemical_class.name}. "
-                        f"Consuming attempt {attempts + 1}/{self.max_attempts + 1} and retrying."
+                        f"Consuming attempt {attempts + 1}/{actual_max_attempts + 1} and retrying."
                     )
                     continue
             elif isinstance(raised_exception, ce.RetryException):
@@ -661,7 +668,9 @@ class LearnDefinitions(BaseFOL):
     ) -> def_model.DefinitionLearningResults:
         # load definitions from the given path and return as a dictionary
         # the key can be the chemical class and the value can be the FOL definition
-        file_name = self._DEFINITION_FILE_NAME.format(max_attempts=self.max_attempts)
+        file_name = self._DEFINITION_FILE_NAME.format(
+            max_attempts=self._user_max_attempts
+        )
         default_path = os.path.join(self.definitions_save_path, file_name)
         print(f"Loading definitions from {default_path} if it exists...")
         if os.path.exists(default_path):
@@ -718,7 +727,9 @@ class LearnDefinitions(BaseFOL):
             path = self.definitions_save_path
             os.makedirs(path, exist_ok=True)
 
-        file_name = self._DEFINITION_FILE_NAME.format(max_attempts=self.max_attempts)
+        file_name = self._DEFINITION_FILE_NAME.format(
+            max_attempts=self._user_max_attempts
+        )
         file_path = os.path.join(path, file_name)
         meta_data_path = os.path.join(path, "__metadata__.txt")
         if os.path.exists(file_path):
@@ -743,7 +754,7 @@ class LearnDefinitions(BaseFOL):
     def __repr__(self) -> str:
         return f"""
         DefinitionLearner(chebi_prompt_obj={self.chebi_prompt_obj}),
-        max_attempts={self.max_attempts},
+        max_attempts={self._user_max_attempts},
         f1_threshold={self.f1_threshold},
         slim_dataset_path={self.slim_dataset_path},
         structures_path={self.structures_path},
@@ -757,5 +768,5 @@ class LearnDefinitions(BaseFOL):
     def learning_log_path(self) -> str:
         return os.path.join(
             self.definitions_save_path,
-            self._LEARNING_LOG_FILE_NAME.format(max_attempts=self.max_attempts),
+            self._LEARNING_LOG_FILE_NAME.format(max_attempts=self._user_max_attempts),
         )
