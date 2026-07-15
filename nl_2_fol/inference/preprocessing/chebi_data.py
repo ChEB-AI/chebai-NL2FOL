@@ -1,15 +1,17 @@
 import os
 import pickle
 
+import fastobo
 import networkx as nx
 import pandas as pd
-from chemlog.preprocessing.chebi_data import ChEBIData
+from chebi_utils.downloader import download_chebi_obo
+from chebi_utils.obo_extractor import _term_data
 
 from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
 
 
-class ChEBIDataWrapper(ChEBIData):
+class ChEBIDataWrapper:
     def __init__(self, chebi_version: int, validation_smiles: set[SMILES_STRING]):
         self.chebi_version = chebi_version
         self.validation_smiles = validation_smiles
@@ -18,12 +20,6 @@ class ChEBIDataWrapper(ChEBIData):
         os.makedirs(
             os.path.join(self.base_dir, f"chebi_v{self.chebi_version}"), exist_ok=True
         )
-        # ---- Dont want both chebi and processed data to be loaded into memory
-        # ---- processed data will be loaded when required
-        # # chebi: dict with entries from chebi
-        # self.chebi = self.process_chebi()
-        # # processed: dataframe that combines chebi data with mols from sdf file
-        # self.processed = self.process_data()
 
     def get_name_to_data_mapping_train(self) -> dict[str, dict]:
         df = self._get_name_to_data_mapping()
@@ -88,13 +84,13 @@ class ChEBIDataWrapper(ChEBIData):
 
     def _get_chebi_id_to_data_mapping(self) -> pd.DataFrame:
         df = self._preprocess_data()
-        df["name"] = df["name"].apply(to_camel_case)
+        df["predicate_name"] = df["name"].apply(to_camel_case)
         return df
 
     def _preprocess_data(self) -> pd.DataFrame:
         data_dict = self.process_chebi()
         df = pd.DataFrame.from_dict(data_dict, orient="index")
-        df = df[["smiles", "definition", "name"]]
+        df = df[["smiles", "definition", "name", "parents"]]
         df["name"] = df["name"].str.lower().str.strip()
         df = df.dropna(subset=["definition", "name"])
         return df
@@ -168,6 +164,68 @@ class ChEBIDataWrapper(ChEBIData):
         return os.path.join(
             self.base_dir, f"chebi_v{self.chebi_version}", "undirected_hierarchy.pkl"
         )
+
+    @property
+    def base_dir(self):
+        return "data"
+
+    @property
+    def chebi_path(self):
+        return os.path.join(self.base_dir, f"chebi_v{self.chebi_version}", "chebi.obo")
+
+    @property
+    def chebi_dict_path(self):
+        return os.path.join(
+            self.base_dir, f"chebi_v{self.chebi_version}", "chebi_dict.pkl"
+        )
+
+    @property
+    def trans_hierarchy_path(self):
+        return os.path.join(
+            self.base_dir, f"chebi_v{self.chebi_version}", "trans_hierarchy.pkl"
+        )
+
+    @property
+    def processed_path(self):
+        return os.path.join(
+            self.base_dir, f"chebi_v{self.chebi_version}", "processed.pkl"
+        )
+
+    def download_chebi(self) -> None:
+        if not os.path.exists(self.chebi_path):
+            download_chebi_obo(self.chebi_version, os.path.dirname(self.chebi_path))
+
+    def process_chebi(self) -> dict:
+        self.download_chebi()
+        if not os.path.exists(self.chebi_dict_path):
+            with open(self.chebi_path, encoding="utf-8") as chebi_raw:
+                chebi = "\n".join(
+                    line for line in chebi_raw if not line.startswith("xref:")
+                )
+            res = {}
+            for term in fastobo.loads(chebi):  # type: ignore
+                if (
+                    term
+                    and ":" in str(term.id)
+                    and not any(
+                        [
+                            clause.raw_tag() == "is_obsolete"
+                            and clause.raw_value() == "true"
+                            for clause in term
+                        ]
+                    )
+                ):
+                    term = _term_data(term)
+                    if term is None:
+                        continue
+                    chebi_id = int(term.pop("id"))
+                    res[chebi_id] = term
+            with open(self.chebi_dict_path, "wb") as f:
+                pickle.dump(res, f)
+            return res
+        else:
+            with open(self.chebi_dict_path, "rb") as f:
+                return pickle.load(f)
 
 
 if __name__ == "__main__":

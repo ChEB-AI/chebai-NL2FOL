@@ -9,8 +9,8 @@ from rdkit import Chem
 
 from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
-    FOLDefinition,
     AbstractModelCheckerWrapper,
+    FOLDefinition,
 )
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
@@ -54,7 +54,9 @@ class GavelFOLReasoner(AbstractModelCheckerWrapper):
         4. Normalize the formula to PNF (Prenex Normal Form) with matrix in CNF for model checking.
         """
         # wrap formula into an *annotated formula* for parsing
-        formula_wrapped = f"fof(temp, axiom, {formula})."
+        formula_wrapped = (
+            f"fof(temp, axiom, {self._wrap_right_side_of_biimplication(formula)})."
+        )
         try:
             tptp_parsed = self._tptp_parser.parse(formula_wrapped)[0].formula
         except Exception as e:
@@ -238,6 +240,19 @@ class GavelFOLReasoner(AbstractModelCheckerWrapper):
     @property
     def dummy_formula(self) -> str:
         return "failed_placeholder_predicate(X) <=> (c(X) & ~c(X))"
+
+    def _wrap_right_side_of_biimplication(self, formula: str) -> str:
+        # Check if the formula contains a biimplication
+        if "<=>" in formula:
+            left_part, right_part = formula.split("<=>", 1)
+            left_part = left_part.strip()
+            right_part = right_part.strip()
+            # Ensure the right part is wrapped in parentheses
+            if not (right_part.startswith("(") and right_part.endswith(")")):
+                right_part = f"({right_part})"
+                return f"{left_part} <=> {right_part}"
+            return formula
+        return formula
 
 
 if __name__ == "__main__":

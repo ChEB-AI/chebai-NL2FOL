@@ -305,6 +305,10 @@ class TestGavelFOLReasoner:
         ):
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
 
+    @pytest.mark.skip(
+        reason="This test is currently skipped fix for this was implemented in"
+        "https://github.com/ChEB-AI/chebai-NL2FOL/pull/50"
+    )
     def test_ambiguous_formula_without_brackets(self, reasoner: GavelFOLReasoner):
         """Test that ambiguous formulas without proper brackets raise an error."""
         # Formula without brackets: A <=> B & C is parsed as (A <=> B) & C, not A <=> (B & C)
@@ -464,3 +468,28 @@ class TestGavelFOLReasoner:
         assert result_2_no_match == ModelCheckerOutcome.NO_MODEL, (
             "Aniline should not match azide formula"
         )
+
+    def test_simple_biimplication(self, reasoner: GavelFOLReasoner):
+        formula = "x2SFlavan4One(X) <=> flavanone(X)"
+        expected = "x2SFlavan4One(X) <=> (flavanone(X))"
+        assert reasoner._wrap_right_side_of_biimplication(formula) == expected
+
+    def test_complex_biimplication(self, reasoner: GavelFOLReasoner):
+        formula = "x2SFlavan4One(X) <=> flavanone(X) & ?[A1]: (c(A1) & inRing(A1) & cip_code_S(A1))"
+        expected = "x2SFlavan4One(X) <=> (flavanone(X) & ?[A1]: (c(A1) & inRing(A1) & cip_code_S(A1)))"
+        assert reasoner._wrap_right_side_of_biimplication(formula) == expected
+
+    def test_no_biimplication(self, reasoner: GavelFOLReasoner):
+        formula = "x2SFlavan4One(X)"
+        expected = "x2SFlavan4One(X)"
+        assert reasoner._wrap_right_side_of_biimplication(formula) == expected
+
+    def test_already_wrapped(self, reasoner: GavelFOLReasoner):
+        formula = "x2SFlavan4One(X) <=> (flavanone(X))"
+        expected = "x2SFlavan4One(X) <=> (flavanone(X))"
+        assert reasoner._wrap_right_side_of_biimplication(formula) == expected
+
+    def test_nested_parentheses(self, reasoner: GavelFOLReasoner):
+        formula = "x2SFlavan4One(X) <=> (flavanone(X) | (c(A1) & inRing(A1)))"
+        expected = "x2SFlavan4One(X) <=> (flavanone(X) | (c(A1) & inRing(A1)))"
+        assert reasoner._wrap_right_side_of_biimplication(formula) == expected

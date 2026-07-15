@@ -33,4 +33,7 @@ system_prompt: |
     - `net_charge_negative`
     - `net_charge_neutral`
 
+  - Additional predicates:
+    - `has_atom` = "molecule has this atom"
+
   Refer to the few-shot examples provided below for syntax and style conventions when constructing the FOL formula.
