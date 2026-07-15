@@ -111,11 +111,13 @@ class LearnDefinitions(BaseFOL):
     def _learn(self, chemical_class: dm.ChemicalClass) -> bool:
         """Returns True if learning was successful, False otherwise."""
         attempts = 0
-        actual_max_attempts = (
-            self._user_max_attempts + 2
-            if chemical_class.num_of_members >= 500
-            else self._user_max_attempts
-        )
+        # ---- commenting, incase we decide to have more attempts for larger classes in future
+        # actual_max_attempts = (
+        #     self._user_max_attempts + 2
+        #     if chemical_class.num_of_members >= 500
+        #     else self._user_max_attempts
+        # )
+        actual_max_attempts = self._user_max_attempts
 
         # Tracks all the definitions which scored below threshold from all attempts
         # If no generated def pass the threshold, then we accept the one with best score
