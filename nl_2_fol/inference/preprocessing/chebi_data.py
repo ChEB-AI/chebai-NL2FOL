@@ -202,7 +202,7 @@ class ChEBIDataWrapper:
                     line for line in chebi_raw if not line.startswith("xref:")
                 )
             res = {}
-            for term in fastobo.loads(chebi):
+            for term in fastobo.loads(chebi):  # type: ignore
                 if (
                     term
                     and ":" in str(term.id)
