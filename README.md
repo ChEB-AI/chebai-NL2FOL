@@ -2,6 +2,26 @@
 
 AI workflow for natural language to First-Order Logic (FOL) translation for ChEBI.
 
+**Abstract:** 
+
+Chemical ontologies such as the Chemical Entities of Biological Interest (ChEBI) provide
+structured taxonomies for organizing chemical knowledge, but manually extending these
+taxonomies to new molecules remains a scalability challenge. We propose ChEBI2FOL,
+a pipeline for automatically translating natural language definitions of chemical classes in
+ChEBI into First-Order Logic (FOL) for rule-based and explainable chemical classification. ChEBI2FOL uses multi-shot LLM prompts with multiple feedback loops to generate
+and automatically validate FOL definitions. The result is a classification system that is by
+design modular (auxiliary predicates are automatically generated and shared across defi-
+nitions) and platform-independent (the definitions come in a standard FOL syntax which
+can be parsed by various tools). Besides classification, the definitions can also be used to
+verify ontological relations directly and identify new relations.
+We evaluate ChEBI2FOL on 367 ChEBI classes using three LLMs for FOL generation.
+Among these models, Claude Opus 4.6 achieves the strongest performance. In comparison
+to C3PO, a suite of LLM-generated classifiers in Python, ChEBI2FOL achieves a higher
+recall, but lower precision, suggesting that the learned definitions are more general.
+Our analysis identifies challenges for FOL-based chemical classification. Overall, these
+results demonstrate the feasibility of natural language to logic translation for chemical
+classification.
+
 <img width="2796" height="1024" alt="fig_landscape" src="https://github.com/user-attachments/assets/58dcf948-4645-4523-bb02-6120306063a0" />
 
 
