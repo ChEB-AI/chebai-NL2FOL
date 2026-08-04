@@ -8,8 +8,7 @@ Chemical ontologies such as the Chemical Entities of Biological Interest (ChEBI)
 structured taxonomies for organizing chemical knowledge, but manually extending these
 taxonomies to new molecules remains a scalability challenge. We propose ChEBI2FOL,
 a pipeline for automatically translating natural language definitions of chemical classes in
-ChEBI into First-Order Logic (FOL) for rule-based and explainable chemical classifica-
-tion. ChEBI2FOL uses multi-shot LLM prompts with multiple feedback loops to generate
+ChEBI into First-Order Logic (FOL) for rule-based and explainable chemical classification. ChEBI2FOL uses multi-shot LLM prompts with multiple feedback loops to generate
 and automatically validate FOL definitions. The result is a classification system that is by
 design modular (auxiliary predicates are automatically generated and shared across defi-
 nitions) and platform-independent (the definitions come in a standard FOL syntax which
