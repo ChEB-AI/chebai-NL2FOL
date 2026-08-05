@@ -2,7 +2,7 @@
 
 AI workflow for natural language to First-Order Logic (FOL) translation for ChEBI.
 
-**Abstract:** 
+**Abstract:**
 
 Chemical ontologies such as the Chemical Entities of Biological Interest (ChEBI) provide
 structured taxonomies for organizing chemical knowledge, but manually extending these
