@@ -10,7 +10,7 @@ authors = []
 maintainers = []
 readme = "README.md"
 license = { text = "AGPL-3.0" }
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "rdkit",
     "jsonargparse",
@@ -25,9 +25,9 @@ dev = [
     "pytest>=7.0",
     "tqdm",
     "z3-solver>=4.15.3.0",
-    "chebILP",
+    "chebILP==1.1",
     "sentence_transformers",
-    "chebi-utils"
+    "chebi-utils>=0.3"
 ]
 
 linter = [ "ruff",

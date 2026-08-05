@@ -42,7 +42,7 @@ class CHEBIFOLOutput(ChEBI_FOL_AT):
             for parser in (json.loads, ast.literal_eval):
                 try:
                     parsed = parser(stripped)
-                except json.JSONDecodeError, ValueError, SyntaxError:
+                except (json.JSONDecodeError, ValueError, SyntaxError):
                     continue
                 if isinstance(parsed, dict):
                     return parsed

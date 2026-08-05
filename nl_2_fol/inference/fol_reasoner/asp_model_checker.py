@@ -102,7 +102,7 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
             "[IMPORTANT] Critical error details for analysis: \n"
         )
         try:
-            from chebILP.clingo_eval import evaluate_with_clingo
+            from chebILP.evaluation.clingo_eval import evaluate_with_clingo
 
             asp_def = self.parse_definition(definition_to_match)
             positives = evaluate_with_clingo(
