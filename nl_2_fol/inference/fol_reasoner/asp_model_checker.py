@@ -30,21 +30,40 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         Parse a definition string into an ASPDefinition object. Extract the predicate name and variables from the head of the rule.
         For the whole rule, check that it is a valid ASP rule (e.g., using clingo's parser).
         """
+        if ":" in definition and ":-" not in definition:
+            raise Exception("Invalid rule implication: use ':-' instead of ':'")
         # For simplicity, let's assume the definition is of the form:
         # "predicate_name(X1, X2) :- body."
         # We will extract the predicate name and variables from the head of the rule.
         head = definition.split(":-")[0]
         head = head.strip()
         predicate_name = head.split("(")[0].strip()
-        variables = [
-            var.strip() for var in head[head.find("(") + 1 : head.find(")")].split(",")
-        ]
+        variables = []
+        open_paren = head.find("(")
+        if open_paren != -1:
+            depth = 0
+            close_paren = -1
+            for idx in range(open_paren, len(head)):
+                ch = head[idx]
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                    if depth == 0:
+                        close_paren = idx
+                        break
+            if close_paren == -1:
+                raise Exception("Malformed rule head: unbalanced parentheses")
+            args = head[open_paren + 1 : close_paren].strip()
+            if args:
+                variables = [var.strip() for var in args.split(",")]
 
         from clingo.ast import parse_string
 
         try:
             parse_string(
-                definition, lambda stm: None
+                definition if definition.strip().endswith(".") else f"{definition}.",
+                lambda stm: None,
             )  # We just want to check if it parses, not do anything with the AST
         except Exception as e:
             print(f"Error parsing formula with clingo: {e}")
@@ -102,7 +121,7 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
             "[IMPORTANT] Critical error details for analysis: \n"
         )
         try:
-            from chebILP.clingo_eval import evaluate_with_clingo
+            from chebILP.evaluation.clingo_eval import evaluate_with_clingo
 
             asp_def = self.parse_definition(definition_to_match)
             positives = evaluate_with_clingo(
@@ -139,7 +158,11 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
             rule = rule.strip()
             if not rule:
                 continue
-            body = rule.split(":-")[1] if ":-" in rule else ""
+            body = ""
+            if ":-" in rule:
+                body = rule.split(":-", 1)[1]
+            elif ":" in rule:
+                body = rule.split(":", 1)[1]
             literals = split_prolog_literals(body)
             for literal in literals:
                 if "#" in literal:
