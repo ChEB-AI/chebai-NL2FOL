@@ -14,12 +14,13 @@ def print_all_fols(pickle_file_path: Path, split="train"):
         for chebi_id, learned_def in data.learned_definitions.items():
             if learned_def.learn_success:
                 main_formulas_counter += 1
+                fol_definition = learned_def.learned_FOL.definition
                 print(f"CHEBI:{chebi_id} - {learned_def.name}")
                 print(
-                    f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+                    f"Pred variables: {[str(var) for var in fol_definition.variables]}"
                 )
                 print("-" * 40)
-                print(f"Formula: {learned_def.learned_FOL.formula}")
+                print(f"Formula: {fol_definition}")
                 print(f"Train Metrics: {learned_def.train_metrics}")
                 if learned_def.val_metrics is not None:
                     print(f"Validation Metrics: {learned_def.val_metrics}")
@@ -41,12 +42,13 @@ def print_all_fols(pickle_file_path: Path, split="train"):
                 )
             ):
                 main_formulas_counter += 1
+                fol_definition = learned_def.learned_FOL.definition
                 print(f"CHEBI:{chebi_id} - {learned_def.name}")
                 print(
-                    f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
+                    f"Pred variables: {[str(var) for var in fol_definition.variables]}"
                 )
                 print("-" * 40)
-                print(f"Formula: {learned_def.learned_FOL.formula}")
+                print(f"Formula: {fol_definition}")
                 print(f"Train Metrics: {learned_def.train_metrics}")
                 if learned_def.val_metrics is not None:
                     print(f"Validation Metrics: {learned_def.val_metrics}")
@@ -54,11 +56,12 @@ def print_all_fols(pickle_file_path: Path, split="train"):
 
     for name, add_def in data.additional_definitions.items():
         if add_def.learn_success:
+            add_fol_definition = add_def.fol_formula.definition
             print(f"Additional definition for predicate: {name}")
             print(
-                f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
+                f"Pred variables: {[str(var) for var in add_fol_definition.variables]}"
             )
-            print(f"Formula: {add_def.fol_formula.formula}")
+            print(f"Formula: {add_fol_definition}")
             print("---" * 10)
 
     print(f"Total main formulas printed for split '{split}': {main_formulas_counter}")
