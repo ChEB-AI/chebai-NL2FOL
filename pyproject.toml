@@ -25,7 +25,7 @@ dev = [
     "pytest>=7.0",
     "tqdm",
     "z3-solver>=4.15.3.0",
-    "chebILP==1.1",
+    "clingo>=5.7",
     "sentence_transformers",
     "chebi-utils>=0.3"
 ]
@@ -33,7 +33,9 @@ dev = [
 linter = [ "ruff",
     "isort",
     "pre-commit"]
-anthropic = ["langchain-anthropic>=1.1.0"]
+anthropic = ["langchain-anthropic>=1.4.0"]
+# Claude via the logged-in `claude` CLI (Claude subscription)
+claude-cli = ["claude-agent-sdk>=0.2.87"]
 ollama = ["langchain-ollama>=1.0.1"]
 groq = ["langchain-groq>=1.1.1"]
 

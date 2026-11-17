@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 import pandas as pd
@@ -39,6 +40,73 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
             },
         }
 
+    @staticmethod
+    def _head_names(formula: str) -> set[str]:
+        """Names of the predicates defined (i.e. used in a rule head) in an ASP program.
+
+        A definition can contain helper rules besides the rules for its main predicate.
+        """
+        heads = set()
+        for rule in formula.split("."):
+            match = re.match(r"\s*([a-z_]\w*)", rule.split(":-", 1)[0])
+            if match:
+                heads.add(match.group(1))
+        return heads
+
+    def _defining_definitions(
+        self, temp_additional_defs: dict[str, ASPDefinition] | None = None
+    ) -> dict[str, ASPDefinition]:
+        """For each defined predicate (including helpers), the definition that defines it."""
+        definitions = {
+            **self.background_definitions,
+            **(temp_additional_defs or {}),
+        }
+        index = dict(definitions)
+        for d in definitions.values():
+            for head in self._head_names(d.definition):
+                index.setdefault(head, d)
+        return index
+
+    def _check_redefinitions(
+        self,
+        definition: str,
+        target_predicate: str,
+        temp_additional_defs: dict[str, ASPDefinition] | None = None,
+    ) -> None:
+        """Reject helper rules for predicates that are already defined elsewhere.
+
+        In ASP, rules from different definitions with the same head would act as a
+        disjunction once both definitions are used together.
+        """
+        index = self._defining_definitions(temp_additional_defs)
+        for head in sorted(self._head_names(definition) - {target_predicate}):
+            if head in self._base_predicates:
+                raise Exception(
+                    f"`{head}` is given as a fact and must not be defined by rules."
+                )
+            owner = index.get(head)
+            if owner is not None and owner.predicate_name != target_predicate:
+                raise Exception(
+                    f"The predicate `{head}` is defined in your answer, but it is already "
+                    f"defined as part of `{owner.predicate_name}`:\n{owner.definition}\n"
+                    f"Use `{head}` without redefining it, or give your helper predicate "
+                    "a different name."
+                )
+
+    def extract_unknown_predicates(
+        self,
+        formula: str,
+        temp_additional_defs: dict[str, ASPDefinition] | None = None,
+    ) -> set[str]:
+        """Predicates used in the formula that are neither given, nor defined in the
+        formula itself, nor defined by a (background or temporary) definition."""
+        return (
+            self._extract_predicate_names(formula)
+            - self._base_predicates.keys()
+            - self._head_names(formula)
+            - self._defining_definitions(temp_additional_defs).keys()
+        )
+
     def _get_required_background_rules(
         self,
         definition: str,
@@ -52,25 +120,24 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         the target predicate itself are excluded - in ASP, several rules with the same
         head act as a disjunction, so an old definition would change the result.
         """
-        bck_def = {
-            **self.background_definitions,
-            **(temp_additional_defs or {}),
-        }
-        required: set[str] = set()
-        frontier = list(self._extract_predicate_names(definition))
+        index = self._defining_definitions(temp_additional_defs)
+        required: dict[str, str] = {}  # main predicate -> definition
+        visited: set[str] = set()
+        frontier = list(
+            self._extract_predicate_names(definition) - self._head_names(definition)
+        )
         while frontier:
             predicate = frontier.pop()
-            if (
-                predicate in required
-                or predicate == target_predicate
-                or predicate not in bck_def
-            ):
+            if predicate in visited or predicate == target_predicate:
                 continue
-            required.add(predicate)
-            frontier.extend(
-                self._extract_predicate_names(bck_def[predicate].definition)
-            )
-        return [bck_def[p].definition for p in sorted(required)]
+            visited.add(predicate)
+            owner = index.get(predicate)
+            if owner is None or owner.predicate_name == target_predicate:
+                continue
+            if owner.predicate_name not in required:
+                required[owner.predicate_name] = owner.definition
+                frontier.extend(self._extract_predicate_names(owner.definition))
+        return [required[p] for p in sorted(required)]
 
     @parse_exception
     def parse_definition(self, definition: str) -> ASPDefinition:
@@ -108,14 +175,18 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
 
         from clingo.ast import parse_string
 
+        # clingo only raises "syntax error"; the location and cause go to the logger
+        messages = []
         try:
             parse_string(
                 definition if definition.strip().endswith(".") else f"{definition}.",
                 lambda stm: None,
+                logger=lambda code, msg: messages.append(msg.strip()),
             )  # We just want to check if it parses, not do anything with the AST
         except Exception as e:
-            print(f"Error parsing formula with clingo: {e}")
-            raise Exception(f"Error parsing formula with clingo:\n{e}")
+            details = "\n".join([str(e), *messages])
+            print(f"Error parsing formula with clingo: {details}")
+            raise Exception(f"Error parsing formula with clingo:\n{details}")
 
         return ASPDefinition(predicate_name, variables, definition)
 
@@ -183,6 +254,11 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         )
         if missing_predicates:
             raise MissingPredicateException(missing_predicates)
+        self._check_redefinitions(
+            definition_to_match,
+            self.parse_definition(definition_to_match).predicate_name,
+            temp_additional_defs,
+        )
 
         exception_prefix = (
             "MODEL CHECKING FAILED - Error during model checking for the formula.\n"

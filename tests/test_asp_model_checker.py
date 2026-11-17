@@ -119,3 +119,31 @@ class TestASPModelChecker:
         predicates = reasoner._extract_predicate_names(formula)
 
         assert predicates == {"has_atom", "o", "charged"}
+
+
+def test_helper_rules():
+    """Helpers defined in a definition are known, reusable, and cannot be redefined."""
+    pytest.importorskip("clingo")
+    import pandas as pd
+    from rdkit import Chem
+
+    reasoner = ASPModelChecker()
+    halide = (
+        "organohalogen(M) :- has_atom(M, X), halogen(X).\n"
+        "halogen(X) :- cl(X).\nhalogen(X) :- br(X)."
+    )
+    df = pd.DataFrame(
+        {"mol": [Chem.MolFromSmiles(s) for s in ["CCl", "CBr", "CO"]]}, index=[0, 1, 2]
+    )
+    assert reasoner.do_molecules_match_asp_definition(df, halide) == [0, 1]
+
+    reasoner.add_background_definition(reasoner.parse_definition(halide))
+    # a stored helper can be used by other definitions
+    assert reasoner.do_molecules_match_asp_definition(
+        df, "bromide(M) :- has_atom(M, X), halogen(X), br(X)."
+    ) == [1]
+    # but not redefined
+    with pytest.raises(Exception, match="already defined as part of `organohalogen`"):
+        reasoner.do_molecules_match_asp_definition(
+            df, "chloride(M) :- has_atom(M, X), halogen(X).\nhalogen(X) :- cl(X)."
+        )

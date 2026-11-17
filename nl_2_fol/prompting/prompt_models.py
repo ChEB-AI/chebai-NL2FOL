@@ -4,6 +4,13 @@ import json
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+def _unescape_newlines(value):
+    """Models sometimes double-escape line breaks between rules, yielding a literal ``\\n``."""
+    if isinstance(value, str):
+        return value.replace("\\n", "\n")
+    return value
+
+
 # --- Pydantic Models ---
 class IntermediateOutput(BaseModel):
     relevant_definition: str = Field(
@@ -22,10 +29,10 @@ class ChEBI_FOL_AT(BaseModel):
     @classmethod
     def _coerce_fol_formula(cls, value):
         if isinstance(value, list):
-            return " ".join(
+            value = " ".join(
                 part.strip() for part in value if isinstance(part, str) and part.strip()
             )
-        return value
+        return _unescape_newlines(value)
 
 
 class CHEBIFOLOutput(ChEBI_FOL_AT):
@@ -53,6 +60,11 @@ class CHEBIFOLOutput(ChEBI_FOL_AT):
 class PredicateDefinition(BaseModel):
     predicate_name: str = Field(..., description="Name of the defined predicate")
     formula: str = Field(..., description="FOL formula defining the predicate")
+
+    @field_validator("formula", mode="before")
+    @classmethod
+    def _coerce_formula(cls, value):
+        return _unescape_newlines(value)
 
 
 class OutOfBoxPredicateDefinitions(BaseModel):

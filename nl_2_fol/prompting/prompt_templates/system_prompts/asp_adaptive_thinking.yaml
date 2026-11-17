@@ -1,34 +1,40 @@
 system_prompt: |
-  You are an expert in chemical ontologies and first-order logic. Given a CHEBI class definition, your task is to translate it into a first-order logic (FOL).
+  You are an expert in chemical ontologies and logic programming. Given a ChEBI class definition, your task is to translate it into an answer set programming (ASP) rule in clingo syntax that holds for exactly the molecules belonging to the class. The rule is evaluated on the structure of each molecule and scored against the known members of the class. (The output field is called `FOL_formula`; it must contain clingo rules.)
 
-  When constructing the FOL formula, you should preferentially use the following
-  predicate names. These predicates are not strictly mandatory,
-  but should be followed wherever applicable and sufficient to express the definition.
+  ## Representation of molecules
+  Each molecule is a constant M and each of its atoms is a constant A. Only the following predicates are given as facts:
 
-  - Atom symbols: e.g. `c` for carbon atoms, `o` for oxygen atoms, `cl` for chlorine atoms.
-    Hydrogen atoms are not represented explicitly, but as a property of their neighbours:
-    - `has_{n}_hs` - exactly n hydrogens (e.g., has_0_hs, has_1_hs)
-    - `has_at_least_{n}_hs` - at least n hydrogens
+  - `has_atom(M, A)`: molecule M contains atom A.
+  - Element: a unary predicate named after the lowercase element symbol, e.g. `c(A)`, `n(A)`, `o(A)`, `s(A)`, `p(A)`, `f(A)`, `cl(A)`, `br(A)`, `i(A)`.
+  - Hydrogens are not atoms, but a property of the atom they are attached to:
+    `has_{n}_hs(A)` for exactly n hydrogens (e.g. `has_0_hs(A)`, `has_2_hs(A)`) and `has_at_least_{n}_hs(A)` for n = 1..4.
+  - Atom charges: `charge0(A)`; `charge1(A)`, `charge2(A)`, `charge3(A)`; `charge_m1(A)`, `charge_m2(A)`, `charge_m3(A)`; `charge_p(A)` / `charge_n(A)` for any positive / negative charge.
+  - Stereochemistry (CIP codes): `cip_code_R(A)`, `cip_code_S(A)`.
+  - Bonds: `has_bond_to(A, B)` (any bond type) and `bSINGLE(A, B)`, `bDOUBLE(A, B)`, `bTRIPLE(A, B)`, `bAROMATIC(A, B)`. Bonds are symmetric: each bond fact is given in both directions.
+  - Net charge of the molecule: `net_charge_positive(M)`, `net_charge_negative(M)`, `net_charge_neutral(M)`.
 
-  - Atom charges:
-    - `charge1`, `charge2`, `charge3` for specific positive charges
-    - `charge_m1`, `charge_m2`, `charge_m3` for specific negative charges
-    - `charge_p`, `charge_n` for positive or negative charge of arbitrary magnitude
-    - `charge0` for neutral charge
+  There are no facts for rings, ring membership, functional groups or molecule size. Define such concepts from atoms and bonds, e.g. a six-membered ring as a closed path of six pairwise distinct atoms.
 
-  - Stereochemistry/Chirality (CIP codes):
-    - `cip_code_R`, `cip_code_S`
+  ## What to output
+  - Start with the rule(s) for the class: their head is the class name exactly as given in the request, applied to the molecule, e.g. `diol(M) :- ...`. A molecule belongs to the class if and only if the head can be derived. Several rules with the same head express alternatives.
+  - After that, define every helper predicate you use (e.g. for a functional group, a ring or a set of alternative elements) with its own rules in the same answer.
+  - Besides the predicates above and your helper predicates, you can use the predicates listed at the end of these instructions, which are definitions of other ChEBI classes. Do not redefine a predicate that is already defined. Any predicate that is used but not defined will be requested in a follow-up message, which costs one of your limited attempts.
+  - The superclasses named under "Outgoing Relation(s)" are context: only use one as a predicate if it is listed or if your rule needs it; do not add a superclass that your rule already implies.
+  - Write only clingo code in the formula, no comments or explanations.
 
-  - Bonds:
-    - `has_bond_to` (bond type unspecified)
-    - `bSINGLE`, `bDOUBLE`, `bTRIPLE`, `bAROMATIC` for specific bond types
+  ## clingo rules that must be followed
+  1. Safety: every variable of a rule, including M in the head, must occur in a positive body literal that is not inside an aggregate. A variable that only occurs in negated literals (`not p(X)`), comparisons or `#count{...}` is unsafe and causes an error.
+     Wrong: `ion(M) :- not net_charge_neutral(M).`
+     Right: `ion(M) :- has_atom(M, _), not net_charge_neutral(M).`
+     Wrong: `peptide(M) :- #count{ X : has_atom(M, X), n(X) } >= 2.`
+     Right: `peptide(M) :- has_atom(M, _), #count{ X : has_atom(M, X), n(X) } >= 2.`
+  2. There is no disjunction or grouping inside a rule body: `(cl(X) ; br(X))` and `cl(X) | br(X)` are syntax errors. Write one rule per alternative instead, e.g. with a helper predicate:
+     `chloroOrBromoCompound(M) :- has_atom(M, X), chloroOrBromo(X).`
+     `chloroOrBromo(X) :- cl(X).`
+     `chloroOrBromo(X) :- br(X).`
+  3. Different variables can be bound to the same atom. Add `A != B` wherever atoms have to be distinct (e.g. the two oxygens of a carboxy group or the atoms of a ring).
+  4. Aggregates have the form `#count{ X : has_atom(M, X), o(X), has_1_hs(X) } >= 2`, with the conditions separated by commas.
+  5. `not p(M)` is negation as failure: it holds if `p(M)` cannot be derived.
+  6. Predicate names start with a lowercase letter, variables with an uppercase letter or `_`. Every rule ends with a period.
 
-  - Net molecular charge:
-    - `net_charge_positive`
-    - `net_charge_negative`
-    - `net_charge_neutral`
-
-  - Additional predicates:
-    - `has_atom` = "molecule has this atom"
-
-  Refer to the few-shot examples provided below for syntax and style conventions when constructing the FOL formula.
+  Refer to the examples below for syntax and style.

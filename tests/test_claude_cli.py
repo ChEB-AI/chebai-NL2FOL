@@ -65,14 +65,22 @@ def _result(**kwargs):
 
 @pytest.fixture
 def chat(monkeypatch):
-    monkeypatch.setattr(claude_cli._SessionWindow, "info", None)
+    monkeypatch.setattr(claude_cli._RateLimits, "events", [])
     return ClaudeCLIChat("claude-haiku-5-5", effort="high")
 
 
-def _fake_query(monkeypatch, result, rate_limit_info=None):
+def _info(**kwargs):
+    defaults = dict(
+        status="allowed", rate_limit_type=None, resets_at=None, utilization=None, raw={}
+    )
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
+
+
+def _fake_query(monkeypatch, result, rate_limit_infos=()):
     async def _run_query(self, system, prompt, schema):
         self.last_call = (system, prompt, schema)
-        claude_cli._SessionWindow.info = rate_limit_info
+        claude_cli._RateLimits.events = list(rate_limit_infos)
         return result
 
     monkeypatch.setattr(ClaudeCLIChat, "_run_query", _run_query)
@@ -111,17 +119,13 @@ def test_refusal_is_not_retried(monkeypatch, chat):
 
 
 def test_weekly_limit_raises(monkeypatch, chat):
-    info = SimpleNamespace(
-        status="rejected",
-        rate_limit_type="seven_day",
-        resets_at=0,
-        raw={},
-        utilization=1.0,
+    info = _info(
+        status="rejected", rate_limit_type="seven_day", resets_at=0, utilization=1.0
     )
     _fake_query(
         monkeypatch,
         _result(subtype="error", structured_output=None),
-        rate_limit_info=info,
+        rate_limit_infos=[info],
     )
     with pytest.raises(UsageLimitReached):
         chat.structured_completion("sys", "prompt", ChEBI_FOL_AT)

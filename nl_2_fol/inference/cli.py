@@ -22,7 +22,7 @@ DEFAULT_PROMPTS = {
     "asp": {
         "system_prompt_fp": ("system_prompts", "asp_adaptive_thinking.yaml"),
         "few_shot_prompt_fp": ("few_shots", "ASP_adaptive_thinking.json"),
-        "err_failure_prompt_fp": ("failure", "error_prompt.yaml"),
+        "err_failure_prompt_fp": ("failure", "error_prompt_asp_v2.yaml"),
         "undef_failure_prompt_fp": ("failure", "predicates_undef_asp.yaml"),
     },
     "gavel": {

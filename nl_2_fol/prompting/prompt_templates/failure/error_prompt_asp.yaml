@@ -1,0 +1,6 @@
+failure_prompt: |
+  Your last definition was not accepted. The problem was:
+  {error_message}
+
+  Review the ChEBI class definition from the original request and identify the cause of the problem. Then answer with a corrected, complete definition of that class: the head of every rule must still be the class name from the original request.
+  For errors reported by clingo, check the clingo rules from the instructions (safe variables, no disjunction in rule bodies, `!=` for distinct atoms).

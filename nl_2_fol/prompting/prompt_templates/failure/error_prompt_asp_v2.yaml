@@ -1,0 +1,6 @@
+failure_prompt: |
+  Your last definition of `{class_name}` was not accepted. The problem was:
+  {error_message}
+
+  Review the ChEBI definition of `{class_name}` and identify the cause of the problem. Then answer with a corrected, complete definition of `{class_name}`: start with the rule(s) for `{class_name}(M)`, followed by the rules for helper predicates.
+  For errors reported by clingo, check the clingo rules from the instructions (safe variables, no disjunction in rule bodies, `!=` for distinct atoms).

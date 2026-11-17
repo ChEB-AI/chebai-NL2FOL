@@ -144,6 +144,16 @@ class ChebiPrompt:
             self._memory_store[session_id] = InMemoryChatMessageHistory()
         return self._memory_store[session_id]
 
+    def _set_llm_label(self, session_id: str) -> None:
+        """Label the following LLM queries (for usage logging, if supported by the model)."""
+        if hasattr(self._llm, "label"):
+            self._llm.label = session_id
+
+    def set_usage_log_path(self, path: str) -> None:
+        """Log the usage of each LLM query to ``path`` (if supported by the model)."""
+        if hasattr(self._llm, "usage_log_path"):
+            self._llm.usage_log_path = path
+
     @ce.stop_program_upon_failure
     def delete_session_history(self, session_id: str):
         """Utility method to clear conversation history for a session."""
@@ -246,6 +256,7 @@ class ChebiPrompt:
             self._refresh_relevant_predicates(input_text)
             # Get session history
             history = self.get_session_history(session_id)
+            self._set_llm_label(session_id)
 
             self._enforce_full_prompt_token_limit(
                 input_text=input_text,
@@ -276,9 +287,12 @@ class ChebiPrompt:
         self, *, error_message: str, session_id: str
     ) -> ChEBI_FOL_AT:
         try:
-            error_prompt = self._get_err_failure_prompt(error_message)
+            error_prompt = self._get_err_failure_prompt(
+                error_message, class_name=session_id
+            )
             # Get session history
             history = self.get_session_history(session_id)
+            self._set_llm_label(session_id)
 
             self._enforce_full_prompt_token_limit(
                 input_text=error_prompt,
@@ -303,11 +317,14 @@ class ChebiPrompt:
             print(f"Error during inference: {e}")
             raise e
 
-    def _get_err_failure_prompt(self, error_message: str) -> str:
+    def _get_err_failure_prompt(self, error_message: str, class_name: str) -> str:
         prompt_text = load_yaml_sys_prompt(
             self.err_failure_prompt_fp, key="failure_prompt"
         )
-        prompt_text = prompt_text.format(error_message=error_message)
+        # templates without a {class_name} placeholder are unaffected
+        prompt_text = prompt_text.format(
+            error_message=error_message, class_name=class_name
+        )
         return prompt_text
 
     ## ------- LLM Invocation for undefined additional predicates --- ##
@@ -325,6 +342,7 @@ class ChebiPrompt:
             )
             # Get session history
             history = self.get_session_history(session_id)
+            self._set_llm_label(session_id)
 
             self._enforce_full_prompt_token_limit(
                 input_text=undefined_predicates_text,

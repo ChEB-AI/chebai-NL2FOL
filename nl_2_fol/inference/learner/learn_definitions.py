@@ -31,6 +31,7 @@ def _caused_by_refusal(exc: BaseException) -> bool:
 class LearnDefinitions(BaseFOL):
     _MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION = 5
     _LEARNING_LOG_FILE_NAME = "learning_output_a{max_attempts}.txt"
+    _USAGE_LOG_FILE_NAME = "llm_usage.jsonl"
 
     def __init__(
         self,
@@ -52,6 +53,11 @@ class LearnDefinitions(BaseFOL):
         self.chebi_prompt_obj = chebi_prompt_obj
         self._user_max_attempts = max_attempts
         self.f1_threshold = f1_threshold
+        # one JSON line per LLM query (tokens, subscription quota), next to the learned
+        # definitions; appended to when a run is resumed
+        self.chebi_prompt_obj.set_usage_log_path(
+            os.path.join(self.definitions_save_path, self._USAGE_LOG_FILE_NAME)
+        )
 
         # Stores chemical classes which failed to learn FOL in previous programs calls,
         # so we can skip them in the main loop and avoid unnecessary attempts
@@ -592,6 +598,18 @@ class LearnDefinitions(BaseFOL):
         """
 
         parsed_definition = self._fol_reasoner.parse_definition(result.FOL_formula)
+        # The head of the first rule determines which predicate is evaluated, so a rule
+        # for another class (e.g. a few-shot example) would otherwise be scored as this class
+        if (
+            self.fol_reasoner == "asp"
+            and parsed_definition.predicate_name != chemical_class.name
+        ):
+            raise Exception(
+                f"The head of the first rule is `{parsed_definition.predicate_name}`, but "
+                f"the class to define is `{chemical_class.name}`. Start with the rule(s) "
+                f"for `{chemical_class.name}(M)`, followed by the rules for helper "
+                "predicates."
+            )
 
         (
             train_metrics,

@@ -13,6 +13,11 @@ contains the previous turns.
 Usage limits: before each query, the client pauses until the 5-hour subscription window
 resets if the previous query reported it at least ``NL2FOL_SESSION_LIMIT`` (default 90%)
 full. Hitting a weekly limit raises :class:`UsageLimitReached`.
+
+Usage logging: after each query, the tokens and the quota status of all usage windows
+(as reported by the CLI) are printed and, if ``usage_log_path`` is set, appended to a
+JSON-lines file. The CLI only reports quota information when it changes, so the quota
+of some queries may be unknown.
 """
 
 from __future__ import annotations
@@ -101,24 +106,78 @@ def render_messages(messages: list[BaseMessage]) -> tuple[str, str]:
     return system, prompt
 
 
-class _SessionWindow:
-    """Rate-limit status reported by the latest CLI query."""
+class _RateLimits:
+    """Rate-limit (subscription quota) status reported by the latest CLI query.
 
-    info: Any = None
+    The CLI emits a rate-limit event whenever the status of a usage window changes, possibly
+    several per query (one per window, e.g. ``five_hour`` and ``seven_day``). All events of
+    the latest query are kept and merged per window.
+    """
+
+    events: list[Any] = []
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.events = []
+
+    @classmethod
+    def windows(cls) -> dict[str, dict[str, Any]]:
+        """Per usage window: ``utilization`` (0-1), ``resets_at`` (unix time) and ``status``."""
+        windows: dict[str, dict[str, Any]] = {}
+
+        def _update(name: str, **values) -> None:
+            window = windows.setdefault(name, {})
+            for key, value in values.items():
+                if value is not None:
+                    window[key] = value
+
+        for info in cls.events:
+            for name, raw_window in (info.raw.get("unifiedWindows") or {}).items():
+                if isinstance(raw_window, dict):
+                    _update(
+                        name,
+                        utilization=raw_window.get("utilization"),
+                        resets_at=raw_window.get("resetsAt"),
+                    )
+            if info.rate_limit_type is not None:
+                _update(
+                    info.rate_limit_type,
+                    utilization=info.utilization,
+                    resets_at=info.resets_at,
+                    status=info.status,
+                )
+        return windows
+
+    @classmethod
+    def rejected_window(cls) -> tuple[str, dict[str, Any]] | None:
+        for name, window in cls.windows().items():
+            if window.get("status") == "rejected":
+                return name, window
+        return None
+
+    @classmethod
+    def summary(cls) -> str:
+        parts = []
+        for name, window in sorted(cls.windows().items()):
+            used = window.get("utilization")
+            text = f"{name} {used:.0%}" if used is not None else f"{name} n/a"
+            if window.get("status") not in (None, "allowed"):
+                text += f" ({window['status']})"
+            if window.get("resets_at"):
+                text += ", resets " + time.strftime(
+                    "%m-%d %H:%M", time.localtime(window["resets_at"])
+                )
+            parts.append(text)
+        return "; ".join(parts) if parts else "no rate-limit information"
 
     @classmethod
     def wait_if_needed(cls) -> None:
-        info = cls.info
-        if info is None:
+        """Sleep until the 5-hour window resets if it is at least ``_SESSION_LIMIT`` full."""
+        window = cls.windows().get("five_hour")
+        if not window:
             return
-        window = (info.raw.get("unifiedWindows") or {}).get("five_hour") or {}
-        used, resets_at = window.get("utilization"), window.get("resetsAt")
-        if info.rate_limit_type == "five_hour":
-            resets_at = resets_at or info.resets_at
-            if info.status == "rejected":
-                used = 1.0
-            elif used is None:
-                used = info.utilization
+        used = 1.0 if window.get("status") == "rejected" else window.get("utilization")
+        resets_at = window.get("resets_at")
         if used is None or used < _SESSION_LIMIT or not resets_at:
             return
         wait = resets_at + _RESET_MARGIN - time.time()
@@ -132,21 +191,57 @@ class _SessionWindow:
                 flush=True,
             )
             time.sleep(wait)
-        cls.info = None
+        cls.reset()
 
 
 class ClaudeCLIChat:
     """Minimal chat-model replacement for the parts of langchain's ``ChatAnthropic`` used
     by ``ChebiPrompt``: ``with_structured_output(schema)``.
 
-    Also accumulates the token usage of all queries (``usage_totals``).
+    Also accumulates the token usage of all queries (``usage_totals``). If
+    ``usage_log_path`` is set, one JSON line per query is appended to that file
+    (time, ``label`` (e.g. the class being learned), model, duration, outcome, tokens, and
+    the subscription quota status).
     """
 
-    def __init__(self, model_name: str, effort: str | None = None):
+    def __init__(
+        self,
+        model_name: str,
+        effort: str | None = None,
+        usage_log_path: str | None = None,
+    ):
         self.model_name = model_name
         self.effort = effort
+        self.usage_log_path = usage_log_path
+        self.label: str | None = None
         self.usage_totals: dict[str, int] = {}
         self.n_queries = 0
+
+    def _log_query(self, duration: float, tokens: dict[str, int], outcome: str) -> None:
+        print(
+            f"  [{self.model_name}] {outcome} in {duration:.0f}s, tokens: {tokens}, "
+            f"total ({self.n_queries} queries): {self.usage_totals}\n"
+            f"  [quota] {_RateLimits.summary()}",
+            flush=True,
+        )
+        if self.usage_log_path is None:
+            return
+        record = {
+            "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "label": self.label,
+            "model": self.model_name,
+            "effort": self.effort,
+            "duration_s": round(duration, 1),
+            "outcome": outcome,
+            "tokens": tokens,
+            "quota": _RateLimits.windows(),
+        }
+        try:
+            os.makedirs(os.path.dirname(self.usage_log_path) or ".", exist_ok=True)
+            with open(self.usage_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+        except OSError as e:
+            print(f"  Could not write usage log {self.usage_log_path}: {e}")
 
     def with_structured_output(self, schema: type[BaseModel], **kwargs) -> Runnable:
         def _invoke(prompt_input) -> BaseModel:
@@ -167,7 +262,7 @@ class ClaudeCLIChat:
             query,
         )
 
-        _SessionWindow.info = None
+        _RateLimits.reset()
         _drop_api_key_auth()
         options = ClaudeAgentOptions(
             model=self.model_name,
@@ -183,7 +278,7 @@ class ClaudeCLIChat:
         result = None
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, RateLimitEvent):
-                _SessionWindow.info = message.rate_limit_info
+                _RateLimits.events.append(message.rate_limit_info)
             elif isinstance(message, ResultMessage):
                 result = message
         return result
@@ -216,7 +311,7 @@ class ClaudeCLIChat:
         last_exc: BaseException | None = None
         attempt = 0
         while attempt < _MAX_RETRIES:
-            _SessionWindow.wait_if_needed()
+            _RateLimits.wait_if_needed()
             attempt += 1
             backoff = min(30 * 2 ** (attempt - 1), 300)
             started = time.monotonic()
@@ -239,31 +334,35 @@ class ClaudeCLIChat:
                     )
                 else:
                     tokens = self._record_usage(result)
-                    print(
-                        f"  [{self.model_name}] response in {time.monotonic() - started:.0f}s, "
-                        f"tokens: {tokens}, total ({self.n_queries} queries): {self.usage_totals}",
-                        flush=True,
+                    succeeded = bool(
+                        result.subtype == "success" and result.structured_output
                     )
-                    info = _SessionWindow.info
-                    if (
-                        info is not None
-                        and info.status == "rejected"
-                        and not (
-                            result.subtype == "success" and result.structured_output
-                        )
-                    ):
-                        if info.rate_limit_type == "five_hour":
+                    rejected = _RateLimits.rejected_window()
+                    if rejected is not None and not succeeded:
+                        outcome = f"rate_limited ({rejected[0]})"
+                    elif result.stop_reason == "refusal":
+                        outcome = "refusal"
+                    elif succeeded:
+                        outcome = "ok"
+                    else:
+                        outcome = f"error ({result.subtype})"
+                    self._log_query(time.monotonic() - started, tokens, outcome)
+
+                    if rejected is not None and not succeeded:
+                        name, window = rejected
+                        if name == "five_hour":
                             attempt -= 1  # waited out at the top of the loop
                             continue
+                        resets = window.get("resets_at")
                         raise UsageLimitReached(
-                            f"{info.rate_limit_type} usage limit of the Claude subscription "
-                            f"reached (resets at {info.resets_at})"
+                            f"{name} usage limit of the Claude subscription reached "
+                            f"(resets {time.strftime('%Y-%m-%d %H:%M', time.localtime(resets)) if resets else 'unknown'})"
                         )
-                    if result.stop_reason == "refusal":
+                    if outcome == "refusal":
                         raise ModelRefusal(
                             f"{self.model_name} declined this request (safety classifier)"
                         )
-                    if result.subtype == "success" and result.structured_output:
+                    if succeeded:
                         return schema.model_validate(result.structured_output)
                     # no structured output despite the SDK's own re-prompting: terminal
                     raise ClaudeCLIError(
