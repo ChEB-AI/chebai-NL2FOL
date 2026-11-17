@@ -71,19 +71,6 @@ class TestASPModelChecker:
         assert parsed_definition.variables == ["f(X)"]
         assert parsed_definition.definition == definition
 
-    def test_parse_definition_failure(self, reasoner: ASPModelChecker):
-        """Valid ASP rules should parse into an ASPDefinition."""
-        definition = (
-            "diol(M) : has_atom(M, O1), o(O1), has_atom(M, O2), o(O2), O1 != O2."
-        )
-
-        parsed_definition = reasoner.parse_definition(definition)
-
-        assert isinstance(parsed_definition, ASPDefinition)
-        assert parsed_definition.predicate_name == "diol"
-        assert parsed_definition.variables == ["M"]
-        assert parsed_definition.definition == definition
-
     def test_parse_definition_without_period(self, reasoner: ASPModelChecker):
         # with "." at the end
         definition = (
@@ -111,7 +98,6 @@ class TestASPModelChecker:
 
     def test_extract_predicate_names_from_rule_body(self, reasoner: ASPModelChecker):
         """Predicate extraction should return body predicates only."""
-        pytest.importorskip("chebILP.utils")
         formula = (
             "diol(M) :- has_atom(M, O1), o(O1), not charged(O1), "
             "has_atom(M, O2), o(O2), O1 != O2."
@@ -125,7 +111,6 @@ class TestASPModelChecker:
         self, reasoner: ASPModelChecker
     ):
         """Predicate extraction should return body predicates only."""
-        pytest.importorskip("chebILP.utils")
         formula = (
             "diol(M) : has_atom(M, O1), o(O1), not charged(O1), "
             "has_atom(M, O2), o(O2), O1 != O2."

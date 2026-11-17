@@ -35,13 +35,12 @@ def print_pickle_contents(
             print(
                 f"Learned definition for predicate: {learned_def.name} (CHEBI ID: {chebi_id})"
             )
-            print(
-                f"Pred variables: {[str(var) for var in learned_def.learned_FOL.pred_variables]}"
-            )
+            fol_definition = learned_def.learned_FOL.definition
+            print(f"Pred variables: {[str(var) for var in fol_definition.variables]}")
             print("Training Metrics:", print_metrics(learned_def.train_metrics))
             if learned_def.val_metrics is not None:
                 print("Validation Metrics:", print_metrics(learned_def.val_metrics))
-            print(f"Formula: {learned_def.learned_FOL.formula}")
+            print(f"Formula: {fol_definition}")
             print(f"Learned success: {learned_def.learn_success}")
 
             if (
@@ -49,12 +48,10 @@ def print_pickle_contents(
                 and learned_def.additional_defs_used
             ):
                 print("Additional definitions used:")
-                for name, (
-                    def_vars,
-                    add_def,
-                ) in learned_def.additional_defs_used.items():
+                for name, add_def in learned_def.additional_defs_used.items():
                     print(
-                        f"  {name} with variables {[str(var) for var in def_vars]} and formula: {add_def}"
+                        f"  {name} with variables {[str(var) for var in add_def.variables]} "
+                        f"and formula: {add_def}"
                     )
             if show_system_prompt:
                 print("System prompt:")
@@ -76,10 +73,11 @@ def print_pickle_contents(
                 continue
             FOUND_CLASS = True
             print(f"Additional definition for predicate: {name}")
+            add_fol_definition = add_def.fol_formula.definition
             print(
-                f"Pred variables: {[str(var) for var in add_def.fol_formula.pred_variables]}"
+                f"Pred variables: {[str(var) for var in add_fol_definition.variables]}"
             )
-            print(f"Formula: {add_def.fol_formula.formula}")
+            print(f"Formula: {add_fol_definition}")
             print(f"Learned success: {add_def.learn_success}")
             print(f"Used for CHEBI IDs: {add_def.used_for}")
             print("---" * 10)
@@ -334,7 +332,7 @@ def upsert_additional_definition_in_pickle(
     data: DefinitionLearningResults = pickle.loads(original_pickle_bytes)
 
     reasoner = GavelFOLReasoner()
-    pred_variables, parsed_formula = reasoner.parse_definition(fol_definition)
+    parsed_definition = reasoner.parse_definition(fol_definition)
 
     predicate_name = predicate_name.strip()
     normalized_used_for = list(dict.fromkeys(int(x) for x in used_for_ids))
@@ -351,10 +349,7 @@ def upsert_additional_definition_in_pickle(
         normalized_used_for = list(dict.fromkeys(int(x) for x in merged))
 
     data.additional_definitions[predicate_name] = AdditionalDefinition(
-        fol_formula=FOLFormula(
-            formula=parsed_formula,
-            pred_variables=pred_variables,
-        ),
+        fol_formula=FOLFormula(definition=parsed_definition),
         used_for=normalized_used_for,
         learn_success=learn_success,
     )

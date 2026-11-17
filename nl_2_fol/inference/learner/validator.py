@@ -6,7 +6,7 @@ import queue
 import tempfile
 import time
 from collections import deque
-from typing import Optional
+from typing import Literal, Optional
 
 import tqdm
 
@@ -41,15 +41,32 @@ class PerformValidation(BaseFOL):
         slim_dataset_path: str,
         structures_path: str,
         chebi_version: int = 244,
+        fol_reasoner: Optional[Literal["gavel", "asp"]] = None,
     ):
+        """
+        Args:
+            fol_reasoner: Reasoner used for model checking. If None, it is inferred from
+                the type of the learned definitions (ASP or Gavel / TPTP).
+        """
+        definitions = self._read_definitions_file(defs_file_path)
+        inferred_reasoner = self._infer_fol_reasoner(definitions)
+        if fol_reasoner is None:
+            fol_reasoner = inferred_reasoner or "gavel"
+        elif inferred_reasoner is not None and inferred_reasoner != fol_reasoner:
+            raise ValueError(
+                f"The definitions in {defs_file_path} have been learned with the "
+                f"`{inferred_reasoner}` reasoner, but `{fol_reasoner}` was requested."
+            )
+        print(f"Validating with the `{fol_reasoner}` reasoner.")
         super().__init__(
             slim_dataset_path=slim_dataset_path,
             structures_path=structures_path,
             chebi_version=chebi_version,
             split="val",
+            fol_reasoner=fol_reasoner,
         )
         self.defs_file_path = defs_file_path
-        self._loaded_defs = self._load_definitions(defs_file_path)
+        self._loaded_defs = self._load_learned_definitions(definitions)
         self.counter = 0
         self._file_save_idx: Optional[int] = None
 
@@ -93,7 +110,13 @@ class PerformValidation(BaseFOL):
         max_workers = max(
             1, min(os.cpu_count() or 1, MAX_PROCESSES, len(classes_to_validate))
         )
-        print(f"Using up to {max_workers} parallel validation workers.")
+        # share the CPUs between the validation workers (each class is evaluated by
+        # several clingo processes)
+        self.clingo_n_jobs = max(1, (os.cpu_count() or 1) // max_workers)
+        print(
+            f"Using up to {max_workers} parallel validation workers "
+            f"({self.clingo_n_jobs} clingo processes each)."
+        )
         pending_classes = deque(classes_to_validate)
         active_processes = {}
         waiting_for_results = {}
@@ -220,6 +243,8 @@ class PerformValidation(BaseFOL):
     def _validate_class_result(
         self, class_name: str
     ) -> tuple[str, int | None, def_model.DefinitionMetrics | None] | None:
+        chemical_class = None
+        learned_def = None
         try:
             chemical_class = self._c3po_slim_data.get_chemical_class_by_name(class_name)
             print(
@@ -252,14 +277,18 @@ class PerformValidation(BaseFOL):
             )[0]
         except Exception as e:
             self.counter += 1
-            print(f"Parsed Definition: {learned_def.learned_FOL.definition.definition}")
-            print(
-                "Variables:",
-                [str(var) for var in learned_def.learned_FOL.definition.variables],
-            )
+            if learned_def is not None:
+                print(
+                    f"Parsed Definition: {learned_def.learned_FOL.definition.definition}"
+                )
+                print(
+                    "Variables:",
+                    [str(var) for var in learned_def.learned_FOL.definition.variables],
+                )
 
             if (
-                hasattr(learned_def, "additional_defs_used")
+                learned_def is not None
+                and hasattr(learned_def, "additional_defs_used")
                 and learned_def.additional_defs_used
             ):
                 print("Additional definitions used during learning:")
@@ -270,7 +299,11 @@ class PerformValidation(BaseFOL):
             print(
                 f"Error during validation of definition for class {class_name}: \n\t{e}"
             )
-            return ("error", chemical_class.id, None)
+            return (
+                "error",
+                chemical_class.id if chemical_class is not None else None,
+                None,
+            )
 
         return ("ok", chemical_class.id, val_metrics)
 
@@ -336,18 +369,37 @@ class PerformValidation(BaseFOL):
                 class_id
             ].val_metrics = learned_def.val_metrics
 
-    def _load_definitions(
-        self, definitions_file_path: str
+    @staticmethod
+    def _read_definitions_file(
+        definitions_file_path: str,
     ) -> def_model.DefinitionLearningResults:
         print(f"Loading definitions from {definitions_file_path} if it exists...")
-        if os.path.exists(definitions_file_path):
-            with open(definitions_file_path, "rb") as f:
-                definitions = pickle.load(f)
-        else:
+        if not os.path.exists(definitions_file_path):
             raise FileNotFoundError(
                 f"No definitions file found at {definitions_file_path}. Please ensure the file exists."
             )
-        return self._load_learned_definitions(definitions)
+        with open(definitions_file_path, "rb") as f:
+            return pickle.load(f)
+
+    @staticmethod
+    def _infer_fol_reasoner(
+        definitions: def_model.DefinitionLearningResults,
+    ) -> Optional[Literal["gavel", "asp"]]:
+        """Infer the reasoner from the type of the stored (parsed) definitions."""
+        from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPDefinition
+        from nl_2_fol.inference.fol_reasoner.model_check_molecule import (
+            GavelDefinition,
+        )
+
+        for learned_def in definitions.learned_definitions.values():
+            if not learned_def.learn_success or learned_def.learned_FOL is None:
+                continue
+            parsed = learned_def.learned_FOL.definition
+            if isinstance(parsed, ASPDefinition):
+                return "asp"
+            if isinstance(parsed, GavelDefinition):
+                return "gavel"
+        return None
 
     def _load_learned_definitions(
         self, new_definitions: def_model.DefinitionLearningResults

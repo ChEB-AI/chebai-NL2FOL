@@ -6,6 +6,12 @@ from nl_2_fol.inference.fol_reasoner.abstract_model_checker import (
     AbstractModelCheckerWrapper,
     FOLDefinition,
 )
+from nl_2_fol.inference.fol_reasoner.clingo_utils import (
+    ClingoTimeoutError,
+    match_chunks_with_clingo,
+    molecules_to_asp_facts,
+    split_prolog_literals,
+)
 from nl_2_fol.inference.learner.custom_exceptions import (
     MissingPredicateException,
     model_check_exception,
@@ -22,7 +28,49 @@ class ASPDefinition(FOLDefinition):
 class ASPModelChecker(AbstractModelCheckerWrapper):
     def __init__(self):
         super().__init__()
-        self._base_predicates["has_atom"] = "molecule has this atom"
+        # copy to avoid modifying the shared GAVEL_PREDICATES dict
+        self._base_predicates = {
+            **self._base_predicates,
+            "has_atom": "molecule has this atom",
+            # produced by chebi_utils and listed in the system prompt
+            **{
+                f"has_at_least_{n}_hs": f"has at least {n} hydrogens"
+                for n in range(1, 5)
+            },
+        }
+
+    def _get_required_background_rules(
+        self,
+        definition: str,
+        target_predicate: str,
+        temp_additional_defs: dict[str, ASPDefinition] | None = None,
+    ) -> list[str]:
+        """Background rules the definition (transitively) depends on.
+
+        Only these rules are passed to clingo: grounding all background rules would make
+        every check as expensive as the most expensive learned rule. Background rules for
+        the target predicate itself are excluded - in ASP, several rules with the same
+        head act as a disjunction, so an old definition would change the result.
+        """
+        bck_def = {
+            **self.background_definitions,
+            **(temp_additional_defs or {}),
+        }
+        required: set[str] = set()
+        frontier = list(self._extract_predicate_names(definition))
+        while frontier:
+            predicate = frontier.pop()
+            if (
+                predicate in required
+                or predicate == target_predicate
+                or predicate not in bck_def
+            ):
+                continue
+            required.add(predicate)
+            frontier.extend(
+                self._extract_predicate_names(bck_def[predicate].definition)
+            )
+        return [bck_def[p].definition for p in sorted(required)]
 
     @parse_exception
     def parse_definition(self, definition: str) -> ASPDefinition:
@@ -99,8 +147,36 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         Raises:
             MissingPredicateException: If the formula contains predicates not defined
                 in base predicates, background definitions, or temporary definitions.
+            ClingoTimeoutError: If grounding / solving exceeds ``timeout`` seconds.
             Exception: For various model checking failures such as predicate arity
                 mismatches or normalization errors.
+        """
+        result = self.match_asp_definition_on_chunks(
+            [molecules_df],
+            definition_to_match,
+            temp_additional_defs=temp_additional_defs,
+            timeout=timeout,
+        )[0]
+        if isinstance(result, ClingoTimeoutError):
+            raise result
+        return result
+
+    @model_check_exception
+    def match_asp_definition_on_chunks(
+        self,
+        chunks: list[pd.DataFrame],
+        definition_to_match: str,
+        temp_additional_defs: dict[str, ASPDefinition] | None = None,
+        timeout: float | None = None,
+        n_jobs: int = 1,
+    ) -> list[list | ClingoTimeoutError]:
+        """Like :meth:`do_molecules_match_asp_definition`, for several chunks of molecules.
+
+        The chunks are evaluated in parallel (``n_jobs`` processes), ``timeout`` applies
+        to each chunk individually. Molecule IDs (the index) have to be unique across chunks.
+
+        Returns:
+            For each chunk, the IDs of matching molecules or a ``ClingoTimeoutError``.
         """
         missing_predicates = self.extract_unknown_predicates(
             definition_to_match, temp_additional_defs
@@ -108,51 +184,42 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         if missing_predicates:
             raise MissingPredicateException(missing_predicates)
 
-        background_facts = self._molecules_df_to_bk(molecules_df)
-        bck_def = {
-            **self.background_definitions,
-            **(temp_additional_defs or {}),
-        }
-        rules = [definition_to_match] + [d.definition for _, d in bck_def.items()]
-
         exception_prefix = (
             "MODEL CHECKING FAILED - Error during model checking for the formula.\n"
             f"Parsed Formula being checked: `{definition_to_match}`\n\n"
             "[IMPORTANT] Critical error details for analysis: \n"
         )
         try:
-            from chebILP.evaluation.clingo_eval import evaluate_with_clingo
-
             asp_def = self.parse_definition(definition_to_match)
-            positives = evaluate_with_clingo(
-                rules,
-                background_facts,
-                [asp_def.predicate_name],
-                molecules_df.index,
-                timeout=timeout,
+            rules = [definition_to_match] + self._get_required_background_rules(
+                definition_to_match, asp_def.predicate_name, temp_additional_defs
             )
-
+            return match_chunks_with_clingo(
+                rules,
+                chunks,
+                asp_def.predicate_name,
+                allowed_predicates=set(self._base_predicates),
+                timeout=timeout,
+                n_jobs=n_jobs,
+            )
         except Exception as e:
             print(f"Error occured for formula: {definition_to_match}")
             raise Exception(f"{exception_prefix}{e}")
-        return (
-            positives[asp_def.predicate_name]
-            if asp_def.predicate_name in positives
-            else []
-        )
 
     @mol_to_fol_exception
     def _molecules_df_to_bk(self, molecules_df: pd.DataFrame) -> list[str]:
-        """Convert a dataframe of RDKit molecules to ASP background facts."""
-        from chebILP.ilp_problem_builder import build_background_chemlog
+        """Convert a dataframe of RDKit molecules to ASP background facts.
 
-        return build_background_chemlog(molecules_df)[0]
+        Only predicates that are known to the model checker (and described in the
+        prompt) are included.
+        """
+        return molecules_to_asp_facts(
+            molecules_df, allowed_predicates=set(self._base_predicates)
+        )
 
     def _extract_predicate_names(self, formula: str) -> set[str]:
         """Extract all predicate names from an ASP formula."""
         predicates = set()
-
-        from chebILP.utils import split_prolog_literals
 
         for rule in formula.split("."):
             rule = rule.strip()
@@ -163,25 +230,33 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
                 body = rule.split(":-", 1)[1]
             elif ":" in rule:
                 body = rule.split(":", 1)[1]
-            literals = split_prolog_literals(body)
-            for literal in literals:
-                if "#" in literal:
-                    # aggregators, e.g. #count{X : p(X), q(X)} = 2
-                    # extract the inner part of the aggregator and recursively extract predicate names from it
-                    literal_inner = (
-                        literal[literal.find("{") + 1 : literal.rfind("}")]
-                        .split(":")[1]
-                        .strip()
-                    )
-                    inner_predicates = self._extract_predicate_names(literal_inner)
-                    predicates.update(inner_predicates)
-                if "=" in literal or ">" in literal or "<" in literal:
-                    continue
-                if literal.startswith("not "):
-                    literal = literal[4:].strip()
-                pred_name = literal.split("(")[0].strip()
-                predicates.add(pred_name)
+            predicates.update(self._extract_predicate_names_from_body(body))
 
+        return predicates
+
+    def _extract_predicate_names_from_body(self, body: str) -> set[str]:
+        predicates = set()
+        for literal in split_prolog_literals(body):
+            if not literal:
+                continue
+            if "#" in literal:
+                # aggregates, e.g. #count{X : p(X), q(X)} = 2
+                # extract the conditions of each aggregate element (separated by ";")
+                inner = literal[literal.find("{") + 1 : literal.rfind("}")]
+                for element in inner.split(";"):
+                    if ":" in element:
+                        predicates.update(
+                            self._extract_predicate_names_from_body(
+                                element.split(":", 1)[1]
+                            )
+                        )
+                continue
+            if "=" in literal or ">" in literal or "<" in literal:
+                continue
+            if literal.startswith("not "):
+                literal = literal[4:].strip()
+            pred_name = literal.split("(")[0].strip()
+            predicates.add(pred_name)
         return predicates
 
     @property

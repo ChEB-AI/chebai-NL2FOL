@@ -5,7 +5,7 @@ from jsonargparse import CLI
 from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
 from nl_2_fol.inference.learner.validator import PerformValidation
 from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
-from nl_2_fol.prompting.llm_inference import API_PLATFORM
+from nl_2_fol.prompting.llm_inference import API_PLATFORM, EFFORT
 from typing import Literal, Optional
 
 
@@ -17,34 +17,82 @@ PROJECT_DIR = os.path.join(WORKING_DIR, "nl_2_fol")
 DATA_DIR = os.path.join(WORKING_DIR, "data")
 PROMPT_TEMPLATES_DIR = os.path.join(PROJECT_DIR, "prompting", "prompt_templates")
 
+# Default prompt templates (relative to PROMPT_TEMPLATES_DIR) for each reasoner
+DEFAULT_PROMPTS = {
+    "asp": {
+        "system_prompt_fp": ("system_prompts", "asp_adaptive_thinking.yaml"),
+        "few_shot_prompt_fp": ("few_shots", "ASP_adaptive_thinking.json"),
+        "err_failure_prompt_fp": ("failure", "error_prompt.yaml"),
+        "undef_failure_prompt_fp": ("failure", "predicates_undef_asp.yaml"),
+    },
+    "gavel": {
+        "system_prompt_fp": ("system_prompts", "with_predicates_list.yaml"),
+        "few_shot_prompt_fp": ("few_shots", "with_DL_style.json"),
+        "err_failure_prompt_fp": ("failure", "error_prompt.yaml"),
+        "undef_failure_prompt_fp": ("failure", "predicates_undef_with_eg.yaml"),
+    },
+}
+
+
+def _resolve_prompt_paths(fol_reasoner: str, **given: Optional[str]) -> dict[str, str]:
+    """Use the default prompt template for each prompt path that is not given."""
+    return {
+        key: (
+            value
+            if value is not None
+            else os.path.join(PROMPT_TEMPLATES_DIR, *DEFAULT_PROMPTS[fol_reasoner][key])
+        )
+        for key, value in given.items()
+    }
+
 
 class Main:
     @staticmethod
     def learn(
         class_name: str = "all",
-        api_platform: API_PLATFORM = "anthropic",
-        model_name: str = "claude-opus-4-6",
-        system_prompt_fp: str = os.path.join(
-            PROMPT_TEMPLATES_DIR, "system_prompts", "with_predicates_list.yaml"
-        ),
-        few_shot_prompt_fp: str = os.path.join(
-            PROMPT_TEMPLATES_DIR, "few_shots", "with_DL_style.json"
-        ),
-        err_failure_prompt_fp: str = os.path.join(
-            PROMPT_TEMPLATES_DIR, "failure", "error_prompt.yaml"
-        ),
-        undef_failure_prompt_fp: str = os.path.join(
-            PROMPT_TEMPLATES_DIR, "failure", "predicates_undef_with_eg.yaml"
-        ),
+        api_platform: API_PLATFORM = "claude_cli",
+        model_name: str = "claude-opus-5-5",
+        fol_reasoner: Literal["gavel", "asp"] = "asp",
+        system_prompt_fp: Optional[str] = None,
+        few_shot_prompt_fp: Optional[str] = None,
+        err_failure_prompt_fp: Optional[str] = None,
+        undef_failure_prompt_fp: Optional[str] = None,
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/slim_dataset.csv
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
         max_attempts: int = 3,
         f1_threshold: float = 0.8,
-        fol_reasoner: Literal["gavel", "asp"] = "gavel",
         predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
+        effort: Optional[EFFORT] = "high",
     ):
+        """
+        Learn definitions for a single class or all classes.
+
+        By default, Claude is called via the logged-in `claude` CLI, which bills the
+        Claude subscription (`api_platform="claude_cli"`; requires `claude` and `/login`).
+        Use `api_platform="anthropic"` for the API (requires an API key).
+
+        Prompt template paths that are not given default to the templates for
+        `fol_reasoner` (see `DEFAULT_PROMPTS`).
+        `effort` is the reasoning effort for Claude models (ignored for other
+        platforms). Use `null` for the model default (not supported by all models,
+        e.g. Claude Haiku 4.5).
+        """
+        prompt_paths = _resolve_prompt_paths(
+            fol_reasoner,
+            system_prompt_fp=system_prompt_fp,
+            few_shot_prompt_fp=few_shot_prompt_fp,
+            err_failure_prompt_fp=err_failure_prompt_fp,
+            undef_failure_prompt_fp=undef_failure_prompt_fp,
+        )
+        for key, path in prompt_paths.items():
+            print(f"{key}: {path}")
+        system_prompt_fp = prompt_paths["system_prompt_fp"]
+        few_shot_prompt_fp = prompt_paths["few_shot_prompt_fp"]
+        err_failure_prompt_fp = prompt_paths["err_failure_prompt_fp"]
+        undef_failure_prompt_fp = prompt_paths["undef_failure_prompt_fp"]
+
         chebai_prompt = ChebiPrompt(
             platform=api_platform,
             model_name=model_name,
@@ -53,6 +101,7 @@ class Main:
             err_failure_prompt_fp=err_failure_prompt_fp,
             undef_failure_prompt_fp=undef_failure_prompt_fp,
             predicate_prompt_mode=predicate_prompt_mode,
+            effort=effort if api_platform in ("anthropic", "claude_cli") else None,
         )
 
         learner = LearnDefinitions(
@@ -78,6 +127,7 @@ class Main:
         slim_dataset_path: str = os.path.join(DATA_DIR, "classes_slim.csv"),
         # https://huggingface.co/datasets/MonarchInit/C3PO/blob/main/structures.csv
         structures_data_path: str = os.path.join(DATA_DIR, "structures.csv"),
+        fol_reasoner: Optional[Literal["gavel", "asp"]] = None,
     ):
         """
         Validate learned definitions.
@@ -85,6 +135,8 @@ class Main:
         Parameters
         - `defs_file_path`: path to the pickled `DefinitionLearningResults` produced
             by the learning pipeline.
+        - `fol_reasoner`: reasoner used for model checking. By default, it is inferred
+            from the type of the learned definitions.
         - `class_name`: validate a single class by name or all classes in single job.
         - `class_names_txt_file_path`: path to a plain-text file containing class
             names (one per line). This was added so you can share validation across
@@ -103,6 +155,7 @@ class Main:
             defs_file_path=defs_file_path,
             slim_dataset_path=slim_dataset_path,
             structures_path=structures_data_path,
+            fol_reasoner=fol_reasoner,
         )
         if class_names_txt_file_path is not None and class_name is not None:
             raise ValueError(

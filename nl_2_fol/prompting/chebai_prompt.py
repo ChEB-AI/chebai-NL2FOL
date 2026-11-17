@@ -13,7 +13,11 @@ from langchain_core.prompts import (
 from langchain_core.runnables import Runnable
 
 from nl_2_fol.inference.learner import custom_exceptions as ce
-from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
+from nl_2_fol.prompting.llm_inference import (
+    API_PLATFORM,
+    EFFORT,
+    get_llm_for_inference,
+)
 from nl_2_fol.prompting.prompt_models import (
     ChEBI_FOL_AT,
     CHEBIFOLOutput,
@@ -37,8 +41,20 @@ class ChebiPrompt:
         err_failure_prompt_fp: str,
         undef_failure_prompt_fp: str,
         predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
-        structured_output_type: str = "ChEBI_FOL_AT",
+        structured_output_type: str | None = None,
+        effort: EFFORT | None = None,
     ):
+        """
+        Args:
+            structured_output_type: `ChEBI_FOL_AT` (only the formula) or `CHEBIFOLOutput`
+                (formula and intermediate chain-of-thought steps). By default, this is
+                inferred from the few-shot examples (`CHEBIFOLOutput` if they contain
+                an `intermediate_output`).
+        """
+        if structured_output_type is None:
+            structured_output_type = self._infer_structured_output_type(
+                few_shot_prompt_fp
+            )
         if predicate_prompt_mode not in {"relevant", "all"}:
             raise ValueError(
                 "predicate_prompt_mode must be either 'relevant' or 'all'."
@@ -51,13 +67,16 @@ class ChebiPrompt:
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
         self.predicate_prompt_mode = predicate_prompt_mode
         self.structured_output_type = structured_output_type
+        self.effort = effort
         # To keep track of predicates generated across iterations, for prompting
         self._memory_store = {}
         self.generated_predicates_names: set[str] = set()
         self._relevant_predicates: list[str] = []
         self._current_session_id: str | None = None  # Track current session
 
-        self._llm = get_llm_for_inference(self.platform, self.model_name)
+        self._llm = get_llm_for_inference(
+            self.platform, self.model_name, effort=self.effort
+        )
 
         self._conversation_chain = self._get_conversation_chain()
         self._undef_failure_chain = self._get_undef_failure_chain()
@@ -73,12 +92,31 @@ class ChebiPrompt:
         )
 
     # -------- Conversation Chain Construction --------------------- ##
+    @staticmethod
+    def _infer_structured_output_type(few_shot_prompt_fp: str) -> str:
+        with open(few_shot_prompt_fp, encoding="utf-8") as f:
+            examples = json.load(f)
+        with_cot = any(
+            isinstance(example.get("ai"), dict)
+            and "intermediate_output" in example["ai"]
+            for example in examples
+        )
+        return "CHEBIFOLOutput" if with_cot else "ChEBI_FOL_AT"
+
+    def _with_structured_output(self, schema: type) -> Runnable:
+        if self.platform == "anthropic":
+            # Native structured outputs (`output_config.format`). The default method
+            # (`function_calling`) forces tool use, which newer Claude models
+            # (e.g. Opus 5.5) reject.
+            return self._llm.with_structured_output(schema, method="json_schema")
+        return self._llm.with_structured_output(schema)
+
     def _get_conversation_chain(self) -> Runnable:
         prompt = self._get_prompt_template()
         if self.structured_output_type == "ChEBI_FOL_AT":
-            structured_llm = self._llm.with_structured_output(ChEBI_FOL_AT)
+            structured_llm = self._with_structured_output(ChEBI_FOL_AT)
         elif self.structured_output_type == "CHEBIFOLOutput":
-            structured_llm = self._llm.with_structured_output(CHEBIFOLOutput)
+            structured_llm = self._with_structured_output(CHEBIFOLOutput)
         else:
             raise ValueError("Invalid structured_output_type")
         return prompt | structured_llm
@@ -86,7 +124,7 @@ class ChebiPrompt:
     def _get_undef_failure_chain(self) -> Runnable:
         """Create a chain specifically for handling undefined predicates with shared memory."""
         prompt = self._get_prompt_template()
-        structured_llm = self._llm.with_structured_output(OutOfBoxPredicateDefinitions)
+        structured_llm = self._with_structured_output(OutOfBoxPredicateDefinitions)
         return prompt | structured_llm
 
     def _rebuild_chains(self) -> None:
@@ -343,7 +381,9 @@ class ChebiPrompt:
         few_shot_prompt_fp={self.few_shot_prompt_fp},
         err_failure_prompt_fp={self.err_failure_prompt_fp},
         undef_failure_prompt_fp={self.undef_failure_prompt_fp},
-        predicate_prompt_mode={self.predicate_prompt_mode})
+        predicate_prompt_mode={self.predicate_prompt_mode},
+        structured_output_type={self.structured_output_type},
+        effort={self.effort})
         """
 
     @ce.stop_program_upon_failure

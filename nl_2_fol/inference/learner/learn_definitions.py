@@ -15,6 +15,19 @@ from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import ChEBI_FOL_AT
 
 
+def _caused_by_refusal(exc: BaseException) -> bool:
+    """Whether an exception was (directly or indirectly) caused by an LLM refusal."""
+    from nl_2_fol.prompting.claude_cli import ModelRefusal
+
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, ModelRefusal):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
 class LearnDefinitions(BaseFOL):
     _MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION = 5
     _LEARNING_LOG_FILE_NAME = "learning_output_a{max_attempts}.txt"
@@ -109,7 +122,35 @@ class LearnDefinitions(BaseFOL):
             self._learn(chemical_class)
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> bool:
-        """Returns True if learning was successful, False otherwise."""
+        """Returns True if learning was successful, False otherwise.
+
+        If the LLM refuses a request (safety classifier), learning stops for this class:
+        the best definition found so far is accepted (or the class is marked as failed),
+        and the run continues with the next class. Other LLM failures stop the run.
+        """
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition] = {}
+        try:
+            return self._learn_with_attempts(chemical_class, low_score_defs_collector)
+        except ce.StopProgramException as e:
+            if not _caused_by_refusal(e):
+                raise
+            print(
+                f"[REFUSAL] The LLM declined a request for CHEBI:{chemical_class.id}: "
+                f"{chemical_class.name}. Stopping learning for this class."
+            )
+            history = self.chebi_prompt_obj.get_session_history(chemical_class.name)
+            history.add_message(
+                HumanMessage(content=f"[REFUSAL] The LLM declined the request: {e}")
+            )
+            return self._accept_highest_scoring_def(
+                chemical_class, low_score_defs_collector
+            )
+
+    def _learn_with_attempts(
+        self,
+        chemical_class: dm.ChemicalClass,
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition],
+    ) -> bool:
         attempts = 0
         # ---- commenting, incase we decide to have more attempts for larger classes in future
         # actual_max_attempts = (
@@ -119,9 +160,9 @@ class LearnDefinitions(BaseFOL):
         # )
         actual_max_attempts = self._user_max_attempts
 
-        # Tracks all the definitions which scored below threshold from all attempts
-        # If no generated def pass the threshold, then we accept the one with best score
-        low_score_defs_collector: dict[int, def_model.ScoredDefinition] = {}
+        # `low_score_defs_collector` tracks all the definitions which scored below
+        # threshold from all attempts. If no generated def pass the threshold, then we
+        # accept the one with best score
 
         result = None
         raised_exception = None
@@ -745,22 +786,40 @@ class LearnDefinitions(BaseFOL):
 
     @property
     def definitions_save_path(self) -> str:
+        # ASP runs get their own directory, so that they never resume (or overwrite)
+        # TPTP-based runs of the same model
+        run_name = self.chebi_prompt_obj.model_name
+        if self.fol_reasoner == "asp":
+            run_name += "_asp"
         return os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "learned",
-            self.chebi_prompt_obj.model_name,
+            run_name,
         )
 
     def __repr__(self) -> str:
+        if self.fol_reasoner == "asp":
+            from nl_2_fol.inference.learner import sample_matching_worker as smw
+
+            sampling = (
+                "Training_samples=all, "
+                f"Clingo_chunk_size={smw.CLINGO_CHUNK_SIZE}, "
+                f"Clingo_chunk_timeout_seconds={smw.CLINGO_CHUNK_TIMEOUT_SECONDS}"
+            )
+        else:
+            sampling = (
+                f"Maximum_negative_samples={self._MAX_NEGATIVE_SAMPLES}, "
+                f"Sample_match_timeout_seconds={self._SAMPLE_MATCH_TIMEOUT_SECONDS}"
+            )
         return f"""
         DefinitionLearner(chebi_prompt_obj={self.chebi_prompt_obj}),
         max_attempts={self._user_max_attempts},
         f1_threshold={self.f1_threshold},
+        fol_reasoner={self.fol_reasoner},
         slim_dataset_path={self.slim_dataset_path},
         structures_path={self.structures_path},
         chebi_version={self.chebi_version},
-        Maximum_negative_samples={self._MAX_NEGATIVE_SAMPLES},
-        Sample_match_timeout_seconds={self._SAMPLE_MATCH_TIMEOUT_SECONDS},
+        {sampling},
         Max_samples_for_low_threshold_exception={self._MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION}
         """
 

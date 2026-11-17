@@ -2,6 +2,7 @@ import logging
 import multiprocessing
 import os
 import queue
+import random
 import sys
 import time
 import traceback
@@ -15,6 +16,7 @@ from nl_2_fol.inference import PRINT_TRACES
 from nl_2_fol.inference.fol_reasoner import GavelFOLReasoner
 from nl_2_fol.inference.fol_reasoner.abstract_model_checker import FOLDefinition
 from nl_2_fol.inference.fol_reasoner.asp_model_checker import ASPModelChecker
+from nl_2_fol.inference.fol_reasoner.clingo_utils import ClingoTimeoutError
 from nl_2_fol.inference.learner.custom_exceptions import StopProgramException
 from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
@@ -34,6 +36,10 @@ WorkerError = tuple[
 ]
 
 MAX_TIMEOUTS = 50
+
+# ASP / clingo evaluation: molecules are evaluated in chunks, each with its own time limit
+CLINGO_CHUNK_SIZE = 1000
+CLINGO_CHUNK_TIMEOUT_SECONDS = 300
 
 
 def _parse_error_event(event: tuple) -> WorkerError:
@@ -129,75 +135,106 @@ def check_if_definition_matches_samples_clingo(
     neg_samples: set[dm.ChemicalStructure],
     temp_additional_defs: dict[str, FOLDefinition] | None = None,
     split: str = "train",
+    n_jobs: int = 1,
 ) -> tuple[dict[str, set[dm.SMILES_STRING]], dict[str, set[dm.ChemicalStructure]]]:
-    # normally, the index would be the actual ChEBI ID. here, a dummy index is used instead since ChemicalStructure does not store the ChEBI ID
-    indexed_samples = {
-        i: s for i, s in enumerate(list(pos_samples) + list(neg_samples))
-    }
-    molecules_df = pd.DataFrame(
-        {"mol": [s.mol for s in indexed_samples.values()]},
-        index=list(indexed_samples.keys()),
-    )
+    """Evaluate an ASP definition on samples with clingo.
 
-    matched_ids = model_checker.do_molecules_match_asp_definition(
-        molecules_df,
+    All samples are evaluated (``sample_matching_timeout_seconds`` is not used).
+    Samples are split into chunks of ``CLINGO_CHUNK_SIZE`` molecules, which are
+    evaluated by ``n_jobs`` parallel processes. Each chunk has a time limit of
+    ``CLINGO_CHUNK_TIMEOUT_SECONDS``; molecules in chunks that exceed it are counted
+    as timeouts (not as non-matches).
+    """
+    # Deterministic order; shuffled to spread large molecules evenly across chunks
+    labelled = sorted(
+        [(s, True) for s in pos_samples] + [(s, False) for s in neg_samples],
+        key=lambda x: (x[0].smiles, x[1]),
+    )
+    random.Random(f"{chemical_class.id}").shuffle(labelled)
+
+    result = {
+        key: set()
+        for key in [
+            "matched_pos_samples",  # TPs
+            "unmatched_neg_samples",  # TNs
+            "unmatched_pos_samples",  # FNs
+            "matched_neg_samples",  # FPs
+            "inferred_match_pos",
+            "inferred_match_neg",
+            "inferred_no_match_pos",
+            "inferred_no_match_neg",
+            "timeout_pos",
+            "timeout_neg",
+            "error_pos",
+            "error_neg",
+            "unknown_pos",
+            "unknown_neg",
+        ]
+    }
+    processed_pos: set[dm.ChemicalStructure] = set()
+    processed_neg: set[dm.ChemicalStructure] = set()
+
+    start = time.monotonic()
+    # The molecule ID is the position in `labelled` (ChemicalStructure has no ChEBI ID)
+    chunk_ranges = [
+        range(i, min(i + CLINGO_CHUNK_SIZE, len(labelled)))
+        for i in range(0, len(labelled), CLINGO_CHUNK_SIZE)
+    ]
+    chunks = [
+        pd.DataFrame({"mol": [labelled[i][0].mol for i in ids]}, index=list(ids))
+        for ids in chunk_ranges
+    ]
+    chunk_results = model_checker.match_asp_definition_on_chunks(
+        chunks,
         asp_def,
         temp_additional_defs=temp_additional_defs,
-        timeout=sample_matching_timeout_seconds,
+        timeout=CLINGO_CHUNK_TIMEOUT_SECONDS,
+        n_jobs=n_jobs,
     )
 
-    if matched_ids is None:
-        raise Exception(
-            f"[{chemical_class.id}:{chemical_class.name}] Model checker returned None for definition: {asp_def}"
-        )
-    print(f"Matched IDs: (total {len(matched_ids)})")
-    matched_pos_samples = {
-        i for i in matched_ids if i in indexed_samples and i < len(pos_samples)
-    }
-    matched_neg_samples = {
-        i for i in matched_ids if i in indexed_samples and i >= len(pos_samples)
-    }
-    unmatched_pos_samples = {
-        i
-        for i in indexed_samples
-        if i < len(pos_samples) and i not in matched_pos_samples
-    }
-    unmatched_neg_samples = {
-        i
-        for i in indexed_samples
-        if i >= len(pos_samples) and i not in matched_neg_samples
-    }
+    for chunk_idx, (ids, matched_ids) in enumerate(zip(chunk_ranges, chunk_results)):
+        if isinstance(matched_ids, ClingoTimeoutError):
+            print(
+                f"[{chemical_class.id}:{chemical_class.name}] Chunk {chunk_idx + 1}/{len(chunks)} "
+                f"timed out after {CLINGO_CHUNK_TIMEOUT_SECONDS}s"
+            )
+            for i in ids:
+                s, is_pos = labelled[i]
+                result["timeout_pos" if is_pos else "timeout_neg"].add(s.smiles)
+            continue
 
+        matched_ids = set(matched_ids)
+        for i in ids:
+            s, is_pos = labelled[i]
+            matched = i in matched_ids
+            if is_pos:
+                processed_pos.add(s)
+                key = "matched_pos_samples" if matched else "unmatched_pos_samples"
+            else:
+                processed_neg.add(s)
+                key = "matched_neg_samples" if matched else "unmatched_neg_samples"
+            result[key].add(s.smiles)
+
+    n_timeouts = len(result["timeout_pos"]) + len(result["timeout_neg"])
     print(
-        f"#TPs: {len(matched_pos_samples)}, #FNs: {len(unmatched_pos_samples)}, #TNs: {len(unmatched_neg_samples)}, #FPs: {len(matched_neg_samples)}"
+        f"#TPs: {len(result['matched_pos_samples'])}, #FNs: {len(result['unmatched_pos_samples'])}, "
+        f"#TNs: {len(result['unmatched_neg_samples'])}, #FPs: {len(result['matched_neg_samples'])}, "
+        f"#timeouts: {n_timeouts} ({len(labelled)} samples, {len(chunks)} chunks, "
+        f"{n_jobs} jobs, {time.monotonic() - start:.1f}s)"
     )
+    if len(processed_pos) + len(processed_neg) == 0 and n_timeouts > 0:
+        raise Exception(
+            "MODEL CHECKING FAILED - The definition is too expensive to evaluate: clingo "
+            f"exceeded the time limit for every batch of molecules ({n_timeouts} molecules timed out).\n"
+            "This usually happens when rules contain many variables that are not connected "
+            "via bonds, so that clingo has to consider all combinations of atoms. "
+            "Please simplify the definition, e.g. by connecting atom variables through bond "
+            "predicates and by using #count aggregates instead of long lists of pairwise distinct variables."
+        )
 
-    return {
-        "matched_pos_samples": set(
-            indexed_samples[s].smiles for s in matched_pos_samples
-        ),  # TPs
-        "unmatched_neg_samples": set(
-            indexed_samples[s].smiles for s in unmatched_neg_samples
-        ),  # TNs
-        "unmatched_pos_samples": set(
-            indexed_samples[s].smiles for s in unmatched_pos_samples
-        ),  # FNs
-        "matched_neg_samples": set(
-            indexed_samples[s].smiles for s in matched_neg_samples
-        ),  # FPs
-        "inferred_match_pos": set(),
-        "inferred_match_neg": set(),
-        "inferred_no_match_pos": set(),
-        "inferred_no_match_neg": set(),
-        "timeout_pos": set(),
-        "timeout_neg": set(),
-        "error_pos": set(),
-        "error_neg": set(),
-        "unknown_pos": set(),
-        "unknown_neg": set(),
-    }, {
-        "processed_pos_samples": pos_samples,
-        "processed_neg_samples": neg_samples,
+    return result, {
+        "processed_pos_samples": processed_pos,
+        "processed_neg_samples": processed_neg,
     }
 
 

@@ -1,3 +1,4 @@
+import os
 import queue
 
 from gavel.logic import logic
@@ -27,7 +28,14 @@ class BaseFOL:
         chebi_version: int,
         split: Literal["train", "val"],
         fol_reasoner: Literal["gavel", "mistral", "asp"] = "gavel",
+        clingo_n_jobs: int | None = None,
     ):
+        """
+        Args:
+            clingo_n_jobs: Number of parallel processes for evaluating ASP definitions
+                with clingo. Defaults to the number of CPUs.
+        """
+        self.clingo_n_jobs = clingo_n_jobs or os.cpu_count() or 1
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_version = chebi_version
@@ -84,22 +92,33 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        matching_func = (
-            check_if_definition_matches_samples
-            if self.fol_reasoner in ["gavel", "mistral"]
-            else check_if_definition_matches_samples_clingo
-        )
-
-        match_result_dict, processed_samples_dict = matching_func(
-            self._fol_reasoner,
-            sample_match_timeout_seconds,
-            chemical_class,
-            parsed_def,
-            pos_samples,
-            neg_samples,
-            temp_additional_defs,
-            split=self.split,
-        )
+        if self.fol_reasoner in ["gavel", "mistral"]:
+            match_result_dict, processed_samples_dict = (
+                check_if_definition_matches_samples(
+                    self._fol_reasoner,
+                    sample_match_timeout_seconds,
+                    chemical_class,
+                    parsed_def,
+                    pos_samples,
+                    neg_samples,
+                    temp_additional_defs,
+                    split=self.split,
+                )
+            )
+        else:
+            match_result_dict, processed_samples_dict = (
+                check_if_definition_matches_samples_clingo(
+                    self._fol_reasoner,
+                    sample_match_timeout_seconds,
+                    chemical_class,
+                    parsed_def,
+                    pos_samples,
+                    neg_samples,
+                    temp_additional_defs,
+                    split=self.split,
+                    n_jobs=self.clingo_n_jobs,
+                )
+            )
 
         metrics = self._get_metrics(match_result_dict)
 
@@ -124,8 +143,10 @@ class BaseFOL:
         }
         negative_examples = list(self._c3po_slim_data.all_smiles - positive_examples)
 
-        if self.split == "train":
-            # Closest 1000 negative samples are used for training to speed up training.
+        if self.split == "train" and self.fol_reasoner != "asp":
+            # With ASP (clingo), all training samples are used.
+            # With the TPTP-based model checker (Gavel / ChemLog), evaluating all samples is
+            # too expensive, so only the closest 1000 negative samples are used for training.
             # For validation, we use all negative samples to fairly compare against the c3po.
             negative_examples = self._get_closest_negatives(
                 negative_examples, chemical_class.id, n_samples=max_neg_samples
