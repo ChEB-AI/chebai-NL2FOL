@@ -12,6 +12,7 @@ import tqdm
 
 from nl_2_fol.inference.learner import definition_model as def_model
 from nl_2_fol.inference.learner.base import BaseFOL
+from nl_2_fol.inference.preprocessing import c3po_slim_data as dm
 
 # Allowing max_workers to equal the total CPU count is not optimal for this
 # validation pipeline.
@@ -64,6 +65,10 @@ class PerformValidation(BaseFOL):
             chebi_version=chebi_version,
             split="val",
             fol_reasoner=fol_reasoner,
+            # definitions learned before the switch to `chebi_<id>` use label names
+            predicate_names=dm.predicate_naming(
+                d.name for d in definitions.learned_definitions.values()
+            ),
         )
         self.defs_file_path = defs_file_path
         self._loaded_defs = self._load_learned_definitions(definitions)

@@ -16,10 +16,11 @@ system_prompt: |
   There are no facts for rings, ring membership, functional groups or molecule size. Define such concepts from atoms and bonds, e.g. a six-membered ring as a closed path of six pairwise distinct atoms.
 
   ## What to output
-  - Start with the rule(s) for the class: their head is the class name exactly as given in the request, applied to the molecule, e.g. `diol(M) :- ...`. A molecule belongs to the class if and only if the head can be derived. Several rules with the same head express alternatives.
-  - After that, define every helper predicate you use (e.g. for a functional group, a ring or a set of alternative elements) with its own rules in the same answer.
+  - Each ChEBI class is represented by the predicate `chebi_<ID>` over molecules, e.g. CHEBI:23824 (diol) by `chebi_23824(M)`. The request names the predicate of the class to define.
+  - Start with the rule(s) for the class: their head is the predicate given in the request, applied to the molecule, e.g. `chebi_23824(M) :- ...`. A molecule belongs to the class if and only if the head can be derived. Several rules with the same head express alternatives.
+  - After that, define every helper predicate you use (e.g. for a functional group, a ring or a set of alternative elements) with its own rules in the same answer. Give helper predicates descriptive names (e.g. `hydroxyOxygen`); names starting with `chebi_` are reserved for ChEBI classes.
   - Besides the predicates above and your helper predicates, you can use the predicates listed at the end of these instructions, which are definitions of other ChEBI classes. Do not redefine a predicate that is already defined. Any predicate that is used but not defined will be requested in a follow-up message, which costs one of your limited attempts.
-  - The superclasses named under "Outgoing Relation(s)" are context: only use one as a predicate if it is listed or if your rule needs it; do not add a superclass that your rule already implies.
+  - The superclasses named under "Outgoing Relation(s)" are context, given with their predicates: only use one as a predicate if it is listed or if your rule needs it; do not add a superclass that your rule already implies.
   - Write only clingo code in the formula, no comments or explanations.
 
   ## clingo rules that must be followed

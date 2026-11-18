@@ -194,13 +194,18 @@ class ChebiPrompt:
         # And consider another 100 predicates as an additional predicates, hence managable
         predicates = self._get_predicates_for_system_prompt()
         if len(predicates) > 0:
+            # labels in brackets (e.g. `[1,2-diol]`) can contain commas: one per line
+            if any(p.endswith("]") for p in predicates):
+                predicate_list = "".join(f"\n- {p}" for p in predicates)
+            else:
+                predicate_list = " " + ", ".join(predicates)
             return (
                 "\nAlso, here is the list of predicates along with their arguments that "
                 "were already defined in previous iterations for other CHEBI classes.\n"
                 "If any predicate has no arguments, then just the predicate name is shown "
                 "without parentheses. You can reuse these predicates if they are "
                 "applicable to the current class definition.\n"
-                f"Predicate List: {', '.join(predicates)}"
+                f"Predicate List:{predicate_list}"
             )
         return ""
 
@@ -554,19 +559,24 @@ class ChebiPrompt:
         return max(1, len(text) // 4)
 
     @ce.stop_program_upon_failure
-    def add_predicates_to_memory(self, predicate_name: str, vars: list[str]) -> None:
+    def add_predicates_to_memory(
+        self, predicate_name: str, vars: list[str], label: str | None = None
+    ) -> None:
         """Add predicates to the prompt predicate store.
 
         Example: if pred_name='oligopeptide' and vars=[x0, x1],
                  this will add 'oligopeptide(x0, x1)'.
 
-        If no variables, only the predicate name is added.
+        If no variables, only the predicate name is added. A label (e.g. the ChEBI label
+        of `chebi_<id>` predicates) is appended in brackets, it is also used for retrieval.
         """
         if len(vars) > 0:
             variables_str = ", ".join(str(var) for var in vars)
             predicate_with_vars = f"{predicate_name}({variables_str})"
         else:
             predicate_with_vars = predicate_name
+        if label:
+            predicate_with_vars += f" [{label}]"
 
         if self.predicate_prompt_mode == "all":
             if predicate_with_vars in self.generated_predicates_names:

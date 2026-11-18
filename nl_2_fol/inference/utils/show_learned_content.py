@@ -299,16 +299,16 @@ def delete_class_from_pickle(
     return True
 
 
-def _parse_used_for_ids(used_for: str) -> list[int]:
+def _parse_used_for_ids(used_for: str) -> list[str]:
     if not used_for.strip():
         return []
 
-    ids: list[int] = []
+    ids: list[str] = []
     for value in used_for.split(","):
         cleaned = value.strip()
         if not cleaned:
             continue
-        ids.append(int(cleaned))
+        ids.append(str(int(cleaned)))
     return ids
 
 
@@ -316,7 +316,7 @@ def upsert_additional_definition_in_pickle(
     pickle_file_path: str,
     predicate_name: str,
     fol_definition: str,
-    used_for_ids: list[int],
+    used_for_ids: list[str],
     learn_success=True,
     output_file_path=None,
     create_backup=True,
@@ -335,7 +335,7 @@ def upsert_additional_definition_in_pickle(
     parsed_definition = reasoner.parse_definition(fol_definition)
 
     predicate_name = predicate_name.strip()
-    normalized_used_for = list(dict.fromkeys(int(x) for x in used_for_ids))
+    normalized_used_for = list(dict.fromkeys(str(x) for x in used_for_ids))
 
     if (
         predicate_name in data.additional_definitions
@@ -346,7 +346,7 @@ def upsert_additional_definition_in_pickle(
             *data.additional_definitions[predicate_name].used_for,
             *normalized_used_for,
         ]
-        normalized_used_for = list(dict.fromkeys(int(x) for x in merged))
+        normalized_used_for = list(dict.fromkeys(str(x) for x in merged))
 
     data.additional_definitions[predicate_name] = AdditionalDefinition(
         fol_formula=FOLFormula(definition=parsed_definition),

@@ -181,7 +181,14 @@ def check_if_definition_matches_samples_clingo(
         for i in range(0, len(labelled), CLINGO_CHUNK_SIZE)
     ]
     chunks = [
-        pd.DataFrame({"mol": [labelled[i][0].mol for i in ids]}, index=list(ids))
+        pd.DataFrame(
+            {
+                "mol": [labelled[i][0].mol for i in ids],
+                # to reuse precomputed facts (see `clingo_utils.cache_molecule_facts`)
+                "smiles": [labelled[i][0].smiles for i in ids],
+            },
+            index=list(ids),
+        )
         for ids in chunk_ranges
     ]
     chunk_results = model_checker.match_asp_definition_on_chunks(

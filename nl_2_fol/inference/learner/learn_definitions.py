@@ -65,7 +65,6 @@ class LearnDefinitions(BaseFOL):
 
         # Tracks the classes for which definitions have been learned,
         self._learned_classes: set[str] = set()
-        self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
         self._chebi_name_to_data_map_train = (
             self._entire_chebi_data.get_name_to_data_mapping_train()
@@ -73,6 +72,24 @@ class LearnDefinitions(BaseFOL):
         self._chebi_id_to_data_mapping_all = (
             self._entire_chebi_data.get_chebi_id_to_data_mapping_all()
         )
+        # names of all ChEBI classes, also of those without a definition (which are
+        # missing in the mapping above), normalised like the names in the mapping
+        self._chebi_names: dict[dm.CHEBI_ID, str] = {
+            chebi_id: str(term["name"]).lower().strip()
+            for chebi_id, term in self._entire_chebi_data.process_chebi().items()
+            if term.get("name")
+        }
+        # needs the ChEBI data (labels of predicates)
+        self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
+
+    def _predicate_label(self, predicate_name: str) -> str | None:
+        """ChEBI label of a `chebi_<id>` predicate (None for other predicates)."""
+        chebi_id = dm.chebi_id_of_predicate(predicate_name)
+        if chebi_id is None:
+            return None
+        if predicate_name in self._c3po_slim_data.classes:
+            return self._c3po_slim_data.classes[predicate_name].label
+        return self._chebi_names.get(chebi_id)
 
     def learn_fol_definitions(self):
         with TeeStream.capture_learning_output(self.learning_log_path):
@@ -379,19 +396,31 @@ class LearnDefinitions(BaseFOL):
         self.chebi_prompt_obj.delete_session_history(session_id=session_id)
 
     def _build_initial_input_text(self, chemical_class: dm.ChemicalClass) -> str:
-        entity = f"CHEBI:{chemical_class.id} - {chemical_class.name}"
+        with_ids = self.predicate_names == "id"
+        if with_ids:
+            # e.g. "CHEBI:23824 - diol (predicate `chebi_23824`)"
+            entity = (
+                f"CHEBI:{chemical_class.id} - {chemical_class.label} "
+                f"(predicate `{chemical_class.name}`)"
+            )
+        else:
+            entity = f"CHEBI:{chemical_class.id} - {chemical_class.name}"
         input_text = f"{entity}: {chemical_class.definition}"
         mappings: dict = self._chebi_id_to_data_mapping_all[chemical_class.id]
         parents = mappings.get("parents", [])
+        # with `chebi_<id>` predicates, parents without a ChEBI definition are shown by
+        # name; with label predicates (TPTP runs), only parents with a definition
+        known = self._chebi_names if with_ids else self._chebi_id_to_data_mapping_all
+        parents = [parent for parent in parents if parent in known]
         if not parents:
             return input_text
 
-        input_text += f"\n\nOutgoing Relation(s)\n {chemical_class.name} is a "
-        parents = [
-            parent for parent in parents if parent in self._chebi_id_to_data_mapping_all
-        ]
+        subject = chemical_class.label if with_ids else chemical_class.name
+        input_text += f"\n\nOutgoing Relation(s)\n {subject} is a "
         for parent in parents:
-            parent_name = self._chebi_id_to_data_mapping_all[parent]["name"]
+            parent_name = self._chebi_names[parent]
+            if with_ids:
+                parent_name += f" (`{dm.chebi_predicate_name(parent)}`)"
             if parents.index(parent) == len(parents) - 1:
                 input_text += "and " if len(parents) > 1 else ""
                 input_text += f"{parent_name}."
@@ -570,7 +599,20 @@ class LearnDefinitions(BaseFOL):
         if other_predicates:
             predicates_to_learn: dict[str, str | None] = {}
             for predicate in other_predicates:
-                if predicate in self._chebi_name_to_data_map_train:
+                chebi_id = dm.chebi_id_of_predicate(predicate)
+                if chebi_id is not None and chebi_id in self._chebi_names:
+                    # a ChEBI class outside the dataset, e.g. a superclass; without a
+                    # ChEBI definition, at least its name is shown
+                    chebi_data = self._chebi_id_to_data_mapping_all.get(chebi_id, {})
+                    predicates_to_learn[predicate] = (
+                        f"CHEBI:{chebi_id} - {self._chebi_names[chebi_id]}"
+                        + (
+                            f": {chebi_data['definition']}"
+                            if chebi_data.get("definition")
+                            else ""
+                        )
+                    )
+                elif predicate in self._chebi_name_to_data_map_train:
                     # TODO: Do we really need to restrict to train data in this case,
                     # or we could use the entire data? (get_name_to_data_mapping_all)
                     chebi_data = self._chebi_name_to_data_map_train[predicate]
@@ -672,7 +714,7 @@ class LearnDefinitions(BaseFOL):
                         )
                     )
                     self.chebi_prompt_obj.add_predicates_to_memory(
-                        def_name, d.variables
+                        def_name, d.variables, label=self._predicate_label(def_name)
                     )
                     self._fol_reasoner.add_background_definition(d)
                 else:
@@ -705,7 +747,9 @@ class LearnDefinitions(BaseFOL):
         if learn_success:
             self._fol_reasoner.add_background_definition(scored_def.definition)
             self.chebi_prompt_obj.add_predicates_to_memory(
-                chemical_class.name, scored_def.definition.variables
+                chemical_class.name,
+                scored_def.definition.variables,
+                label=self._predicate_label(chemical_class.name),
             )
         print(
             f"Learned definition for {chemical_class.id}:{chemical_class.name} "
@@ -735,6 +779,14 @@ class LearnDefinitions(BaseFOL):
         if os.path.exists(default_path):
             with open(default_path, "rb") as f:
                 definitions = pickle.load(f)
+            naming = dm.predicate_naming(
+                d.name for d in definitions.learned_definitions.values()
+            )
+            if naming is not None and naming != self.predicate_names:
+                raise ce.StopProgramException(
+                    f"The definitions in {default_path} use other predicate names than "
+                    f"this run (`{self.predicate_names}`). Move them away to start a new run."
+                )
         else:
             definitions = def_model.DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
@@ -753,7 +805,9 @@ class LearnDefinitions(BaseFOL):
                     learned_def.learned_FOL.definition
                 )
                 self.chebi_prompt_obj.add_predicates_to_memory(
-                    learned_def.name, learned_def.learned_FOL.definition.variables
+                    learned_def.name,
+                    learned_def.learned_FOL.definition.variables,
+                    label=self._predicate_label(learned_def.name),
                 )
                 loaded_def_names.append(learned_def.name)
                 self._learned_classes.add(learned_def.name)
@@ -770,7 +824,9 @@ class LearnDefinitions(BaseFOL):
                     add_def.fol_formula.definition
                 )
                 self.chebi_prompt_obj.add_predicates_to_memory(
-                    name, add_def.fol_formula.definition.variables
+                    name,
+                    add_def.fol_formula.definition.variables,
+                    label=self._predicate_label(name),
                 )
                 loaded_additional_def_names.append(name)
                 self._learned_classes.add(name)

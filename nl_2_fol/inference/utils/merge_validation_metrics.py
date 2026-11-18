@@ -28,7 +28,7 @@ def _save_definitions(
 
 def _has_validation_metric(
     definitions: DefinitionLearningResults,
-    class_id: int,
+    class_id: str,
 ) -> bool:
     return (
         class_id in definitions.learned_definitions

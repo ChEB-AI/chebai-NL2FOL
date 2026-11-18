@@ -101,6 +101,36 @@ class TestClingoUtils:
         with pytest.raises(RuntimeError):
             ground_extensions(["p(X) :- q(X"], ["q(1)."], ["p"], timeout=10)
 
+    def test_cached_facts_are_identical(self, monkeypatch):
+        from nl_2_fol.inference.fol_reasoner import clingo_utils
+
+        monkeypatch.setattr(clingo_utils, "_FACTS_CACHE", {})
+        monkeypatch.setattr(clingo_utils, "_FACTS_CACHE_PREDICATES", None)
+        allowed = set(ASPModelChecker()._base_predicates)
+        df = _mols_df([ETHANOL, ACETIC_ACID]).set_index(pd.Index([7, 8]))
+        expected = molecules_to_asp_facts(df, allowed)
+        clingo_utils.cache_molecule_facts(
+            dict(zip(df["smiles"], df["mol"])), allowed, n_jobs=2
+        )
+        assert len(clingo_utils._FACTS_CACHE) == 2
+        assert molecules_to_asp_facts(df, allowed) == expected
+
+    def test_body_literals_are_reordered(self):
+        from nl_2_fol.inference.fol_reasoner.asp_rule_order import (
+            reorder_body_literals,
+        )
+
+        rule = (
+            "cc(M) :- has_atom(M, A), has_atom(M, B), c(A), c(B), "
+            "has_bond_to(A, B), A != B, #count{ X : has_atom(M, X) } > 1."
+        )
+        reordered = reorder_body_literals(rule)
+        # each new atom is reached via a bond, not by enumerating the molecule
+        assert reordered.index("has_bond_to(A,B)") < reordered.index("has_atom(M,B)")
+        df = _mols_df([ETHANOL, METHANE, ETHANE_DIOL])
+        facts = molecules_to_asp_facts(df)
+        assert evaluate_with_clingo([rule], facts, ["cc"], df.index) == {"cc": [0, 2]}
+
 
 class TestASPModelCheckerBackground:
     @pytest.fixture

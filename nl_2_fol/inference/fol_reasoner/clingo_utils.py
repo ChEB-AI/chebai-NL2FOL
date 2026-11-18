@@ -18,6 +18,7 @@ import multiprocessing
 import multiprocessing.connection
 import sys
 import time
+import zlib
 
 import pandas as pd
 
@@ -58,6 +59,98 @@ def get_atom_id(atom_idx: int, molecule_id) -> str:
     return f"a{molecule_id}_{atom_idx + 1}"
 
 
+def _molecule_facts(mol, mol_id, allowed_predicates: set[str] | None) -> list[str]:
+    from chebi_utils.extract_properties import mol_to_fol_atoms
+
+    def _allowed(predicate: str) -> bool:
+        if predicate in _SKIPPED_PREDICATES:
+            return False
+        return allowed_predicates is None or predicate in allowed_predicates
+
+    lines = [
+        f"has_atom({mol_id},{get_atom_id(atom.GetIdx(), mol_id)})."
+        for atom in mol.GetAtoms()
+    ]
+    atom_extensions, mol_extensions = mol_to_fol_atoms(
+        mol, with_rings=False, with_steroids=False
+    )
+
+    for predicate, indices in atom_extensions.items():
+        if predicate.startswith("cip_code_"):
+            predicate = "cip_code_" + predicate[-1].upper()
+        if not indices or not _allowed(predicate):
+            continue
+        for args in indices:
+            if not isinstance(args, tuple):
+                args = (args,)
+            arg_str = ",".join(get_atom_id(a, mol_id) for a in args)
+            lines.append(f"{predicate}({arg_str}).")
+
+    lines.extend(
+        f"{predicate}({mol_id})." for predicate in mol_extensions if _allowed(predicate)
+    )
+    return lines
+
+
+# Facts of each molecule are the same in every evaluation (only the molecule ID differs),
+# so they can be computed once: SMILES -> zlib-compressed facts with a placeholder for
+# the molecule ID, valid for the allowed predicates in `_FACTS_CACHE_PREDICATES`.
+_MOL_ID_PLACEHOLDER = "@M@"
+_FACTS_CACHE: dict[str, bytes] = {}
+_FACTS_CACHE_PREDICATES: frozenset[str] | None = None
+
+
+def _facts_template(item) -> tuple[str, bytes | str]:
+    """SMILES and compressed facts, or SMILES and error message if the facts failed."""
+    smiles, mol, allowed_predicates = item
+    try:
+        facts = _molecule_facts(mol, _MOL_ID_PLACEHOLDER, allowed_predicates)
+    except Exception as e:  # noqa: BLE001 - any failure drops the molecule
+        return smiles, f"{type(e).__name__}: {e}"
+    return smiles, zlib.compress("\n".join(facts).encode())
+
+
+def cache_molecule_facts(
+    molecules: dict[str, object], allowed_predicates: set[str], n_jobs: int = 1
+) -> set[str]:
+    """Compute the facts of ``molecules`` (SMILES -> RDKit molecule) in parallel and keep
+    them in this process, so that later evaluations (also in forked processes) reuse them.
+
+    Returns:
+        The SMILES of molecules whose facts could not be computed (not cached).
+    """
+    global _FACTS_CACHE, _FACTS_CACHE_PREDICATES
+    if _FACTS_CACHE_PREDICATES != frozenset(allowed_predicates):
+        _FACTS_CACHE, _FACTS_CACHE_PREDICATES = {}, frozenset(allowed_predicates)
+    items = [
+        (smiles, mol, allowed_predicates)
+        for smiles, mol in molecules.items()
+        if smiles not in _FACTS_CACHE
+    ]
+    if not items:
+        return set()
+    start = time.monotonic()
+    if n_jobs > 1 and "fork" in multiprocessing.get_all_start_methods():
+        with multiprocessing.get_context("fork").Pool(n_jobs) as pool:
+            results = list(pool.imap_unordered(_facts_template, items, chunksize=200))
+    else:
+        results = list(map(_facts_template, items))
+    failed: set[str] = set()
+    for smiles, facts in results:
+        if isinstance(facts, str):
+            print(f"Failed to compute ASP facts for {smiles}, dropping it: {facts}")
+            failed.add(smiles)
+        else:
+            _FACTS_CACHE[smiles] = facts
+    size = sum(len(v) for v in _FACTS_CACHE.values()) / 2**20
+    print(
+        f"Computed ASP facts of {len(items) - len(failed)} molecules in "
+        f"{time.monotonic() - start:.0f}s ({size:.0f} MB compressed), "
+        f"{len(failed)} failed"
+    )
+    return failed
+
+
 def molecules_to_asp_facts(
     molecules_df: pd.DataFrame, allowed_predicates: set[str] | None = None
 ) -> list[str]:
@@ -68,7 +161,8 @@ def molecules_to_asp_facts(
     Args:
         molecules_df: DataFrame with a ``mol`` column of RDKit molecules. The index
             is used as molecule identifier and has to be a valid clingo term
-            (e.g. an integer).
+            (e.g. an integer). With a ``smiles`` column, facts that have been computed
+            by :func:`cache_molecule_facts` are reused.
         allowed_predicates: If given, only facts for these predicates are returned
             (``has_atom`` is always included). This keeps the representation
             consistent with the predicates that are described in the prompt.
@@ -77,41 +171,19 @@ def molecules_to_asp_facts(
         A list of facts, e.g. ``has_atom(1,a1_1).``, ``c(a1_1).``,
         ``bSINGLE(a1_1,a1_2).``, ``net_charge_neutral(1).``
     """
-    from chebi_utils.extract_properties import mol_to_fol_atoms
-
-    def _allowed(predicate: str) -> bool:
-        if predicate in _SKIPPED_PREDICATES:
-            return False
-        return allowed_predicates is None or predicate in allowed_predicates
-
+    use_cache = (
+        "smiles" in molecules_df.columns
+        and allowed_predicates is not None
+        and _FACTS_CACHE_PREDICATES == frozenset(allowed_predicates)
+    )
     lines = []
     for row in molecules_df.itertuples():
-        mol_id = row.Index
-        lines.extend(
-            f"has_atom({mol_id},{get_atom_id(atom.GetIdx(), mol_id)})."
-            for atom in row.mol.GetAtoms()
-        )
-        atom_extensions, mol_extensions = mol_to_fol_atoms(
-            row.mol, with_rings=False, with_steroids=False
-        )
-
-        for predicate, indices in atom_extensions.items():
-            if predicate.startswith("cip_code_"):
-                predicate = "cip_code_" + predicate[-1].upper()
-            if not indices or not _allowed(predicate):
-                continue
-            for args in indices:
-                if not isinstance(args, tuple):
-                    args = (args,)
-                arg_str = ",".join(get_atom_id(a, mol_id) for a in args)
-                lines.append(f"{predicate}({arg_str}).")
-
-        lines.extend(
-            f"{predicate}({mol_id})."
-            for predicate in mol_extensions
-            if _allowed(predicate)
-        )
-
+        cached = _FACTS_CACHE.get(row.smiles) if use_cache else None
+        if cached is None:
+            lines.extend(_molecule_facts(row.mol, row.Index, allowed_predicates))
+        else:
+            facts = zlib.decompress(cached).decode()
+            lines.extend(facts.replace(_MOL_ID_PLACEHOLDER, str(row.Index)).split("\n"))
     return lines
 
 
@@ -126,6 +198,8 @@ def _ground_extensions(
     """
     import clingo
 
+    from nl_2_fol.inference.fol_reasoner.asp_rule_order import reorder_body_literals
+
     messages: list[str] = []
 
     def _log(code, message: str) -> None:
@@ -136,7 +210,8 @@ def _ground_extensions(
     ctl = clingo.Control(["--warn=none"], logger=_log, message_limit=10)
     try:
         ctl.add("base", [], "\n".join(background_facts))
-        ctl.add("base", [], "\n".join(rules))
+        # same meaning, but a literal order that gringo can ground efficiently
+        ctl.add("base", [], reorder_body_literals("\n".join(rules)))
         # Only show the target predicates: iterating over all atoms of the model (including
         # all background facts) in Python is far more expensive than grounding itself.
         ctl.add(

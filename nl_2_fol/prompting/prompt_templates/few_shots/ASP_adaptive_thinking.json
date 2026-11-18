@@ -1,20 +1,20 @@
 [
   {
-    "human": "CHEBI:33575 - carboxylic acid: A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. Carboxylic acids are the most common type of organic acid.\n\nOutgoing Relation(s)\n carboxylic acid is a carbon oxoacid, carbonyl compound, and organic acid.",
+    "human": "CHEBI:33575 - carboxylic acid (predicate `chebi_33575`): A carbon oxoacid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any monovalent functional group. Carboxylic acids are the most common type of organic acid.\n\nOutgoing Relation(s)\n carboxylic acid is a carbonyl compound (`chebi_36586`), and organic acid (`chebi_64709`).",
     "ai": {
-      "FOL_formula": "carboxylicAcid(M) :- has_atom(M, A1), c(A1), has_atom(M, A2), o(A2), has_atom(M, A3), o(A3), has_1_hs(A3), bDOUBLE(A1, A2), bSINGLE(A1, A3), A2 != A3."
+      "FOL_formula": "chebi_33575(M) :- has_atom(M, A1), c(A1), has_atom(M, A2), o(A2), has_atom(M, A3), o(A3), has_1_hs(A3), bDOUBLE(A1, A2), bSINGLE(A1, A3), A2 != A3."
     }
   },
   {
-    "human": "CHEBI:22680 - azide: Any nitrogen molecular entity containing the group ‒N3.\n\nOutgoing Relation(s)\n azide is a nitrogen molecular entity.",
+    "human": "CHEBI:22680 - azide (predicate `chebi_22680`): Any nitrogen molecular entity containing the group ‒N3.",
     "ai": {
-      "FOL_formula": "azide(M) :- has_atom(M, A1), n(A1), charge0(A1), n(A2), charge1(A2), n(A3), charge_m1(A3), bDOUBLE(A1, A2), bDOUBLE(A2, A3).\nazide(M) :- has_atom(M, A1), n(A1), charge_m1(A1), n(A2), charge1(A2), n(A3), charge0(A3), bSINGLE(A1, A2), bTRIPLE(A2, A3)."
+      "FOL_formula": "chebi_22680(M) :- has_atom(M, A1), n(A1), charge0(A1), n(A2), charge1(A2), n(A3), charge_m1(A3), bDOUBLE(A1, A2), bDOUBLE(A2, A3).\nchebi_22680(M) :- has_atom(M, A1), n(A1), charge_m1(A1), n(A2), charge1(A2), n(A3), charge0(A3), bSINGLE(A1, A2), bTRIPLE(A2, A3)."
     }
   },
   {
-    "human": "CHEBI:23824 - diol: A compound that contains two hydroxy groups, generally assumed to be, but not necessarily, alcoholic. Aliphatic diols are also called glycols.\n\nOutgoing Relation(s)\n diol is a polyol.",
+    "human": "CHEBI:23824 - diol (predicate `chebi_23824`): A compound that contains two hydroxy groups, generally assumed to be, but not necessarily, alcoholic. Aliphatic diols are also called glycols.\n\nOutgoing Relation(s)\n diol is a polyol (`chebi_26191`).",
     "ai": {
-      "FOL_formula": "diol(M) :- has_atom(M, _), #count{ O : has_atom(M, O), hydroxyOxygen(O) } = 2.\nhydroxyOxygen(O) :- o(O), has_1_hs(O), bSINGLE(O, C), c(C)."
+      "FOL_formula": "chebi_23824(M) :- has_atom(M, _), #count{ O : has_atom(M, O), hydroxyOxygen(O) } = 2.\nhydroxyOxygen(O) :- o(O), has_1_hs(O), bSINGLE(O, C), c(C)."
     }
   }
 ]
