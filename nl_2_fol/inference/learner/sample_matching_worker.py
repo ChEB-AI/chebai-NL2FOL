@@ -222,10 +222,12 @@ def check_if_definition_matches_samples_clingo(
         f"#timeouts: {n_timeouts} ({len(labelled)} samples, {len(chunks)} chunks, "
         f"{n_jobs} jobs, {time.monotonic() - start:.1f}s)"
     )
-    if len(processed_pos) + len(processed_neg) == 0 and n_timeouts > 0:
+    # Without any evaluated positive sample, the F1 score is meaningless (0 without FPs or FNs)
+    if len(processed_pos) == 0 and n_timeouts > 0:
         raise Exception(
             "MODEL CHECKING FAILED - The definition is too expensive to evaluate: clingo "
-            f"exceeded the time limit for every batch of molecules ({n_timeouts} molecules timed out).\n"
+            f"exceeded the time limit for every batch of molecules containing a positive "
+            f"sample ({n_timeouts} molecules timed out).\n"
             "This usually happens when rules contain many variables that are not connected "
             "via bonds, so that clingo has to consider all combinations of atoms. "
             "Please simplify the definition, e.g. by connecting atom variables through bond "
