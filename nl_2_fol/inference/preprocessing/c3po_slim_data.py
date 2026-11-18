@@ -10,7 +10,9 @@ which is available at https://huggingface.co/datasets/MonarchInit/C3PO
 import ast
 import os
 import sys
+import re
 from copy import copy
+from typing import Iterable, Literal
 
 import pandas as pd
 import tqdm
@@ -21,6 +23,28 @@ from nl_2_fol.inference.learner import custom_exceptions as ce
 from nl_2_fol.inference.preprocessing import CHEBI_ID, SMILES_STRING
 from nl_2_fol.inference.preprocessing.chebi_data import ChEBIDataWrapper
 from nl_2_fol.inference.utils.to_camel_case import to_camel_case
+
+
+_CHEBI_PREDICATE_RE = re.compile(r"chebi_(\d+)")
+
+
+def chebi_predicate_name(chebi_id: CHEBI_ID) -> str:
+    """Predicate name of a ChEBI class: a valid identifier for any class (unlike labels)."""
+    return f"chebi_{chebi_id}"
+
+
+def chebi_id_of_predicate(predicate_name: str) -> CHEBI_ID | None:
+    """Inverse of :func:`chebi_predicate_name` (None for other predicate names)."""
+    match = _CHEBI_PREDICATE_RE.fullmatch(predicate_name)
+    return match.group(1) if match else None
+
+
+def predicate_naming(predicate_names: Iterable[str]) -> Literal["label", "id"] | None:
+    """Naming scheme of the given class predicates (None if there are none)."""
+    uses_ids = [chebi_id_of_predicate(name) is not None for name in predicate_names]
+    if not uses_ids:
+        return None
+    return "id" if any(uses_ids) else "label"
 
 
 # make this hashable?
@@ -48,7 +72,11 @@ class ChemicalClass(BaseModel):
     """Represents a class/grouping of chemical entities."""
 
     id: CHEBI_ID = Field(..., description="id/curie of the CHEBI class")
-    name: str = Field(..., description="rdfs:label of the class in CHEBI")
+    name: str = Field(
+        ...,
+        description="predicate name of the class: camel-cased rdfs:label, or chebi_<id>",
+    )
+    label: str | None = Field(None, description="rdfs:label of the class in CHEBI")
     definition: str | None = Field(
         None, description="definition of the structure from CHEBI"
     )
@@ -141,7 +169,13 @@ def load_c3po_slim_dataset(
     structures_path: str = "data/structures.csv",
     chebi_version: int = 244,
     split="train",
+    predicate_names: Literal["label", "id"] = "label",
 ) -> tuple[Dataset, ChEBIDataWrapper]:
+    """
+    Args:
+        predicate_names: how the predicate of a class is named: the camel-cased label
+            (e.g. `3OxoSteroid`, not always a valid identifier), or `chebi_<id>`.
+    """
     print("Loading and processing C3PO slim dataset...")
     if not os.path.exists(slim_dataset_path) or not os.path.exists(structures_path):
         raise FileNotFoundError(
@@ -175,8 +209,12 @@ def load_c3po_slim_dataset(
         chebi_version=chebi_version, validation_smiles=validation_smiles
     )
 
-    slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_to_int)
-    slim_df["name"] = slim_df["name"].apply(to_camel_case)
+    slim_df["id"] = slim_df["id"].apply(chemlog_chebi_class.chebi_id_from_curie)
+    slim_df["label"] = slim_df["name"]
+    if predicate_names == "id":
+        slim_df["name"] = slim_df["id"].apply(chebi_predicate_name)
+    else:
+        slim_df["name"] = slim_df["name"].apply(to_camel_case)
     trans_hierarchy_graph = chemlog_chebi_class.get_trans_hierarchy()
     slim_df["num_of_members"] = slim_df["id"].apply(
         lambda chebi_id: int(trans_hierarchy_graph.out_degree(chebi_id))
@@ -233,6 +271,7 @@ def load_c3po_slim_dataset(
         row.name: ChemicalClass(
             id=row.id,  # pyright: ignore[reportArgumentType]
             name=str(row.name),
+            label=str(row.label),
             definition=str(row.definition),
             all_positive_examples=parse_positive_examples(
                 str(row.all_positive_examples)

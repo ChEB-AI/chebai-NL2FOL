@@ -39,8 +39,8 @@ def sample_learning_results():
 
     return def_model.DefinitionLearningResults(
         learned_definitions={
-            12345: learned_def,
-            99999: failed_def,
+            "12345": learned_def,
+            "99999": failed_def,
         },
         additional_definitions={},
     )
@@ -97,7 +97,7 @@ class TestNL2FOLChebiClassifier:
         classifications = result[smiles]
         assert isinstance(classifications, list)
         assert len(classifications) == 1
-        assert classifications[0]["chebi_id"] == 12345
+        assert classifications[0]["chebi_id"] == "12345"
         assert classifications[0]["name"] == "carbon compound"
 
     def test_classify_smiles_result_always_has_smiles_key(self, classifier):
@@ -139,9 +139,9 @@ class TestNL2FOLChebiClassifier:
 
         c = NL2FOLChebiClassifier(str(defs_file))
         # 99999 has learn_success=False and must be excluded
-        assert 99999 not in c.class_definitions
+        assert "99999" not in c.class_definitions
         # 12345 has learn_success=True and must be present
-        assert 12345 in c.class_definitions
+        assert "12345" in c.class_definitions
 
     def test_file_not_found_raises(self, tmp_path):
         """FileNotFoundError should be raised when the definitions file is missing."""

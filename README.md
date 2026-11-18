@@ -2,7 +2,7 @@
 
 AI workflow for natural language to First-Order Logic (FOL) translation for ChEBI.
 
-**Abstract:** 
+**Abstract:**
 
 Chemical ontologies such as the Chemical Entities of Biological Interest (ChEBI) provide
 structured taxonomies for organizing chemical knowledge, but manually extending these
@@ -59,11 +59,38 @@ python nl_2_fol/inference/cli.py validate \
 The C3P comparison utilities also expect score JSON files from the C3P train/validation score output referenced in the utility help text: https://github.com/chemkg/c3p/pull/23
 
 
+## Installation
+
+Requires Python >= 3.12 and Linux (or WSL): model checking with time limits and the parallel
+validation rely on `fork` and `fcntl`.
+
+```bash
+pip install -e ".[dev,claude-cli]"
+```
+
+By default, Claude is called through the local `claude` CLI (via the Claude Agent SDK), which bills the
+logged-in Claude subscription; no API key is needed. Install [Claude Code](https://code.claude.com),
+run `claude` and log in with `/login` (check with `claude auth status`). If the binary is not on `PATH`,
+set `NL2FOL_CLAUDE_CLI`. When the 5-hour usage window of the subscription is at least 90% used
+(`NL2FOL_SESSION_LIMIT`), learning pauses until it resets; when a weekly limit is reached, the run stops
+and can be resumed later (already learned classes are skipped). Requests that are refused by Claude's
+safety classifiers fail the respective class only.
+
+To use the Anthropic API instead, install `.[anthropic]`, pass `--api_platform anthropic` and put the key
+in `api_keys.env` in the repository root (`ANTHROPIC_API_KEY=...`).
+
 ## Start the Learning Pipeline
 
 Run commands from the repository root so the default `data/` and prompt-template paths resolve correctly.
 
-To learn definitions with the default Anthropic configuration:
+By default, definitions are learned as logic programs (answer set programming, `--fol_reasoner asp`)
+and evaluated with [clingo](https://potassco.org/clingo/). The original TPTP-based pipeline
+(model checking with Gavel / ChemLog) is still available via `--fol_reasoner gavel`. The default
+prompt templates depend on the reasoner (see `DEFAULT_PROMPTS` in `nl_2_fol/inference/cli.py`) and can
+be overwritten with `--system_prompt_fp`, `--few_shot_prompt_fp`, `--err_failure_prompt_fp` and
+`--undef_failure_prompt_fp`.
+
+To learn definitions with the default Anthropic configuration (Claude Opus 5.5, ASP, effort `high`):
 
 ```bash
 python nl_2_fol/inference/cli.py learn
@@ -86,8 +113,10 @@ Useful options:
 
 ```bash
 python nl_2_fol/inference/cli.py learn \
-  --api_platform "anthropic" \
-  --model_name "claude-opus-4-6" \
+  --api_platform "claude_cli" \
+  --model_name "claude-haiku-5-5" \
+  --fol_reasoner "asp" \
+  --effort "high" \
   --max_attempts 3 \
   --f1_threshold 0.8
 ```
@@ -95,14 +124,17 @@ python nl_2_fol/inference/cli.py learn \
 Learning output is saved under:
 
 ```text
-nl_2_fol/inference/learner/learned/<model_name>/learned_definitions_a<max_attempts>.pkl
+nl_2_fol/inference/learner/learned/<model_name>[_asp]/learned_definitions_a<max_attempts>.pkl
 ```
 
-For example, with `model_name="claude-opus-4-6"` and `max_attempts=3`, the definitions file is:
+For example, with `model_name="claude-opus-5-5"`, the ASP reasoner and `max_attempts=3`, the definitions file is:
 
 ```text
-nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl
+nl_2_fol/inference/learner/learned/claude-opus-5-5_asp/learned_definitions_a3.pkl
 ```
+
+The definitions learned with the TPTP pipeline for the first version of the paper are in
+`nl_2_fol/inference/learner/learned/claude-opus-4-6/`.
 
 ## Start the Validation Pipeline
 
@@ -123,6 +155,21 @@ python nl_2_fol/inference/cli.py validate \
 ```
 
 Single-class validation writes a small result pickle named after the resolved class in the current working directory, for example `ethanol.pkl`.
+
+The reasoner used for validation is inferred from the learned definitions (ASP or TPTP); it can be
+set explicitly with `--fol_reasoner`.
+
+With ASP, definitions are always evaluated on all samples of the respective split (during learning:
+all positive and negative training samples; during validation: all validation samples). Molecules
+are evaluated in batches of 1,000 by parallel clingo processes (one per CPU during learning; the
+CPUs are shared between the parallel workers during validation). Each batch has a time limit of
+300 seconds; molecules in batches that exceed the limit are counted as timeouts
+(`timeout_pos` / `timeout_neg` in the metrics), not as negative predictions. Only the predicates
+described in the system prompt are part of the molecule representation (no ring or aromaticity
+predicates).
+
+With the TPTP pipeline (`--fol_reasoner gavel`), learning uses the positive samples and the 1,000
+closest negative samples within a time limit of 10 minutes, as in the first version of the paper.
 
 For HPC or long validation runs, split the work across jobs by passing a text file with one class name per line. Use a unique `file_save_index` for each job:
 
