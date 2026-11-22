@@ -186,6 +186,98 @@ class TestASPModelCheckerBackground:
         assert list(matched) == [1]
 
 
+class TestStoredResults:
+    # the stored results deliberately differ from what the rules derive (ethanol and
+    # ethane diol are alcohols), so that the tests show which one is used
+    @pytest.fixture
+    def reasoner(self):
+        reasoner = ASPModelChecker()
+        for definition in [
+            "alcohol(M) :- has_atom(M, O), o(O), has_1_hs(O), bSINGLE(O, C), c(C).",
+            "diol(M) :- alcohol(M), #count{ O : has_atom(M, O), hydroxy(O) } = 2.",
+            "hydroxy(O) :- o(O), has_1_hs(O).",
+        ]:
+            reasoner.add_background_definition(reasoner.parse_definition(definition))
+        return reasoner
+
+    @pytest.fixture
+    def df(self):
+        return _mols_df([ETHANOL, METHANE, ETHANE_DIOL])
+
+    def test_stored_results_replace_rules(self, reasoner, df):
+        reasoner.store_definition_results(
+            "alcohol", frozenset(df["smiles"]), {METHANE}, set()
+        )
+        assert reasoner.do_molecules_match_asp_definition(
+            df, "x(M) :- alcohol(M)."
+        ) == [1]
+
+    def test_not_used_after_dependency_changed(self, reasoner, df):
+        reasoner.store_definition_results(
+            "diol", frozenset(df["smiles"]), {METHANE}, set()
+        )
+        assert reasoner.do_molecules_match_asp_definition(df, "x(M) :- diol(M).") == [1]
+        reasoner.add_background_definition(
+            reasoner.parse_definition("alcohol(M) :- has_atom(M, O), o(O).")
+        )
+        assert reasoner.do_molecules_match_asp_definition(df, "x(M) :- diol(M).") == [2]
+
+    def test_not_used_for_other_molecules(self, reasoner, df):
+        reasoner.store_definition_results(
+            "alcohol", frozenset({ETHANOL, METHANE}), {METHANE}, set()
+        )
+        assert reasoner.do_molecules_match_asp_definition(
+            df, "x(M) :- alcohol(M)."
+        ) == [0, 2]
+
+    def test_unknown_molecules(self, reasoner, df):
+        reasoner.store_definition_results(
+            "alcohol", frozenset(df["smiles"]), {METHANE}, {ETHANOL}
+        )
+        # without a set for unknown molecules, the rules are used
+        assert reasoner.do_molecules_match_asp_definition(
+            df, "x(M) :- alcohol(M)."
+        ) == [0, 2]
+        unknown_ids = set()
+        results = reasoner.match_asp_definition_on_chunks(
+            [df], "x(M) :- alcohol(M).", unknown_ids=unknown_ids
+        )
+        assert results == [[1]]
+        assert unknown_ids == {0}
+
+    def test_learner_derives_results_from_metrics(self):
+        from types import SimpleNamespace
+
+        from nl_2_fol.inference.learner.definition_model import DefinitionMetrics
+        from nl_2_fol.inference.learner.learn_definitions import LearnDefinitions
+
+        reasoner = ASPModelChecker()
+        reasoner.add_background_definition(
+            reasoner.parse_definition("chebi_1(M) :- has_atom(M, O), o(O).")
+        )
+        tp, fn, pos_timeout, fp, tn = "CO", "OCCO", "CCO", "OC=O", "C"
+        stub = SimpleNamespace(
+            fol_reasoner="asp",
+            split="train",
+            _fol_reasoner=reasoner,
+            _get_positive_and_negative_samples=lambda _: (
+                {_structure(s) for s in [tp, fn, pos_timeout]},
+                {_structure(s) for s in [fp, tn]},
+            ),
+        )
+        metrics = DefinitionMetrics(
+            TP=1, FP=1, FN=1, TN=1, F1=0.5, PPV=0.5, NPV=0.5,
+            fp_smiles=[fp], fn_smiles=[fn], timeout_smiles=[pos_timeout],
+        )  # fmt: skip
+        LearnDefinitions._store_definition_results(
+            stub, SimpleNamespace(name="chebi_1"), metrics, None
+        )
+        stored = reasoner._stored_results["chebi_1"]
+        assert stored.matched == {tp, fp}
+        assert stored.unknown == {pos_timeout}
+        assert stored.universe == {tp, fn, pos_timeout, fp, tn}
+
+
 class TestClingoSampleMatching:
     @pytest.fixture
     def chemical_class(self):

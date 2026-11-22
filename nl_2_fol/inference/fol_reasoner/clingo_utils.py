@@ -331,16 +331,28 @@ def _match_chunk(
     chunk: pd.DataFrame,
     target_label: str,
     allowed_predicates: set[str] | None,
+    extra_facts: list[str] | None = None,
 ) -> list:
     """IDs (index values) of the molecules in ``chunk`` for which ``target_label`` holds."""
     facts = molecules_to_asp_facts(chunk, allowed_predicates=allowed_predicates)
+    if extra_facts:
+        facts = facts + extra_facts
     positives = evaluate_with_clingo(rules, facts, [target_label], list(chunk.index))
     return positives.get(target_label, [])
 
 
-def _match_chunk_in_child(conn, rules, chunk, target_label, allowed_predicates):
+def _match_chunk_in_child(
+    conn, rules, chunk, target_label, allowed_predicates, extra_facts
+):
     try:
-        conn.send(("ok", _match_chunk(rules, chunk, target_label, allowed_predicates)))
+        conn.send(
+            (
+                "ok",
+                _match_chunk(
+                    rules, chunk, target_label, allowed_predicates, extra_facts
+                ),
+            )
+        )
     except BaseException as e:  # noqa: BLE001 - forward every error to the parent
         conn.send(("error", f"{type(e).__name__}: {e}"))
     finally:
@@ -354,6 +366,7 @@ def match_chunks_with_clingo(
     allowed_predicates: set[str] | None = None,
     timeout: float | None = None,
     n_jobs: int = 1,
+    chunk_facts: list[list[str]] | None = None,
 ) -> list[list | ClingoTimeoutError]:
     """Evaluate ``rules`` on several chunks of molecules, in parallel.
 
@@ -364,6 +377,8 @@ def match_chunks_with_clingo(
     Args:
         chunks: DataFrames with a ``mol`` column, indexed by molecule IDs (valid clingo
             terms, unique across chunks).
+        chunk_facts: Optional additional facts for each chunk (e.g. stored results
+            of background definitions for the molecules in the chunk).
 
     Returns:
         For each chunk, either the list of IDs of the molecules for which
@@ -372,6 +387,8 @@ def match_chunks_with_clingo(
     Raises:
         RuntimeError: if clingo fails (e.g. a syntax error in ``rules``).
     """
+    if chunk_facts is None:
+        chunk_facts = [[] for _ in chunks]
     if "fork" not in multiprocessing.get_all_start_methods():
         if timeout is not None:
             print(
@@ -379,8 +396,8 @@ def match_chunks_with_clingo(
                 f"not available on {sys.platform}. Running without timeout."
             )
         return [
-            _match_chunk(rules, chunk, target_label, allowed_predicates)
-            for chunk in chunks
+            _match_chunk(rules, chunk, target_label, allowed_predicates, facts)
+            for chunk, facts in zip(chunks, chunk_facts)
         ]
 
     ctx = multiprocessing.get_context("fork")
@@ -400,6 +417,7 @@ def match_chunks_with_clingo(
                         chunks[idx],
                         target_label,
                         allowed_predicates,
+                        chunk_facts[idx],
                     ),
                     daemon=True,
                 )

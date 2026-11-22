@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from typing import List
 
 import pandas as pd
@@ -26,9 +27,26 @@ class ASPDefinition(FOLDefinition):
         super().__init__(predicate_name, variables, definition)
 
 
+@dataclass(frozen=True)
+class StoredResults:
+    """Which molecules (SMILES) a background definition matches.
+
+    Used instead of the definition's rules when evaluating definitions that depend on it.
+    """
+
+    # the definition and all background rules it depends on, when the results were stored
+    signature: str
+    # molecules the definition has been evaluated on
+    universe: frozenset[str]
+    matched: frozenset[str]
+    # molecules in `universe` without a result (clingo timeout)
+    unknown: frozenset[str]
+
+
 class ASPModelChecker(AbstractModelCheckerWrapper):
     def __init__(self):
         super().__init__()
+        self._stored_results: dict[str, StoredResults] = {}
         # copy to avoid modifying the shared GAVEL_PREDICATES dict
         self._base_predicates = {
             **self._base_predicates,
@@ -121,7 +139,28 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         head act as a disjunction, so an old definition would change the result.
         """
         index = self._defining_definitions(temp_additional_defs)
-        required: dict[str, str] = {}  # main predicate -> definition
+        required, _ = self._required_definitions(definition, target_predicate, index)
+        return [required[p] for p in sorted(required)]
+
+    def _required_definitions(
+        self,
+        definition: str,
+        target_predicate: str,
+        index: dict[str, ASPDefinition],
+        stored: set[str] | frozenset[str] = frozenset(),
+    ) -> tuple[dict[str, str], set[str]]:
+        """Background definitions the definition (transitively) depends on.
+
+        Predicates in ``stored`` are not resolved to their rules (their stored results
+        are used as facts instead), unless a helper predicate of their definition is
+        used - then the rules are needed anyway.
+
+        Returns:
+            The required definitions (main predicate -> definition) and the predicates
+            for which stored results have to be passed as facts.
+        """
+        required: dict[str, str] = {}
+        facts: set[str] = set()
         visited: set[str] = set()
         frontier = list(
             self._extract_predicate_names(definition) - self._head_names(definition)
@@ -134,10 +173,76 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
             owner = index.get(predicate)
             if owner is None or owner.predicate_name == target_predicate:
                 continue
+            if predicate in stored and owner.predicate_name == predicate:
+                facts.add(predicate)
+                continue
             if owner.predicate_name not in required:
                 required[owner.predicate_name] = owner.definition
                 frontier.extend(self._extract_predicate_names(owner.definition))
-        return [required[p] for p in sorted(required)]
+        return required, facts - required.keys()
+
+    def _signature(self, predicate: str, index: dict[str, ASPDefinition]) -> str:
+        """The definition of ``predicate`` and all background rules it depends on."""
+        definition = index[predicate].definition
+        required, _ = self._required_definitions(definition, predicate, index)
+        return "\n".join([definition] + [required[p] for p in sorted(required)])
+
+    def store_definition_results(
+        self,
+        predicate: str,
+        universe: frozenset[str],
+        matched: set[str],
+        unknown: set[str],
+    ) -> bool:
+        """Store which molecules a (unary) background definition matches.
+
+        Definitions that depend on ``predicate`` are then evaluated with these results
+        (as facts) instead of the rules of ``predicate``, as long as the evaluated
+        molecules are part of ``universe`` and the rules of ``predicate`` (including
+        its dependencies) have not changed. Molecules in ``unknown`` get no result.
+
+        Returns:
+            Whether the results have been stored.
+        """
+        definition = self.background_definitions.get(predicate)
+        if definition is None or len(definition.variables) != 1:
+            return False
+        # the universe is usually the same for all definitions (all training molecules)
+        for stored in self._stored_results.values():
+            if stored.universe == universe:
+                universe = stored.universe
+                break
+        self._stored_results[predicate] = StoredResults(
+            signature=self._signature(predicate, self._defining_definitions()),
+            universe=frozenset(universe),
+            matched=frozenset(matched),
+            unknown=frozenset(unknown),
+        )
+        return True
+
+    def _usable_stored_results(
+        self,
+        predicates: set[str] | dict,
+        index: dict[str, ASPDefinition],
+        chunks: list[pd.DataFrame],
+        allow_unknown: bool,
+    ) -> dict[str, StoredResults]:
+        """Stored results of ``predicates`` that are valid for all molecules in ``chunks``."""
+        candidates = [p for p in predicates if p in self._stored_results]
+        if not candidates or any("smiles" not in c.columns for c in chunks):
+            return {}
+        smiles = set().union(*(c["smiles"] for c in chunks))
+        usable = {}
+        for predicate in candidates:
+            stored = self._stored_results[predicate]
+            if not smiles <= stored.universe:
+                continue
+            if not allow_unknown and not smiles.isdisjoint(stored.unknown):
+                continue
+            if self._signature(predicate, index) != stored.signature:
+                continue
+            usable[predicate] = stored
+        return usable
 
     @parse_exception
     def parse_definition(self, definition: str) -> ASPDefinition:
@@ -240,11 +345,21 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         temp_additional_defs: dict[str, ASPDefinition] | None = None,
         timeout: float | None = None,
         n_jobs: int = 1,
+        unknown_ids: set | None = None,
     ) -> list[list | ClingoTimeoutError]:
         """Like :meth:`do_molecules_match_asp_definition`, for several chunks of molecules.
 
         The chunks are evaluated in parallel (``n_jobs`` processes), ``timeout`` applies
         to each chunk individually. Molecule IDs (the index) have to be unique across chunks.
+
+        For background definitions with stored results (see
+        :meth:`store_definition_results`), the results are passed as facts instead of
+        evaluating their rules again (requires a ``smiles`` column in the chunks).
+
+        Args:
+            unknown_ids: If given, stored results with unknown molecules are used as well:
+                these molecules are not evaluated, their IDs are added to this set. If
+                not given, rules are used instead of such stored results.
 
         Returns:
             For each chunk, the IDs of matching molecules or a ``ClingoTimeoutError``.
@@ -267,20 +382,63 @@ class ASPModelChecker(AbstractModelCheckerWrapper):
         )
         try:
             asp_def = self.parse_definition(definition_to_match)
-            rules = [definition_to_match] + self._get_required_background_rules(
-                definition_to_match, asp_def.predicate_name, temp_additional_defs
+            target = asp_def.predicate_name
+            index = self._defining_definitions(temp_additional_defs)
+            required, _ = self._required_definitions(definition_to_match, target, index)
+            usable = self._usable_stored_results(
+                required, index, chunks, allow_unknown=unknown_ids is not None
+            )
+            required, fact_predicates = self._required_definitions(
+                definition_to_match, target, index, stored=usable.keys()
+            )
+            rules = [definition_to_match] + [required[p] for p in sorted(required)]
+            stored = {p: usable[p] for p in sorted(fact_predicates)}
+            chunks, chunk_facts = self._apply_stored_results(
+                stored, chunks, unknown_ids
             )
             return match_chunks_with_clingo(
                 rules,
                 chunks,
-                asp_def.predicate_name,
+                target,
                 allowed_predicates=set(self._base_predicates),
                 timeout=timeout,
                 n_jobs=n_jobs,
+                chunk_facts=chunk_facts,
             )
         except Exception as e:
             print(f"Error occured for formula: {definition_to_match}")
             raise Exception(f"{exception_prefix}{e}")
+
+    @staticmethod
+    def _apply_stored_results(
+        stored: dict[str, StoredResults],
+        chunks: list[pd.DataFrame],
+        unknown_ids: set | None,
+    ) -> tuple[list[pd.DataFrame], list[list[str]] | None]:
+        """Facts from stored results for each chunk. Molecules with an unknown stored
+        result are removed from the chunks (their IDs are added to ``unknown_ids``)."""
+        if not stored:
+            return chunks, None
+        print(f"Using stored results for {', '.join(stored)}")
+        unknown = frozenset().union(*(s.unknown for s in stored.values()))
+        new_chunks, chunk_facts = [], []
+        for chunk in chunks:
+            if unknown:
+                is_unknown = chunk["smiles"].isin(unknown)
+                if is_unknown.any():
+                    assert unknown_ids is not None
+                    unknown_ids.update(chunk.index[is_unknown])
+                    chunk = chunk[~is_unknown]
+            new_chunks.append(chunk)
+            chunk_facts.append(
+                [
+                    f"{predicate}({mol_id})."
+                    for predicate, results in stored.items()
+                    for mol_id, smiles in zip(chunk.index, chunk["smiles"])
+                    if smiles in results.matched
+                ]
+            )
+        return new_chunks, chunk_facts
 
     @mol_to_fol_exception
     def _molecules_df_to_bk(self, molecules_df: pd.DataFrame) -> list[str]:

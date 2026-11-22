@@ -191,13 +191,20 @@ def check_if_definition_matches_samples_clingo(
         )
         for ids in chunk_ranges
     ]
+    # molecules for which a background definition timed out when its results were
+    # stored: counted as timeouts (evaluating its rules again would time out as well)
+    unknown_ids: set[int] = set()
     chunk_results = model_checker.match_asp_definition_on_chunks(
         chunks,
         asp_def,
         temp_additional_defs=temp_additional_defs,
         timeout=CLINGO_CHUNK_TIMEOUT_SECONDS,
         n_jobs=n_jobs,
+        unknown_ids=unknown_ids,
     )
+    for i in unknown_ids:
+        s, is_pos = labelled[i]
+        result["timeout_pos" if is_pos else "timeout_neg"].add(s.smiles)
 
     for chunk_idx, (ids, matched_ids) in enumerate(zip(chunk_ranges, chunk_results)):
         if isinstance(matched_ids, ClingoTimeoutError):
@@ -212,6 +219,8 @@ def check_if_definition_matches_samples_clingo(
 
         matched_ids = set(matched_ids)
         for i in ids:
+            if i in unknown_ids:
+                continue
             s, is_pos = labelled[i]
             matched = i in matched_ids
             if is_pos:
@@ -226,7 +235,9 @@ def check_if_definition_matches_samples_clingo(
     print(
         f"#TPs: {len(result['matched_pos_samples'])}, #FNs: {len(result['unmatched_pos_samples'])}, "
         f"#TNs: {len(result['unmatched_neg_samples'])}, #FPs: {len(result['matched_neg_samples'])}, "
-        f"#timeouts: {n_timeouts} ({len(labelled)} samples, {len(chunks)} chunks, "
+        f"#timeouts: {n_timeouts}"
+        + (f" ({len(unknown_ids)} from stored results)" if unknown_ids else "")
+        + f" ({len(labelled)} samples, {len(chunks)} chunks, "
         f"{n_jobs} jobs, {time.monotonic() - start:.1f}s)"
     )
     # Without any evaluated positive sample, the F1 score is meaningless (0 without FPs or FNs)

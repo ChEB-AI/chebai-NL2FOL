@@ -746,6 +746,11 @@ class LearnDefinitions(BaseFOL):
         )
         if learn_success:
             self._fol_reasoner.add_background_definition(scored_def.definition)
+            self._store_definition_results(
+                chemical_class,
+                scored_def.train_metrics,
+                scored_def.temp_additional_defs,
+            )
             self.chebi_prompt_obj.add_predicates_to_memory(
                 chemical_class.name,
                 scored_def.definition.variables,
@@ -833,6 +838,58 @@ class LearnDefinitions(BaseFOL):
 
         print(
             f"Loaded the following additional definitions for out-of-box predicates: {loaded_additional_def_names}"
+        )
+
+        # after all background definitions are loaded (stored results are only used as
+        # long as the definition and its dependencies are unchanged)
+        for learned_def in new_definitions.learned_definitions.values():
+            if (
+                learned_def.learn_success
+                and learned_def.name in self._c3po_slim_data.classes
+            ):
+                self._store_definition_results(
+                    self._c3po_slim_data.get_chemical_class_by_name(learned_def.name),
+                    learned_def.train_metrics,
+                    learned_def.additional_defs_used,
+                )
+
+    def _store_definition_results(
+        self,
+        chemical_class: dm.ChemicalClass,
+        metrics: def_model.DefinitionMetrics,
+        additional_defs: dict[str, FOLDefinition] | None,
+    ) -> None:
+        """ASP: store which training molecules an accepted definition matches.
+
+        Definitions that use the predicate of this class are then evaluated with the
+        stored results instead of the rules (which can be expensive to ground again for
+        each check). The results are derived from the training metrics, which cover all
+        training molecules.
+        """
+        if self.fol_reasoner != "asp" or self.split != "train":
+            return
+        background = self._fol_reasoner.background_definitions
+        for name, d in (additional_defs or {}).items():
+            # the metrics are only valid for the background if the definition was
+            # evaluated with the same additional definitions
+            if name not in background or str(background[name]) != str(d):
+                return
+        try:
+            pos, neg = self._get_positive_and_negative_samples(chemical_class)
+        except Exception:
+            return
+        pos_smiles = {s.smiles for s in pos}
+        universe = frozenset(pos_smiles | {s.smiles for s in neg})
+        unknown = set(metrics.timeout_smiles)
+        n_evaluated = metrics.TP + metrics.FP + metrics.FN + metrics.TN
+        if n_evaluated + len(unknown) != len(universe):
+            # e.g. metrics from a run with other training molecules
+            return
+        matched = (pos_smiles - set(metrics.fn_smiles) - unknown) | set(
+            metrics.fp_smiles
+        )
+        self._fol_reasoner.store_definition_results(
+            chemical_class.name, universe, matched, unknown
         )
 
     @ce.stop_program_upon_failure
