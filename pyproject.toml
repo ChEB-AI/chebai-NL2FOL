@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chebai-nl2fol"
-version = "0.0.1"
+version = "1.0.0"
 description = "Translation of Natural language to First Order Logic for ChEBI."
 authors = []
 maintainers = []
@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "chemlog >=1.0.7",
+    "chemlog >=1.1.0",
     "langchain>=1.2.0",
     "PyYAML",
     "dotenv",
