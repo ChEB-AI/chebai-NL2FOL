@@ -40,19 +40,19 @@ class ChEBIDataWrapper:
         #    - ID: 194466, SMILES: [NH3+]CCCC[C@@H](C([O-])=O)N...
 
         # Latest chebi version has only 194466, so delete the duplicate entry with 133538
-        df = df[df.index != 133538]
+        df = df[df.index != "133538"]
 
         # CHEBI:91305  lysophosphatidylcholine(16:1/0:0)
         # CHEBI:134604 lysophosphatidylcholine (16:1/0:0)
         # Naming same for both entity with difference of single space
         # Hence, deleting CHEBI:134604 to avoid duplicate entry after camel case conversion
-        df = df[df.index != 134604]
+        df = df[df.index != "134604"]
 
         # CHEBI:91309  lysophosphatidylcholine(18:2/0:0)
         # CHEBI:136082 lysophosphatidylcholine (18:2/0:0)
         # Naming same for both entity with difference of single space
         # Hence, deleting CHEBI:136082 to avoid duplicate entry after camel case conversion
-        df = df[df.index != 136082]
+        df = df[df.index != "136082"]
 
         df["name"] = df["name"].apply(to_camel_case)
 
@@ -123,41 +123,42 @@ class ChEBIDataWrapper:
         )
         return sorted_nodes
 
+    @staticmethod
+    def _load_graph_cache(path: str) -> nx.Graph | None:
+        """The cached graph, or None if it is missing or uses non-string IDs (old format)."""
+        if not os.path.exists(path):
+            return None
+        with open(path, "rb") as f:
+            g = pickle.load(f)
+        if any(not isinstance(node, str) for node in g.nodes):
+            print(f"{path} uses an outdated ID format, rebuilding it.")
+            return None
+        return g
+
     def get_trans_hierarchy(self):
-        if not os.path.exists(self.trans_hierarchy_path):
+        g = self._load_graph_cache(self.trans_hierarchy_path)
+        if g is None:
             g = self.build_hierarchy_graph()
-            if not os.path.exists(self.undirected_hierarchy_path):
+            if self._load_graph_cache(self.undirected_hierarchy_path) is None:
                 with open(self.undirected_hierarchy_path, "wb") as f:
                     pickle.dump(g.to_undirected(), f)
+            g = nx.transitive_closure(g)
             with open(self.trans_hierarchy_path, "wb") as f:
-                g = nx.transitive_closure(g)
                 pickle.dump(g, f)
-            return g
-        with open(self.trans_hierarchy_path, "rb") as f:
-            return pickle.load(f)
+        return g
 
     def get_undirected_hierarchy_graph(self) -> nx.Graph:
-        if not os.path.exists(self.undirected_hierarchy_path):
-            g = self.build_hierarchy_graph()
-            undirected_g = g.to_undirected()
+        g = self._load_graph_cache(self.undirected_hierarchy_path)
+        if g is None:
+            g = self.build_hierarchy_graph().to_undirected()
             with open(self.undirected_hierarchy_path, "wb") as f:
-                pickle.dump(undirected_g, f)
-            return undirected_g
-        with open(self.undirected_hierarchy_path, "rb") as f:
-            return pickle.load(f)
+                pickle.dump(g, f)
+        return g
 
     @staticmethod
-    def chebi_to_int(s: str) -> int:
-        """
-        Converts a ChEBI term string representation to an integer ID.
-
-        Args:
-        - s (str): A ChEBI term string, e.g., "CHEBI:12345".
-
-        Returns:
-        - int: The integer ID extracted from the ChEBI term string.
-        """
-        return int(s[s.index(":") + 1 :])
+    def chebi_id_from_curie(s: str) -> CHEBI_ID:
+        """The ID of a ChEBI term as in chebi_utils, e.g. "12345" for "CHEBI:12345"."""
+        return s[s.index(":") + 1 :].strip()
 
     @property
     def undirected_hierarchy_path(self):
@@ -195,9 +196,25 @@ class ChEBIDataWrapper:
         if not os.path.exists(self.chebi_path):
             download_chebi_obo(self.chebi_version, os.path.dirname(self.chebi_path))
 
+    def _load_chebi_dict_cache(self) -> dict | None:
+        """The cached ChEBI terms, or None if missing or with non-string IDs (old format)."""
+        if not os.path.exists(self.chebi_dict_path):
+            return None
+        with open(self.chebi_dict_path, "rb") as f:
+            res = pickle.load(f)
+        if any(
+            not isinstance(chebi_id, str)
+            or any(not isinstance(p, str) for p in term.get("parents", []))
+            for chebi_id, term in res.items()
+        ):
+            print(f"{self.chebi_dict_path} uses an outdated ID format, rebuilding it.")
+            return None
+        return res
+
     def process_chebi(self) -> dict:
         self.download_chebi()
-        if not os.path.exists(self.chebi_dict_path):
+        res = self._load_chebi_dict_cache()
+        if res is None:
             with open(self.chebi_path, encoding="utf-8") as chebi_raw:
                 chebi = "\n".join(
                     line for line in chebi_raw if not line.startswith("xref:")
@@ -218,14 +235,11 @@ class ChEBIDataWrapper:
                     term = _term_data(term)
                     if term is None:
                         continue
-                    chebi_id = int(term.pop("id"))
-                    res[chebi_id] = term
+                    # IDs (of the term and its parents) are strings, e.g. "33567"
+                    res[term.pop("id")] = term
             with open(self.chebi_dict_path, "wb") as f:
                 pickle.dump(res, f)
-            return res
-        else:
-            with open(self.chebi_dict_path, "rb") as f:
-                return pickle.load(f)
+        return res
 
 
 if __name__ == "__main__":

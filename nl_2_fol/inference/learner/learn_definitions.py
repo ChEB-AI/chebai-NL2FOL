@@ -15,9 +15,23 @@ from nl_2_fol.prompting.chebai_prompt import ChebiPrompt
 from nl_2_fol.prompting.prompt_models import ChEBI_FOL_AT
 
 
+def _caused_by_refusal(exc: BaseException) -> bool:
+    """Whether an exception was (directly or indirectly) caused by an LLM refusal."""
+    from nl_2_fol.prompting.claude_cli import ModelRefusal
+
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, ModelRefusal):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
 class LearnDefinitions(BaseFOL):
     _MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION = 5
     _LEARNING_LOG_FILE_NAME = "learning_output_a{max_attempts}.txt"
+    _USAGE_LOG_FILE_NAME = "llm_usage.jsonl"
 
     def __init__(
         self,
@@ -39,6 +53,11 @@ class LearnDefinitions(BaseFOL):
         self.chebi_prompt_obj = chebi_prompt_obj
         self._user_max_attempts = max_attempts
         self.f1_threshold = f1_threshold
+        # one JSON line per LLM query (tokens, subscription quota), next to the learned
+        # definitions; appended to when a run is resumed
+        self.chebi_prompt_obj.set_usage_log_path(
+            os.path.join(self.definitions_save_path, self._USAGE_LOG_FILE_NAME)
+        )
 
         # Stores chemical classes which failed to learn FOL in previous programs calls,
         # so we can skip them in the main loop and avoid unnecessary attempts
@@ -46,7 +65,6 @@ class LearnDefinitions(BaseFOL):
 
         # Tracks the classes for which definitions have been learned,
         self._learned_classes: set[str] = set()
-        self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
 
         self._chebi_name_to_data_map_train = (
             self._entire_chebi_data.get_name_to_data_mapping_train()
@@ -54,6 +72,24 @@ class LearnDefinitions(BaseFOL):
         self._chebi_id_to_data_mapping_all = (
             self._entire_chebi_data.get_chebi_id_to_data_mapping_all()
         )
+        # names of all ChEBI classes, also of those without a definition (which are
+        # missing in the mapping above), normalised like the names in the mapping
+        self._chebi_names: dict[dm.CHEBI_ID, str] = {
+            chebi_id: str(term["name"]).lower().strip()
+            for chebi_id, term in self._entire_chebi_data.process_chebi().items()
+            if term.get("name")
+        }
+        # needs the ChEBI data (labels of predicates)
+        self.definitions: def_model.DefinitionLearningResults = self._load_definitions()
+
+    def _predicate_label(self, predicate_name: str) -> str | None:
+        """ChEBI label of a `chebi_<id>` predicate (None for other predicates)."""
+        chebi_id = dm.chebi_id_of_predicate(predicate_name)
+        if chebi_id is None:
+            return None
+        if predicate_name in self._c3po_slim_data.classes:
+            return self._c3po_slim_data.classes[predicate_name].label
+        return self._chebi_names.get(chebi_id)
 
     def learn_fol_definitions(self):
         with TeeStream.capture_learning_output(self.learning_log_path):
@@ -109,7 +145,35 @@ class LearnDefinitions(BaseFOL):
             self._learn(chemical_class)
 
     def _learn(self, chemical_class: dm.ChemicalClass) -> bool:
-        """Returns True if learning was successful, False otherwise."""
+        """Returns True if learning was successful, False otherwise.
+
+        If the LLM refuses a request (safety classifier), learning stops for this class:
+        the best definition found so far is accepted (or the class is marked as failed),
+        and the run continues with the next class. Other LLM failures stop the run.
+        """
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition] = {}
+        try:
+            return self._learn_with_attempts(chemical_class, low_score_defs_collector)
+        except ce.StopProgramException as e:
+            if not _caused_by_refusal(e):
+                raise
+            print(
+                f"[REFUSAL] The LLM declined a request for CHEBI:{chemical_class.id}: "
+                f"{chemical_class.name}. Stopping learning for this class."
+            )
+            history = self.chebi_prompt_obj.get_session_history(chemical_class.name)
+            history.add_message(
+                HumanMessage(content=f"[REFUSAL] The LLM declined the request: {e}")
+            )
+            return self._accept_highest_scoring_def(
+                chemical_class, low_score_defs_collector
+            )
+
+    def _learn_with_attempts(
+        self,
+        chemical_class: dm.ChemicalClass,
+        low_score_defs_collector: dict[int, def_model.ScoredDefinition],
+    ) -> bool:
         attempts = 0
         # ---- commenting, incase we decide to have more attempts for larger classes in future
         # actual_max_attempts = (
@@ -119,9 +183,9 @@ class LearnDefinitions(BaseFOL):
         # )
         actual_max_attempts = self._user_max_attempts
 
-        # Tracks all the definitions which scored below threshold from all attempts
-        # If no generated def pass the threshold, then we accept the one with best score
-        low_score_defs_collector: dict[int, def_model.ScoredDefinition] = {}
+        # `low_score_defs_collector` tracks all the definitions which scored below
+        # threshold from all attempts. If no generated def pass the threshold, then we
+        # accept the one with best score
 
         result = None
         raised_exception = None
@@ -332,19 +396,31 @@ class LearnDefinitions(BaseFOL):
         self.chebi_prompt_obj.delete_session_history(session_id=session_id)
 
     def _build_initial_input_text(self, chemical_class: dm.ChemicalClass) -> str:
-        entity = f"CHEBI:{chemical_class.id} - {chemical_class.name}"
+        with_ids = self.predicate_names == "id"
+        if with_ids:
+            # e.g. "CHEBI:23824 - diol (predicate `chebi_23824`)"
+            entity = (
+                f"CHEBI:{chemical_class.id} - {chemical_class.label} "
+                f"(predicate `{chemical_class.name}`)"
+            )
+        else:
+            entity = f"CHEBI:{chemical_class.id} - {chemical_class.name}"
         input_text = f"{entity}: {chemical_class.definition}"
         mappings: dict = self._chebi_id_to_data_mapping_all[chemical_class.id]
         parents = mappings.get("parents", [])
+        # with `chebi_<id>` predicates, parents without a ChEBI definition are shown by
+        # name; with label predicates (TPTP runs), only parents with a definition
+        known = self._chebi_names if with_ids else self._chebi_id_to_data_mapping_all
+        parents = [parent for parent in parents if parent in known]
         if not parents:
             return input_text
 
-        input_text += f"\n\nOutgoing Relation(s)\n {chemical_class.name} is a "
-        parents = [
-            parent for parent in parents if parent in self._chebi_id_to_data_mapping_all
-        ]
+        subject = chemical_class.label if with_ids else chemical_class.name
+        input_text += f"\n\nOutgoing Relation(s)\n {subject} is a "
         for parent in parents:
-            parent_name = self._chebi_id_to_data_mapping_all[parent]["name"]
+            parent_name = self._chebi_names[parent]
+            if with_ids:
+                parent_name += f" (`{dm.chebi_predicate_name(parent)}`)"
             if parents.index(parent) == len(parents) - 1:
                 input_text += "and " if len(parents) > 1 else ""
                 input_text += f"{parent_name}."
@@ -523,7 +599,20 @@ class LearnDefinitions(BaseFOL):
         if other_predicates:
             predicates_to_learn: dict[str, str | None] = {}
             for predicate in other_predicates:
-                if predicate in self._chebi_name_to_data_map_train:
+                chebi_id = dm.chebi_id_of_predicate(predicate)
+                if chebi_id is not None and chebi_id in self._chebi_names:
+                    # a ChEBI class outside the dataset, e.g. a superclass; without a
+                    # ChEBI definition, at least its name is shown
+                    chebi_data = self._chebi_id_to_data_mapping_all.get(chebi_id, {})
+                    predicates_to_learn[predicate] = (
+                        f"CHEBI:{chebi_id} - {self._chebi_names[chebi_id]}"
+                        + (
+                            f": {chebi_data['definition']}"
+                            if chebi_data.get("definition")
+                            else ""
+                        )
+                    )
+                elif predicate in self._chebi_name_to_data_map_train:
                     # TODO: Do we really need to restrict to train data in this case,
                     # or we could use the entire data? (get_name_to_data_mapping_all)
                     chebi_data = self._chebi_name_to_data_map_train[predicate]
@@ -551,6 +640,18 @@ class LearnDefinitions(BaseFOL):
         """
 
         parsed_definition = self._fol_reasoner.parse_definition(result.FOL_formula)
+        # The head of the first rule determines which predicate is evaluated, so a rule
+        # for another class (e.g. a few-shot example) would otherwise be scored as this class
+        if (
+            self.fol_reasoner == "asp"
+            and parsed_definition.predicate_name != chemical_class.name
+        ):
+            raise Exception(
+                f"The head of the first rule is `{parsed_definition.predicate_name}`, but "
+                f"the class to define is `{chemical_class.name}`. Start with the rule(s) "
+                f"for `{chemical_class.name}(M)`, followed by the rules for helper "
+                "predicates."
+            )
 
         (
             train_metrics,
@@ -613,7 +714,7 @@ class LearnDefinitions(BaseFOL):
                         )
                     )
                     self.chebi_prompt_obj.add_predicates_to_memory(
-                        def_name, d.variables
+                        def_name, d.variables, label=self._predicate_label(def_name)
                     )
                     self._fol_reasoner.add_background_definition(d)
                 else:
@@ -645,8 +746,15 @@ class LearnDefinitions(BaseFOL):
         )
         if learn_success:
             self._fol_reasoner.add_background_definition(scored_def.definition)
+            self._store_definition_results(
+                chemical_class,
+                scored_def.train_metrics,
+                scored_def.temp_additional_defs,
+            )
             self.chebi_prompt_obj.add_predicates_to_memory(
-                chemical_class.name, scored_def.definition.variables
+                chemical_class.name,
+                scored_def.definition.variables,
+                label=self._predicate_label(chemical_class.name),
             )
         print(
             f"Learned definition for {chemical_class.id}:{chemical_class.name} "
@@ -676,6 +784,14 @@ class LearnDefinitions(BaseFOL):
         if os.path.exists(default_path):
             with open(default_path, "rb") as f:
                 definitions = pickle.load(f)
+            naming = dm.predicate_naming(
+                d.name for d in definitions.learned_definitions.values()
+            )
+            if naming is not None and naming != self.predicate_names:
+                raise ce.StopProgramException(
+                    f"The definitions in {default_path} use other predicate names than "
+                    f"this run (`{self.predicate_names}`). Move them away to start a new run."
+                )
         else:
             definitions = def_model.DefinitionLearningResults(
                 learned_definitions={}, additional_definitions={}
@@ -694,7 +810,9 @@ class LearnDefinitions(BaseFOL):
                     learned_def.learned_FOL.definition
                 )
                 self.chebi_prompt_obj.add_predicates_to_memory(
-                    learned_def.name, learned_def.learned_FOL.definition.variables
+                    learned_def.name,
+                    learned_def.learned_FOL.definition.variables,
+                    label=self._predicate_label(learned_def.name),
                 )
                 loaded_def_names.append(learned_def.name)
                 self._learned_classes.add(learned_def.name)
@@ -711,13 +829,67 @@ class LearnDefinitions(BaseFOL):
                     add_def.fol_formula.definition
                 )
                 self.chebi_prompt_obj.add_predicates_to_memory(
-                    name, add_def.fol_formula.definition.variables
+                    name,
+                    add_def.fol_formula.definition.variables,
+                    label=self._predicate_label(name),
                 )
                 loaded_additional_def_names.append(name)
                 self._learned_classes.add(name)
 
         print(
             f"Loaded the following additional definitions for out-of-box predicates: {loaded_additional_def_names}"
+        )
+
+        # after all background definitions are loaded (stored results are only used as
+        # long as the definition and its dependencies are unchanged)
+        for learned_def in new_definitions.learned_definitions.values():
+            if (
+                learned_def.learn_success
+                and learned_def.name in self._c3po_slim_data.classes
+            ):
+                self._store_definition_results(
+                    self._c3po_slim_data.get_chemical_class_by_name(learned_def.name),
+                    learned_def.train_metrics,
+                    learned_def.additional_defs_used,
+                )
+
+    def _store_definition_results(
+        self,
+        chemical_class: dm.ChemicalClass,
+        metrics: def_model.DefinitionMetrics,
+        additional_defs: dict[str, FOLDefinition] | None,
+    ) -> None:
+        """ASP: store which training molecules an accepted definition matches.
+
+        Definitions that use the predicate of this class are then evaluated with the
+        stored results instead of the rules (which can be expensive to ground again for
+        each check). The results are derived from the training metrics, which cover all
+        training molecules.
+        """
+        if self.fol_reasoner != "asp" or self.split != "train":
+            return
+        background = self._fol_reasoner.background_definitions
+        for name, d in (additional_defs or {}).items():
+            # the metrics are only valid for the background if the definition was
+            # evaluated with the same additional definitions
+            if name not in background or str(background[name]) != str(d):
+                return
+        try:
+            pos, neg = self._get_positive_and_negative_samples(chemical_class)
+        except Exception:
+            return
+        pos_smiles = {s.smiles for s in pos}
+        universe = frozenset(pos_smiles | {s.smiles for s in neg})
+        unknown = set(metrics.timeout_smiles)
+        n_evaluated = metrics.TP + metrics.FP + metrics.FN + metrics.TN
+        if n_evaluated + len(unknown) != len(universe):
+            # e.g. metrics from a run with other training molecules
+            return
+        matched = (pos_smiles - set(metrics.fn_smiles) - unknown) | set(
+            metrics.fp_smiles
+        )
+        self._fol_reasoner.store_definition_results(
+            chemical_class.name, universe, matched, unknown
         )
 
     @ce.stop_program_upon_failure
@@ -745,22 +917,40 @@ class LearnDefinitions(BaseFOL):
 
     @property
     def definitions_save_path(self) -> str:
+        # ASP runs get their own directory, so that they never resume (or overwrite)
+        # TPTP-based runs of the same model
+        run_name = self.chebi_prompt_obj.model_name
+        if self.fol_reasoner == "asp":
+            run_name += "_asp"
         return os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "learned",
-            self.chebi_prompt_obj.model_name,
+            run_name,
         )
 
     def __repr__(self) -> str:
+        if self.fol_reasoner == "asp":
+            from nl_2_fol.inference.learner import sample_matching_worker as smw
+
+            sampling = (
+                "Training_samples=all, "
+                f"Clingo_chunk_size={smw.CLINGO_CHUNK_SIZE}, "
+                f"Clingo_chunk_timeout_seconds={smw.CLINGO_CHUNK_TIMEOUT_SECONDS}"
+            )
+        else:
+            sampling = (
+                f"Maximum_negative_samples={self._MAX_NEGATIVE_SAMPLES}, "
+                f"Sample_match_timeout_seconds={self._SAMPLE_MATCH_TIMEOUT_SECONDS}"
+            )
         return f"""
         DefinitionLearner(chebi_prompt_obj={self.chebi_prompt_obj}),
         max_attempts={self._user_max_attempts},
         f1_threshold={self.f1_threshold},
+        fol_reasoner={self.fol_reasoner},
         slim_dataset_path={self.slim_dataset_path},
         structures_path={self.structures_path},
         chebi_version={self.chebi_version},
-        Maximum_negative_samples={self._MAX_NEGATIVE_SAMPLES},
-        Sample_match_timeout_seconds={self._SAMPLE_MATCH_TIMEOUT_SECONDS},
+        {sampling},
         Max_samples_for_low_threshold_exception={self._MAX_SAMPLES_FOR_LOW_THRESHOLD_EXCEPTION}
         """
 

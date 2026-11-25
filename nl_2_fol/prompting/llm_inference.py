@@ -1,12 +1,45 @@
 import os
+import re
 from typing import Literal
 
 from nl_2_fol.prompting import ANTHROPIC_API_KEY, GROQ_API_KEY_NAME, OPENAI_API_KEY_NAME
 
-API_PLATFORM = Literal["groq", "anthropic", "openai", "ollama", "custom"]
+# claude_cli: Claude via the logged-in `claude` CLI (Claude subscription, no API key)
+# anthropic: Claude via the API (API key)
+API_PLATFORM = Literal["claude_cli", "groq", "anthropic", "openai", "ollama", "custom"]
+EFFORT = Literal["low", "medium", "high", "xhigh", "max"]
+
+ANTHROPIC_MAX_TOKENS = 16000
+
+_CLAUDE_VERSION = re.compile(r"^claude-(?:(?:opus|sonnet|haiku)-)?(\d+)(?:-(\d+))?")
 
 
-def get_llm_for_inference(platform: API_PLATFORM, model_name):
+def _anthropic_model_supports_temperature(model_name: str) -> bool:
+    """Whether a Claude model accepts sampling parameters (`temperature`).
+
+    Claude models up to version 4.6 accept them; newer models (Opus 4.7+, Opus 5.x,
+    Haiku 5.5, Fable, ...) reject them with a 400 error.
+    """
+    match = _CLAUDE_VERSION.match(model_name)
+    if match is None:
+        return False
+    major = int(match.group(1))
+    minor = int(match.group(2) or 0)
+    if minor >= 100:  # date suffix, e.g. claude-opus-4-20250514
+        minor = 0
+    return major < 4 or (major == 4 and minor <= 6)
+
+
+def get_llm_for_inference(
+    platform: API_PLATFORM, model_name, effort: EFFORT | None = None
+):
+    """Create a chat model.
+
+    Args:
+        effort: Reasoning effort (only used for Anthropic models that support it,
+            e.g. Claude Opus 5.5 / Haiku 5.5). If None, the API default is used.
+    """
+
     def _test_api_with_a_prompt(llm):
         result = llm.invoke("Hello LLM").content
         if result:
@@ -18,6 +51,11 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
         raise Exception(
             f"Didn't recieve any response from Model `{model_name}` from platform `{platform}`"
         )
+
+    if platform == "claude_cli":
+        from nl_2_fol.prompting.claude_cli import ClaudeCLIChat
+
+        return ClaudeCLIChat(model_name=model_name, effort=effort)
 
     if platform == "groq":
         try:
@@ -50,9 +88,17 @@ def get_llm_for_inference(platform: API_PLATFORM, model_name):
             f"Please set the api key {ANTHROPIC_API_KEY} for anthropic in `api_keys.env` file."
         )
 
+        llm_kwargs = {}
+        if _anthropic_model_supports_temperature(model_name):
+            llm_kwargs["temperature"] = 0.0
+        if effort is not None:
+            llm_kwargs["effort"] = effort
         llm = ChatAnthropic(
-            model_name=model_name,  # "claude-opus-4-6",
-            temperature=0.0,
+            model_name=model_name,  # "claude-opus-5-5",
+            # explicit limit: the default for models without a langchain profile may be
+            # too small once thinking tokens are included
+            max_tokens=ANTHROPIC_MAX_TOKENS,
+            **llm_kwargs,
         )  # pyright: ignore[reportCallIssue]
         # _test_api_with_a_prompt(llm)
         return llm

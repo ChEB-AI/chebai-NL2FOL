@@ -13,7 +13,11 @@ from langchain_core.prompts import (
 from langchain_core.runnables import Runnable
 
 from nl_2_fol.inference.learner import custom_exceptions as ce
-from nl_2_fol.prompting.llm_inference import API_PLATFORM, get_llm_for_inference
+from nl_2_fol.prompting.llm_inference import (
+    API_PLATFORM,
+    EFFORT,
+    get_llm_for_inference,
+)
 from nl_2_fol.prompting.prompt_models import (
     ChEBI_FOL_AT,
     CHEBIFOLOutput,
@@ -37,8 +41,20 @@ class ChebiPrompt:
         err_failure_prompt_fp: str,
         undef_failure_prompt_fp: str,
         predicate_prompt_mode: Literal["relevant", "all"] = "relevant",
-        structured_output_type: str = "ChEBI_FOL_AT",
+        structured_output_type: str | None = None,
+        effort: EFFORT | None = None,
     ):
+        """
+        Args:
+            structured_output_type: `ChEBI_FOL_AT` (only the formula) or `CHEBIFOLOutput`
+                (formula and intermediate chain-of-thought steps). By default, this is
+                inferred from the few-shot examples (`CHEBIFOLOutput` if they contain
+                an `intermediate_output`).
+        """
+        if structured_output_type is None:
+            structured_output_type = self._infer_structured_output_type(
+                few_shot_prompt_fp
+            )
         if predicate_prompt_mode not in {"relevant", "all"}:
             raise ValueError(
                 "predicate_prompt_mode must be either 'relevant' or 'all'."
@@ -51,13 +67,16 @@ class ChebiPrompt:
         self.undef_failure_prompt_fp: str = undef_failure_prompt_fp
         self.predicate_prompt_mode = predicate_prompt_mode
         self.structured_output_type = structured_output_type
+        self.effort = effort
         # To keep track of predicates generated across iterations, for prompting
         self._memory_store = {}
         self.generated_predicates_names: set[str] = set()
         self._relevant_predicates: list[str] = []
         self._current_session_id: str | None = None  # Track current session
 
-        self._llm = get_llm_for_inference(self.platform, self.model_name)
+        self._llm = get_llm_for_inference(
+            self.platform, self.model_name, effort=self.effort
+        )
 
         self._conversation_chain = self._get_conversation_chain()
         self._undef_failure_chain = self._get_undef_failure_chain()
@@ -73,12 +92,31 @@ class ChebiPrompt:
         )
 
     # -------- Conversation Chain Construction --------------------- ##
+    @staticmethod
+    def _infer_structured_output_type(few_shot_prompt_fp: str) -> str:
+        with open(few_shot_prompt_fp, encoding="utf-8") as f:
+            examples = json.load(f)
+        with_cot = any(
+            isinstance(example.get("ai"), dict)
+            and "intermediate_output" in example["ai"]
+            for example in examples
+        )
+        return "CHEBIFOLOutput" if with_cot else "ChEBI_FOL_AT"
+
+    def _with_structured_output(self, schema: type) -> Runnable:
+        if self.platform == "anthropic":
+            # Native structured outputs (`output_config.format`). The default method
+            # (`function_calling`) forces tool use, which newer Claude models
+            # (e.g. Opus 5.5) reject.
+            return self._llm.with_structured_output(schema, method="json_schema")
+        return self._llm.with_structured_output(schema)
+
     def _get_conversation_chain(self) -> Runnable:
         prompt = self._get_prompt_template()
         if self.structured_output_type == "ChEBI_FOL_AT":
-            structured_llm = self._llm.with_structured_output(ChEBI_FOL_AT)
+            structured_llm = self._with_structured_output(ChEBI_FOL_AT)
         elif self.structured_output_type == "CHEBIFOLOutput":
-            structured_llm = self._llm.with_structured_output(CHEBIFOLOutput)
+            structured_llm = self._with_structured_output(CHEBIFOLOutput)
         else:
             raise ValueError("Invalid structured_output_type")
         return prompt | structured_llm
@@ -86,7 +124,7 @@ class ChebiPrompt:
     def _get_undef_failure_chain(self) -> Runnable:
         """Create a chain specifically for handling undefined predicates with shared memory."""
         prompt = self._get_prompt_template()
-        structured_llm = self._llm.with_structured_output(OutOfBoxPredicateDefinitions)
+        structured_llm = self._with_structured_output(OutOfBoxPredicateDefinitions)
         return prompt | structured_llm
 
     def _rebuild_chains(self) -> None:
@@ -105,6 +143,16 @@ class ChebiPrompt:
         if session_id not in self._memory_store:
             self._memory_store[session_id] = InMemoryChatMessageHistory()
         return self._memory_store[session_id]
+
+    def _set_llm_label(self, session_id: str) -> None:
+        """Label the following LLM queries (for usage logging, if supported by the model)."""
+        if hasattr(self._llm, "label"):
+            self._llm.label = session_id
+
+    def set_usage_log_path(self, path: str) -> None:
+        """Log the usage of each LLM query to ``path`` (if supported by the model)."""
+        if hasattr(self._llm, "usage_log_path"):
+            self._llm.usage_log_path = path
 
     @ce.stop_program_upon_failure
     def delete_session_history(self, session_id: str):
@@ -146,13 +194,18 @@ class ChebiPrompt:
         # And consider another 100 predicates as an additional predicates, hence managable
         predicates = self._get_predicates_for_system_prompt()
         if len(predicates) > 0:
+            # labels in brackets (e.g. `[1,2-diol]`) can contain commas: one per line
+            if any(p.endswith("]") for p in predicates):
+                predicate_list = "".join(f"\n- {p}" for p in predicates)
+            else:
+                predicate_list = " " + ", ".join(predicates)
             return (
                 "\nAlso, here is the list of predicates along with their arguments that "
                 "were already defined in previous iterations for other CHEBI classes.\n"
                 "If any predicate has no arguments, then just the predicate name is shown "
                 "without parentheses. You can reuse these predicates if they are "
                 "applicable to the current class definition.\n"
-                f"Predicate List: {', '.join(predicates)}"
+                f"Predicate List:{predicate_list}"
             )
         return ""
 
@@ -208,6 +261,7 @@ class ChebiPrompt:
             self._refresh_relevant_predicates(input_text)
             # Get session history
             history = self.get_session_history(session_id)
+            self._set_llm_label(session_id)
 
             self._enforce_full_prompt_token_limit(
                 input_text=input_text,
@@ -238,9 +292,12 @@ class ChebiPrompt:
         self, *, error_message: str, session_id: str
     ) -> ChEBI_FOL_AT:
         try:
-            error_prompt = self._get_err_failure_prompt(error_message)
+            error_prompt = self._get_err_failure_prompt(
+                error_message, class_name=session_id
+            )
             # Get session history
             history = self.get_session_history(session_id)
+            self._set_llm_label(session_id)
 
             self._enforce_full_prompt_token_limit(
                 input_text=error_prompt,
@@ -265,11 +322,14 @@ class ChebiPrompt:
             print(f"Error during inference: {e}")
             raise e
 
-    def _get_err_failure_prompt(self, error_message: str) -> str:
+    def _get_err_failure_prompt(self, error_message: str, class_name: str) -> str:
         prompt_text = load_yaml_sys_prompt(
             self.err_failure_prompt_fp, key="failure_prompt"
         )
-        prompt_text = prompt_text.format(error_message=error_message)
+        # templates without a {class_name} placeholder are unaffected
+        prompt_text = prompt_text.format(
+            error_message=error_message, class_name=class_name
+        )
         return prompt_text
 
     ## ------- LLM Invocation for undefined additional predicates --- ##
@@ -287,6 +347,7 @@ class ChebiPrompt:
             )
             # Get session history
             history = self.get_session_history(session_id)
+            self._set_llm_label(session_id)
 
             self._enforce_full_prompt_token_limit(
                 input_text=undefined_predicates_text,
@@ -343,7 +404,9 @@ class ChebiPrompt:
         few_shot_prompt_fp={self.few_shot_prompt_fp},
         err_failure_prompt_fp={self.err_failure_prompt_fp},
         undef_failure_prompt_fp={self.undef_failure_prompt_fp},
-        predicate_prompt_mode={self.predicate_prompt_mode})
+        predicate_prompt_mode={self.predicate_prompt_mode},
+        structured_output_type={self.structured_output_type},
+        effort={self.effort})
         """
 
     @ce.stop_program_upon_failure
@@ -496,19 +559,24 @@ class ChebiPrompt:
         return max(1, len(text) // 4)
 
     @ce.stop_program_upon_failure
-    def add_predicates_to_memory(self, predicate_name: str, vars: list[str]) -> None:
+    def add_predicates_to_memory(
+        self, predicate_name: str, vars: list[str], label: str | None = None
+    ) -> None:
         """Add predicates to the prompt predicate store.
 
         Example: if pred_name='oligopeptide' and vars=[x0, x1],
                  this will add 'oligopeptide(x0, x1)'.
 
-        If no variables, only the predicate name is added.
+        If no variables, only the predicate name is added. A label (e.g. the ChEBI label
+        of `chebi_<id>` predicates) is appended in brackets, it is also used for retrieval.
         """
         if len(vars) > 0:
             variables_str = ", ".join(str(var) for var in vars)
             predicate_with_vars = f"{predicate_name}({variables_str})"
         else:
             predicate_with_vars = predicate_name
+        if label:
+            predicate_with_vars += f" [{label}]"
 
         if self.predicate_prompt_mode == "all":
             if predicate_with_vars in self.generated_predicates_names:

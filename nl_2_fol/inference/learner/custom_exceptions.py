@@ -194,30 +194,25 @@ class LowF1ScoreException(Exception):
                 chemicals=set(neg_samples),
                 matched_smiles=matched_neg_samples,
             )
-            assert len(fp_mol_names) > 0, (
-                "Expected at least one false positive sample to show details for "
-                "but found none. Please check the input data and mappings."
-            )
-            fp_details = "\n".join(
-                f"\t- Chemical Name: {name}"
-                + (f", Chemical Definition: {chem_def}" if chem_def else "")
-                for name, chem_def in fp_mol_names
-            )
+            # may be empty if F1 is low for other reasons (e.g. timeouts), don't stop the run
+            if fp_mol_names:
+                fp_details = "\n".join(
+                    f"\t- Chemical Name: {name}"
+                    + (f", Chemical Definition: {chem_def}" if chem_def else "")
+                    for name, chem_def in fp_mol_names
+                )
 
         if error_priority == "FN" or error_priority == "both":
             fn_mol_names = get_chemical_details(
                 chemicals=set(pos_samples),
                 matched_smiles=unmatched_pos_samples,
             )
-            assert len(fn_mol_names) > 0, (
-                "Expected at least one false negative sample to show details for "
-                "but found none. Please check the input data and mappings."
-            )
-            fn_details = "\n".join(
-                f"\t- Chemical Name: {name}"
-                + (f", Chemical Definition: {chem_def}" if chem_def else "")
-                for name, chem_def in fn_mol_names
-            )
+            if fn_mol_names:
+                fn_details = "\n".join(
+                    f"\t- Chemical Name: {name}"
+                    + (f", Chemical Definition: {chem_def}" if chem_def else "")
+                    for name, chem_def in fn_mol_names
+                )
 
         message_parts = [
             "The generated FOL definition did not meet the required F1 score threshold:\n"

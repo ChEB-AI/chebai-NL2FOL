@@ -212,17 +212,20 @@ class TestGavelFOLReasoner:
         )
 
     def test_model_checking(self, reasoner: GavelFOLReasoner):
-        """Test that exceptions in does_mol_match_tptp_definition are properly raised."""
+        """Model checking of nullary definitions, with and without background definitions."""
         formula_str = "cation <=> net_charge_positive"
 
         parsed_formula = reasoner.parse_definition(formula_str).definition
 
+        # protonated amine ([NH+]), no negative charges -> cation
         mol = Chem.MolFromSmiles(
             "C(=O)(C1=CC=C(C=C1F)OCCCCCC[NH+](CC=C)C)C=2C=CC(=CC2)Br"
         )
 
-        with pytest.raises(Exception, match="MODEL CHECKING FAILED"):
+        assert (
             reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+            == ModelCheckerOutcome.MODEL_FOUND
+        )
 
         formula_str = (
             "glycolipid <=> (glycerolipid & ?[O1, C1, O2, C2]: (o(O1) & "
@@ -242,7 +245,12 @@ class TestGavelFOLReasoner:
             "C([C@@H]([C@@H](/C=C/CCCCCCCCCCCCC)O)NC(CCCCCCC/C=C\\CCCCCCCC)=O)O[C@@H]1O[C@@H]([C@@H](O[C@@H]2O[C@@H]([C@H](O)[C@@H]([C@H]2O)O)CO)[C@@H]([C@H]1O)O)CO"
         )
         parsed_formula = reasoner.parse_definition(formula_str).definition
-        reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+        # the sugar ring contains both the glycerol-like C-C-C/O pattern and the
+        # acetal O-C(H)-O-C pattern
+        assert (
+            reasoner.does_mol_match_tptp_definition(mol, parsed_formula)
+            == ModelCheckerOutcome.MODEL_FOUND
+        )
 
     def test_model_checking_success(self, reasoner: GavelFOLReasoner):
         mol = Chem.MolFromSmiles(

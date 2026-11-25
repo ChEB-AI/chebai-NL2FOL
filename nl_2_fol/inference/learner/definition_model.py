@@ -123,6 +123,15 @@ class DefinitionLearningResults(BaseModel):
         ..., description="Additional definitions provided by the user (optional)"
     )
 
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        # results pickled before ChEBI IDs were strings (as in chebi_utils) use int IDs
+        self.learned_definitions = {
+            str(k): v for k, v in self.learned_definitions.items()
+        }
+        for additional in self.additional_definitions.values():
+            additional.used_for = [str(i) for i in additional.used_for]
+
 
 class ScoredDefinition(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -148,7 +157,7 @@ if __name__ == "__main__":
     )
     results = DefinitionLearningResults(
         learned_definitions={
-            12345: LearnedDefinition(
+            "12345": LearnedDefinition(
                 train_metrics=DefinitionMetrics(
                     TP=10, FP=2, FN=3, TN=85, F1=0.83, PPV=0.83, NPV=0.97
                 ),
@@ -160,7 +169,7 @@ if __name__ == "__main__":
                 name="Example Chemical Class",
                 definition="A chemical class used for demonstration purposes.",
             ),
-            56645: LearnedDefinition(
+            "56645": LearnedDefinition(
                 train_metrics=DefinitionMetrics(
                     TP=8, FP=1, FN=4, TN=87, F1=0.80, PPV=0.89, NPV=0.96
                 ),
@@ -176,7 +185,7 @@ if __name__ == "__main__":
         additional_definitions={
             "Example": AdditionalDefinition(
                 fol_formula=FOLFormula(definition=fol_definition_3),
-                used_for=[12345, 56645],
+                used_for=["12345", "56645"],
             )
         },
     )

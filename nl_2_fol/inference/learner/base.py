@@ -1,3 +1,4 @@
+import os
 import queue
 
 from gavel.logic import logic
@@ -27,7 +28,20 @@ class BaseFOL:
         chebi_version: int,
         split: Literal["train", "val"],
         fol_reasoner: Literal["gavel", "mistral", "asp"] = "gavel",
+        clingo_n_jobs: int | None = None,
+        predicate_names: Literal["label", "id"] | None = None,
     ):
+        """
+        Args:
+            clingo_n_jobs: Number of parallel processes for evaluating ASP definitions
+                with clingo. Defaults to the number of CPUs.
+            predicate_names: Naming of class predicates (`chebi_<id>` or camel-cased
+                label). Defaults to `id` for ASP and `label` otherwise.
+        """
+        if predicate_names is None:
+            predicate_names = "id" if fol_reasoner == "asp" else "label"
+        self.predicate_names = predicate_names
+        self.clingo_n_jobs = clingo_n_jobs or os.cpu_count() or 1
         self.slim_dataset_path = slim_dataset_path
         self.structures_path = structures_path
         self.chebi_version = chebi_version
@@ -40,11 +54,30 @@ class BaseFOL:
             structures_path=self.structures_path,
             chebi_version=self.chebi_version,
             split=self.split,
+            predicate_names=self.predicate_names,
         )
         self.undirected_chebi_graph = (
             self._entire_chebi_data.get_undirected_hierarchy_graph()
         )
         self._fol_reasoner = self.get_reasoner()
+        if self.fol_reasoner == "asp":
+            # the facts of each molecule are needed for every evaluation: compute them
+            # once here, forked evaluation processes inherit them
+            from nl_2_fol.inference.fol_reasoner.clingo_utils import (
+                cache_molecule_facts,
+            )
+
+            failed = cache_molecule_facts(
+                {s.smiles: s.mol for s in self._c3po_slim_data.structures},
+                allowed_predicates=set(self._fol_reasoner._base_predicates),
+                n_jobs=self.clingo_n_jobs,
+            )
+            if failed:
+                # molecules without facts are dropped from the dataset (no fallback);
+                # they are neither positive nor negative samples
+                self._c3po_slim_data.structures = {
+                    s for s in self._c3po_slim_data.structures if s.smiles not in failed
+                }
 
     def get_reasoner(self):
         if self.fol_reasoner == "gavel":
@@ -84,22 +117,33 @@ class BaseFOL:
             max_neg_samples,
         )
 
-        matching_func = (
-            check_if_definition_matches_samples
-            if self.fol_reasoner in ["gavel", "mistral"]
-            else check_if_definition_matches_samples_clingo
-        )
-
-        match_result_dict, processed_samples_dict = matching_func(
-            self._fol_reasoner,
-            sample_match_timeout_seconds,
-            chemical_class,
-            parsed_def,
-            pos_samples,
-            neg_samples,
-            temp_additional_defs,
-            split=self.split,
-        )
+        if self.fol_reasoner in ["gavel", "mistral"]:
+            match_result_dict, processed_samples_dict = (
+                check_if_definition_matches_samples(
+                    self._fol_reasoner,
+                    sample_match_timeout_seconds,
+                    chemical_class,
+                    parsed_def,
+                    pos_samples,
+                    neg_samples,
+                    temp_additional_defs,
+                    split=self.split,
+                )
+            )
+        else:
+            match_result_dict, processed_samples_dict = (
+                check_if_definition_matches_samples_clingo(
+                    self._fol_reasoner,
+                    sample_match_timeout_seconds,
+                    chemical_class,
+                    parsed_def,
+                    pos_samples,
+                    neg_samples,
+                    temp_additional_defs,
+                    split=self.split,
+                    n_jobs=self.clingo_n_jobs,
+                )
+            )
 
         metrics = self._get_metrics(match_result_dict)
 
@@ -124,8 +168,10 @@ class BaseFOL:
         }
         negative_examples = list(self._c3po_slim_data.all_smiles - positive_examples)
 
-        if self.split == "train":
-            # Closest 1000 negative samples are used for training to speed up training.
+        if self.split == "train" and self.fol_reasoner != "asp":
+            # With ASP (clingo), all training samples are used.
+            # With the TPTP-based model checker (Gavel / ChemLog), evaluating all samples is
+            # too expensive, so only the closest 1000 negative samples are used for training.
             # For validation, we use all negative samples to fairly compare against the c3po.
             negative_examples = self._get_closest_negatives(
                 negative_examples, chemical_class.id, n_samples=max_neg_samples
@@ -153,7 +199,7 @@ class BaseFOL:
             return available_smiles
 
         q = queue.Queue()
-        q.put(int(target_id))
+        q.put(target_id)
         visited = set()
         selected_smiles = set()
 
@@ -230,6 +276,21 @@ class BaseFOL:
 
     def _validate_given_class_name(self, class_name: str) -> None | str:
         resolved_class_name = class_name
+        if (
+            self.predicate_names == "id"
+            and class_name not in self._c3po_slim_data.classes
+        ):
+            # accept `CHEBI:123`, `123` and labels (also camel-cased, case-insensitive)
+            chebi_id = class_name.removeprefix("CHEBI:").strip()
+            by_label = {}
+            for c in self._c3po_slim_data.classes.values():
+                if c.label:
+                    by_label[c.label.lower()] = c.name
+                    by_label[to_camel_case(c.label).lower()] = c.name
+            if chebi_id.isdigit():
+                resolved_class_name = dm.chebi_predicate_name(chebi_id)
+            elif class_name.strip().lower() in by_label:
+                resolved_class_name = by_label[class_name.strip().lower()]
         if resolved_class_name not in self._c3po_slim_data.classes:
             camel_cased_class_name = to_camel_case(class_name)
             print(

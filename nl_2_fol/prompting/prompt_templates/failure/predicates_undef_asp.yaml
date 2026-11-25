@@ -1,23 +1,10 @@
 failure_prompt: |
-  Your previous attempt to convert the CHEBI class definition into first-order logic (FOL) was unsuccessful.
-  Let's analyze the failure and try again.
-
-  In the previous FOL definition, the following predicates have no FOL formulas defined:
+  The following predicates in your definition are not defined yet:
   {undefined_predicates_details}
   {retry_context_section}
 
-  Here is an example of how to define undefined predicates in FOL:
+  Define each of them with clingo rules. The definition of a predicate may only use the predicates given as facts, the already defined predicates listed in the instructions, and the other predicates you define in this answer. Each definition starts with the rule(s) for the defined predicate (several rules for alternatives) and may be followed by rules for helper predicates. The clingo rules from the instructions apply (safe variables, no disjunction in rule bodies, `!=` for distinct atoms). Write only clingo code, no explanations.
 
-  Example FOL definition for carbon monoxide:
-  carbonMonoxide(M) :- oneCarbonCompound(M), has_atom(M, A1), c(A1), o(A2), has_bond_to(A1, A2).
-
-  If the predicate `oneCarbonCompound` is undefined, define it using FOL:
-  {{
-    "oneCarbonCompound": "oneCarbonCompound(M) :- has_atom(M, A1), c(A1), not twoPlusCarbonCompound(M).",
-    "twoPlusCarbonCompound": "twoPlusCarbonCompound(M) :- has_atom(M, X), c(X), has_atom(M, Y), c(Y), has_bond_to(X, Y), X != Y."
-  }}
-
-
-  Refer to the above examples and few-shot examples provided earlier for syntax and style conventions when constructing the FOL formula.
-
-  Please provide FOL formulas for all undefined predicates.
+  Example: if `oneCarbonCompound` is undefined, a valid answer defines it and the helper predicate it uses:
+    - oneCarbonCompound: `oneCarbonCompound(M) :- has_atom(M, A1), c(A1), not twoPlusCarbonCompound(M).`
+    - twoPlusCarbonCompound: `twoPlusCarbonCompound(M) :- has_atom(M, X), c(X), has_atom(M, Y), c(Y), X != Y.`

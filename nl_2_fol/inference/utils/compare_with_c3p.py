@@ -7,19 +7,19 @@ from pathlib import Path
 from nl_2_fol.inference.learner.definition_model import DefinitionLearningResults
 
 
-def _load_c3p_trust(c3p_path: Path) -> dict[int, dict[str, float]]:
+def _load_c3p_trust(c3p_path: Path) -> dict[str, dict[str, float]]:
     # Expecting a JSON array of objects produced by the c3p script
     # Each object contains a `chebi_id` like "CHEBI:12345" and a `val` block
     # where the validation F1 score is stored under the `f1` key.
     with open(c3p_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    parsed: dict[int, dict[str, float]] = {}
+    parsed: dict[str, dict[str, float]] = {}
     for entry in raw:
         chebi_str = entry["chebi_id"]
         # chebi_id may be like "CHEBI:84948" — extract numeric part
         try:
-            chebi_num = int(str(chebi_str).split(":")[-1])
+            chebi_num = str(chebi_str).split(":")[-1]
         except Exception:
             # skip malformed ids
             raise ValueError(f"Malformed chebi_id: {chebi_str}")

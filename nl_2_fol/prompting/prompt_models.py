@@ -1,7 +1,14 @@
 import ast
 import json
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _unescape_newlines(value):
+    """Models sometimes double-escape line breaks between rules, yielding a literal ``\\n``."""
+    if isinstance(value, str):
+        return value.replace("\\n", "\n")
+    return value
 
 
 # --- Pydantic Models ---
@@ -22,10 +29,10 @@ class ChEBI_FOL_AT(BaseModel):
     @classmethod
     def _coerce_fol_formula(cls, value):
         if isinstance(value, list):
-            return " ".join(
+            value = " ".join(
                 part.strip() for part in value if isinstance(part, str) and part.strip()
             )
-        return value
+        return _unescape_newlines(value)
 
 
 class CHEBIFOLOutput(ChEBI_FOL_AT):
@@ -42,7 +49,7 @@ class CHEBIFOLOutput(ChEBI_FOL_AT):
             for parser in (json.loads, ast.literal_eval):
                 try:
                     parsed = parser(stripped)
-                except json.JSONDecodeError, ValueError, SyntaxError:
+                except (json.JSONDecodeError, ValueError, SyntaxError):
                     continue
                 if isinstance(parsed, dict):
                     return parsed
@@ -50,13 +57,45 @@ class CHEBIFOLOutput(ChEBI_FOL_AT):
         return value
 
 
+class PredicateDefinition(BaseModel):
+    predicate_name: str = Field(..., description="Name of the defined predicate")
+    formula: str = Field(..., description="FOL formula defining the predicate")
+
+    @field_validator("formula", mode="before")
+    @classmethod
+    def _coerce_formula(cls, value):
+        return _unescape_newlines(value)
+
+
 class OutOfBoxPredicateDefinitions(BaseModel):
     """Model for parsing predicate definitions from LLM response."""
 
-    predicate_definitions: dict[str, str] = Field(
+    # A list instead of a dict (predicate name -> formula): objects with arbitrary keys
+    # are not supported by strict structured outputs (e.g. Anthropic's output_config.format)
+    definitions: list[PredicateDefinition] = Field(
         ...,
-        description="Dictionary mapping predicate names to their FOL formulas",
+        description="FOL formulas for each of the undefined predicates",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_dict_format(cls, value):
+        # accept the previous format {"predicate_definitions": {name: formula}}
+        if isinstance(value, dict) and isinstance(
+            value.get("predicate_definitions"), dict
+        ):
+            return {
+                "definitions": [
+                    {"predicate_name": name, "formula": formula}
+                    for name, formula in value["predicate_definitions"].items()
+                ]
+            }
+        return value
+
+    @property
+    def predicate_definitions(self) -> dict[str, str]:
+        """Mapping from predicate names to their formulas."""
+        return {d.predicate_name: d.formula for d in self.definitions}
 
 
 if __name__ == "__main__":

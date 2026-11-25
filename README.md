@@ -2,354 +2,210 @@
 
 AI workflow for natural language to First-Order Logic (FOL) translation for ChEBI.
 
-**Abstract:** 
 
-Chemical ontologies such as the Chemical Entities of Biological Interest (ChEBI) provide
-structured taxonomies for organizing chemical knowledge, but manually extending these
-taxonomies to new molecules remains a scalability challenge. We propose ChEBI2FOL,
-a pipeline for automatically translating natural language definitions of chemical classes in
-ChEBI into First-Order Logic (FOL) for rule-based and explainable chemical classification. ChEBI2FOL uses multi-shot LLM prompts with multiple feedback loops to generate
-and automatically validate FOL definitions. The result is a classification system that is by
-design modular (auxiliary predicates are automatically generated and shared across defi-
-nitions) and platform-independent (the definitions come in a standard FOL syntax which
-can be parsed by various tools). Besides classification, the definitions can also be used to
-verify ontological relations directly and identify new relations.
-We evaluate ChEBI2FOL on 367 ChEBI classes using three LLMs for FOL generation.
-Among these models, Claude Opus 4.6 achieves the strongest performance. In comparison
-to C3PO, a suite of LLM-generated classifiers in Python, ChEBI2FOL achieves a higher
-recall, but lower precision, suggesting that the learned definitions are more general.
-Our analysis identifies challenges for FOL-based chemical classification. Overall, these
-results demonstrate the feasibility of natural language to logic translation for chemical
-classification.
+## Publication
+A paper with experiments based on this repository is available on arxiv:
+> (todo)
+
+
+**Abstract:**
+
+Chemical ontologies such as the Chemical Entities of Biological Interest (ChEBI) provide structured taxonomies for organizing chemical knowledge, but manually extending these taxonomies to new molecules remains a scalability challenge. We propose **ChEBI2Logic**, a pipeline for automatically translating natural language definitions of chemical classes in ChEBI into formal logic for rule-based and explainable chemical classification. ChEBI2Logic uses multi-shot LLM prompts with multiple feedback loops to generate and automatically validate logical definitions. As logical formalisms, ChEBI2Logic uses first-order logic (FOL) with TPTP syntax or ASP with gringo syntax.
+
+The result is a classification system that is by design modular (auxiliary predicates are automatically generated and shared across definitions) and platform-independent (the definitions come in a standard FOL syntax which can be parsed by various tools).
+Besides classification, the definitions can also be used to verify ontological relations directly and identify new relations.
+
+We evaluate ChEBI2Logic on 367 ChEBI classes using different LLMs. Among these models, Claude Opus 5.5 with gringo syntax achieves the strongest performance. In comparison to C3PO, a suite of LLM-generated Python classifiers, ChEBI2Logic achieves a higher F1 score (+17.4 pp macro F1 comparing the best individual runs, +5.4 pp comparing the ensembles).
+Our analysis identifies challenges for logic-based chemical classification. Overall, these results demonstrate the feasibility of natural language to logic translation for chemical classification.
 
 <img width="2796" height="1024" alt="fig_landscape" src="https://github.com/user-attachments/assets/58dcf948-4645-4523-bb02-6120306063a0" />
 
 
-## Data Files
+## Quick Start
 
-The learning and validation pipelines expect the C3PO slim dataset files under `data/` by default:
+The default setup learns definitions as logic programs (answer set programming, evaluated with
+[clingo](https://potassco.org/clingo/)) with Claude Opus 5.5 for all 367 classes of the
+[C3PO](https://github.com/chemkg/c3p) dataset.
 
-```text
-data/classes_slim.csv
-data/structures.csv
-dataset.json
-```
+Requirements: Python >= 3.12, Linux (or WSL; model checking with time limits relies on `fork` and
+`fcntl`), and a Claude subscription.
 
-Download them from the C3PO dataset on Hugging Face: https://huggingface.co/datasets/MonarchInit/C3PO/tree/main
+1. **Install:**
+
+   ```bash
+   pip install -e ".[dev,claude-cli]"
+   ```
+
+2. **Download the data:** put `classes_slim.csv` and `structures.csv` from the
+   [C3PO dataset](https://huggingface.co/datasets/MonarchInit/C3PO/tree/main) into `data/`. ChEBI
+   (version 244) is downloaded automatically to `data/chebi_v244/` on the first run.
+
+3. **Log in to Claude:** install [Claude Code](https://code.claude.com), run `claude` and log in
+   with `/login`. Claude is called through the local `claude` CLI, which bills the subscription; no
+   API key is needed.
+
+4. **Learn definitions** (from the repository root, so that the default paths resolve):
+
+   ```bash
+   python nl_2_fol/inference/cli.py learn
+   ```
+
+   Each class gets up to 3 attempts; a definition is accepted with an F1 score of at least 0.8 on
+   the training samples. The definitions are saved to
+   `nl_2_fol/inference/learner/learned/claude-opus-5-5_asp/learned_definitions_a3.pkl`. An
+   interrupted run can be resumed by running the same command again (learned classes are
+   skipped).
+
+5. **Validate** the learned definitions on the validation set:
+
+   ```bash
+   python nl_2_fol/inference/cli.py validate \
+     --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-5-5_asp/learned_definitions_a3.pkl" \
+     --class_name "all"
+   ```
+
+Use `--help` on `learn`, `validate` and `learn_mistral` for all options.
 
 
-These are the same source links referenced in `nl_2_fol/inference/cli.py` and `nl_2_fol/inference/preprocessing/c3po_slim_data.py`. The C3PO dataset is associated with https://github.com/chemkg/c3p.
-
-If your files live somewhere else, pass explicit paths to the learning or validation commands:
-
-```bash
-python nl_2_fol/inference/cli.py learn \
-  --slim_dataset_path "/path/to/classes_slim.csv" \
-  --structures_data_path "/path/to/structures.csv"
-```
-
-```bash
-python nl_2_fol/inference/cli.py validate \
-  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  --class_name "all" \
-  --slim_dataset_path "/path/to/classes_slim.csv" \
-  --structures_data_path "/path/to/structures.csv"
-```
-
-The C3P comparison utilities also expect score JSON files from the C3P train/validation score output referenced in the utility help text: https://github.com/chemkg/c3p/pull/23
-
-
-## Start the Learning Pipeline
-
-Run commands from the repository root so the default `data/` and prompt-template paths resolve correctly.
-
-To learn definitions with the default Anthropic configuration:
-
-```bash
-python nl_2_fol/inference/cli.py learn
-```
-
-To learn definitions with the local Ollama Mistral configuration:
-
-```bash
-python nl_2_fol/inference/cli.py learn_mistral
-```
-
-To learn a single ChEBI class instead of all classes:
-
-```bash
-python nl_2_fol/inference/cli.py learn --class_name "ethanol"
-python nl_2_fol/inference/cli.py learn_mistral --class_name "ethanol"
-```
-
-Useful options:
+## Learning
 
 ```bash
 python nl_2_fol/inference/cli.py learn \
-  --api_platform "anthropic" \
-  --model_name "claude-opus-4-6" \
+  --class_name "ethanol" \
+  --api_platform "claude_cli" \
+  --model_name "claude-haiku-5-5" \
+  --fol_reasoner "asp" \
+  --effort "high" \
   --max_attempts 3 \
   --f1_threshold 0.8
 ```
 
-Learning output is saved under:
+Definitions are saved to
+`nl_2_fol/inference/learner/learned/<model_name>[_asp]/learned_definitions_a<max_attempts>.pkl`,
+together with the learning log and (for Claude) the token usage per query (`llm_usage.jsonl`).
 
-```text
-nl_2_fol/inference/learner/learned/<model_name>/learned_definitions_a<max_attempts>.pkl
-```
+**LLM platforms** (`--api_platform`):
+- `claude_cli` (default): the logged-in `claude` CLI. Set `NL2FOL_CLAUDE_CLI` if the binary is not
+  on `PATH`. When the 5-hour usage window is at least 90% used (`NL2FOL_SESSION_LIMIT`), learning
+  pauses until it resets; when a weekly limit is reached, the run stops and can be resumed later.
+  Requests refused by Claude's safety classifiers fail the respective class only.
+- `anthropic`: the Anthropic API. Install `.[anthropic]` and put `ANTHROPIC_API_KEY=...` in
+  `api_keys.env` in the repository root.
+- `ollama`: a local model, see [below](#running-a-custom-model-with-ollama-on-a-cluster).
 
-For example, with `model_name="claude-opus-4-6"` and `max_attempts=3`, the definitions file is:
+**Reasoners** (`--fol_reasoner`):
+- `asp` (default): definitions are logic programs, evaluated with clingo on all training samples.
+  Molecules are evaluated in batches of 1,000 by parallel clingo processes (one per CPU); each batch
+  has a time limit of 300 seconds. Molecules in batches that exceed it are counted as timeouts
+  (`timeout_pos` / `timeout_neg` in the metrics), not as negative predictions.
+- `gavel`: the TPTP pipeline of the first version of the paper (model checking with Gavel /
+  ChemLog), using the positive samples and the 1,000 closest negative samples with a time limit of
+  10 minutes.
 
-```text
-nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl
-```
+The default prompt templates depend on the reasoner (see `DEFAULT_PROMPTS` in
+`nl_2_fol/inference/cli.py`) and can be overwritten with `--system_prompt_fp`,
+`--few_shot_prompt_fp`, `--err_failure_prompt_fp` and `--undef_failure_prompt_fp`.
 
-## Start the Validation Pipeline
+The data paths can be changed with `--slim_dataset_path` and `--structures_data_path` (also for
+`validate`).
 
-After learning has produced a definitions pickle, validate the learned definitions with:
 
-```bash
-python nl_2_fol/inference/cli.py validate \
-  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  --class_name "all"
-```
+## Validation
 
-To validate only one class:
+The reasoner is inferred from the learned definitions. Definitions are evaluated on all validation
+samples (with ASP, the CPUs are shared between parallel validation workers).
 
-```bash
-python nl_2_fol/inference/cli.py validate \
-  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  --class_name "ethanol"
-```
+- `--class_name "all"` validates all classes and writes
+  `learned_definitions_a3_with_val_file_idx_None_.pkl` next to the input file.
+- `--class_name "ethanol"` validates a single class and writes `ethanol.pkl` to the current
+  working directory.
+- To split the work across (HPC) jobs, pass a text file with one class name per line and a unique
+  index per job; the output is `learned_definitions_a3_with_val_file_idx_<index>_.pkl`:
 
-Single-class validation writes a small result pickle named after the resolved class in the current working directory, for example `ethanol.pkl`.
+  ```bash
+  python nl_2_fol/inference/cli.py validate \
+    --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-5-5_asp/learned_definitions_a3.pkl" \
+    --class_names_txt_file_path "classes_0.txt" \
+    --file_save_index 0
+  ```
 
-For HPC or long validation runs, split the work across jobs by passing a text file with one class name per line. Use a unique `file_save_index` for each job:
-
-```bash
-python nl_2_fol/inference/cli.py validate \
-  --defs_file_path "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  --class_names_txt_file_path "classes_0.txt" \
-  --file_save_index 0
-```
-
-Full or split validation writes a new definitions pickle next to the input file, for example:
-
-```text
-nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_None_.pkl
-```
-
-When `class_names_txt_file_path` is used, the index appears in the file name, for example:
-
-```text
-nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl
-```
-
-Use `--help` to inspect the full set of options:
-
-```bash
-python nl_2_fol/inference/cli.py learn --help
-python nl_2_fol/inference/cli.py learn_mistral --help
-python nl_2_fol/inference/cli.py validate --help
-```
 
 ## Utility Scripts
 
-Helper scripts for inspecting, editing, merging, and comparing learned definitions live in:
-
-```text
-nl_2_fol/inference/utils/
-```
-
-Most scripts expect paths to learned definition pickles produced by the learning or validation pipeline.
-
-### Inspect or Edit Learned Definitions
-
-Use `show_learned_content.py` to inspect a learned definitions pickle:
+Scripts in `nl_2_fol/inference/utils/` for working with definition pickles:
 
 ```bash
-python nl_2_fol/inference/utils/show_learned_content.py \
-  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  show
-```
+# show all classes (or one with --class-name, plus prompts with --system-prompt / --conversation-history);
+# other subcommands: delete, stats, ...
+python nl_2_fol/inference/utils/show_learned_content.py --pickle-file <defs.pkl> show --class-name "ethanol"
 
-Show one class:
+# merge the validation metrics of <source.pkl> into <target.pkl>, write <output.pkl>
+python nl_2_fol/inference/utils/merge_validation_metrics.py <target.pkl> <source.pkl> <output.pkl>
 
-```bash
-python nl_2_fol/inference/utils/show_learned_content.py \
-  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  show \
-  --class-name "ethanol"
-```
-
-Include prompt history while inspecting a class:
-
-```bash
-python nl_2_fol/inference/utils/show_learned_content.py \
-  --pickle-file "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  show \
-  --class-name "ethanol" \
-  --system-prompt \
-  --conversation-history
-```
-
-### Merge Validation Metrics
-
-Use `merge_validation_metrics.py` to merge validation metrics from one validated pickle into another definitions pickle:
-
-```bash
-python nl_2_fol/inference/utils/merge_validation_metrics.py \
-  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3.pkl" \
-  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl" \
-  "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_merged.pkl"
-```
-
-The first path is the target/base pickle, the second path is the source pickle containing validation metrics, and the third path is the output pickle.
-
-### Compare With C3P
-
-Use `compare_with_c3p.py` to compare validated learned definitions against C3P score JSON files and export a CSV:
-
-```bash
+# compare with C3P scores (JSON files from https://github.com/chemkg/c3p/pull/23), export a CSV
 python nl_2_fol/inference/utils/compare_with_c3p.py \
-  --ensemble-c3p-json "c3p_ensemble_train_val_scores.json" \
-  --o3-mini-c3p-json "c3p_o3_mini_train_val_scores.json" \
-  --learned-pickle "nl_2_fol/inference/learner/learned/claude-opus-4-6/learned_definitions_a3_with_val_file_idx_0_.pkl" \
-  --output-csv "comparison_with_c3p_ensemble_o3_mini.csv"
+  --ensemble-c3p-json c3p_ensemble_train_val_scores.json \
+  --o3-mini-c3p-json c3p_o3_mini_train_val_scores.json \
+  --learned-pickle <defs_with_val.pkl> \
+  --output-csv comparison_with_c3p.csv
 ```
 
 
+## Running a Custom Model with Ollama on a Cluster
 
-## Guide: Run a custom model with Ollama on a computing cluster
+This example uses the fine-tuned Mistral FOL model
+[fvossel/Mistral-Small-24B-Instruct-2501-nl-to-fol](https://huggingface.co/fvossel/Mistral-Small-24B-Instruct-2501-nl-to-fol)
+with `learn_mistral` (defaults: `--api_platform ollama --model_name my-mistral`). Install
+`.[ollama]`.
 
-This example uses the Mistral FOL model:
-https://huggingface.co/fvossel/Mistral-Small-24B-Instruct-2501-nl-to-fol
+1. **Merge the model weights** into a local `mistral-merged` directory with `convert_mistral_to_gguf`
+   from `nl_2_fol/prompting/custom_api/_to_gguf.py`.
 
-## 1. Prepare model weights for conversion
+2. **Get `llama.cpp` and Ollama** (user-local, no root needed):
 
-Convert the Mistral model to a merged format by calling `convert_mistral_to_gguf` from:
-`nl_2_fol/prompting/custom_api/_to_gguf.py`
+   ```bash
+   git clone https://github.com/ggerganov/llama.cpp
+   pip install -r llama.cpp/requirements.txt
 
-Why this step matters:
-- Hugging Face checkpoints are often split across multiple files.
-- The conversion pipeline expects a clean merged model directory as input.
+   mkdir -p "$HOME/ollama" && cd "$HOME/ollama"
+   curl -L -o ollama-linux-amd64.tar.zst https://ollama.com/download/ollama-linux-amd64.tar.zst
+   unzstd ollama-linux-amd64.tar.zst && tar -xf ollama-linux-amd64.tar
+   echo 'export PATH=$HOME/ollama/bin:$PATH' >> ~/.bashrc && source ~/.bashrc
+   ollama --version
+   ```
 
-What this step does:
-- Collects and organizes model artifacts into a local `mistral-merged` folder.
-- Ensures the tokenizer/config/weights are in a format that `llama.cpp` conversion can read.
+3. **Convert to GGUF** (from inside `llama.cpp`; can take a while and needs a lot of RAM):
 
-Expected result:
-- A `mistral-merged` directory exists in your workspace and is ready for GGUF conversion.
+   ```bash
+   python convert_hf_to_gguf.py ../mistral-merged --outfile mistral.gguf
+   ```
 
+4. **Start the Ollama server** in the background:
 
-## 2. Build tools and install local Ollama (no root required)
+   ```bash
+   export OLLAMA_HOST=http://localhost:<your_custom_port>
+   export OLLAMA_TIMEOUT=180  # seconds
+   ollama serve > ollama.log 2>&1 &
+   OLLAMA_PID=$!
+   ```
 
-This step prepares two required components:
-- `llama.cpp`, which provides the `convert_hf_to_gguf.py` conversion script.
-- A user-local Ollama installation, useful on clusters where you do not have `sudo` access.
+   Stop it afterwards with `kill $OLLAMA_PID; wait $OLLAMA_PID`.
 
-```bash
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp
-pip install -r requirements.txt
-```
+5. **Register the model** (once per build): create a `Modelfile` containing `FROM ./mistral.gguf`
+   next to `mistral.gguf`, then run
 
-If you do not have root access on the HPC cluster, install Ollama in your home directory:
+   ```bash
+   ollama create my-mistral -f Modelfile
+   ollama list  # shows my-mistral
+   ```
 
-```bash
-mkdir -p "$HOME/ollama"
-cd "$HOME/ollama"
-curl -L -o ollama-linux-amd64.tar.zst https://ollama.com/download/ollama-linux-amd64.tar.zst
-unzstd ollama-linux-amd64.tar.zst
-tar -xf ollama-linux-amd64.tar
+6. **Learn definitions.** Proxy variables can interfere with localhost connections on some clusters:
 
-echo 'export PATH=$HOME/ollama/bin:$PATH' >> ~/.bashrc
-source ~/.bashrc
-ollama --version
-```
+   ```bash
+   export NO_PROXY=127.0.0.1,localhost,.local
+   export no_proxy=127.0.0.1,localhost,.local
+   python nl_2_fol/inference/cli.py learn_mistral
+   ```
 
-Expected result:
-- `ollama --version` prints a version string.
-- You can run `ollama` commands without system-wide installation.
-
-## 3. Convert model to GGUF
-
-From inside `llama.cpp`:
-
-```bash
-python convert_hf_to_gguf.py ../mistral-merged --outfile mistral.gguf
-```
-
-Why this step matters:
-- Ollama loads local models through GGUF files.
-- This command translates the merged Hugging Face model into a runtime format Ollama can serve.
-
-Expected result:
-- A file named `mistral.gguf` is created.
-- The conversion may take time and use significant CPU/RAM depending on model size.
-
-## 4. Start Ollama server
-
-Run the Ollama server in background using below command, so it keeps running while you execute your script or commands in same terminal.
-
-
-
-```bash
-export OLLAMA_HOST=http://localhost:<your_custom_port>
-export OLLAMA_TIMEOUT=180 # in seconds
-ollama serve > ollama.log 2>&1 &
-OLLAMA_PID=$!
-```
-
-After you are done with ollama, cleanly stop ollama server using below commands
-
-```bash
-kill $OLLAMA_PID 2>/dev/null
-wait $OLLAMA_PID 2>/dev/null
-```
-
-## 5. Register the model in Ollama
-
-Create a `Modelfile` in the directory containing `mistral.gguf` with:
-
-```text
-FROM ./mistral.gguf
-```
-
-Then run:
-
-```bash
-ollama create my-mistral -f Modelfile
-ollama list
-```
-
-Why this step matters:
-- `ollama create` registers your GGUF file under a model name (`my-mistral`).
-- After registration, you can refer to the model by name in CLI calls.
-
-Expected result:
-- `ollama list` shows `my-mistral`.
-- You only need to run `ollama create ...` once per model build.
-
-## 6. Run NL-to-FOL inference with Ollama
-
-This final step sends requests from your project CLI to the locally running Ollama server.
-On some clusters, proxy variables can interfere with localhost routing, so unset them first if needed.
-
-```bash
-export NO_PROXY=127.0.0.1,localhost,.local
-export no_proxy=127.0.0.1,localhost,.local
-```
-
-Then run:
-
-```bash
-python nl_2_fol/inference/cli.py --api_platform="ollama" --model_name="my-mistral"
-```
-
-**IMPORTANT:** Ensure `ollama serve` and the inference command run on the same compute node or same allocated job/session if applicable.
-For example, if `ollama serve` started on `hpc3-52` but the inference command runs on `hpc3-54`, the connection might fail.
-
-Expected result:
-- The CLI connects to your local Ollama instance.
-- The `my-mistral` model is used for NL-to-FOL inference.
+   `ollama serve` and the learning command have to run on the same compute node (e.g. in the same
+   job allocation).
